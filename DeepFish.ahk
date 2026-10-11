@@ -39,7 +39,7 @@
 DFBetaVersion := "1.1.7"
 CastSeenN := 0
 CastMissN := 0
-DFModBuild := 28
+DFModBuild := 31
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -12294,7 +12294,7 @@ KbLineCheck(ByRef miss, ByRef tot) {
 }
 
 KbKeyStep(key, ByRef t0) {
-	if (!GetKeyState(key, "P"))
+	if (!KeyHeld(key))
 		{
 		t0 := 0
 		return false
@@ -22399,8 +22399,10 @@ SetBase(h, x, y) {
 }
 
 ShowList(lst, cond) {
+	global HelpHidden
+	hh := IsObject(HelpHidden)
 	for i, h in lst
-		GuiControl, % (cond ? "1:Show" : "1:Hide"), %h%
+		GuiControl, % ((cond and !(hh and HelpHidden.HasKey(h))) ? "1:Show" : "1:Hide"), %h%
 }
 
 CollectVisible() {
@@ -22690,14 +22692,98 @@ FixCardBrushes(lst) {
 }
 
 ThemeCtl(h) {
+	global GuiInputs
 	VarSetCapacity(cb, 128, 0)
 	DllCall("GetClassName", "Ptr", h, "Str", cb, "Int", 64)
 	cls := cb
 	DllCall("uxtheme\SetWindowTheme", "Ptr", h, "Str", (cls = "ComboBox") ? "DarkMode_CFD" : "DarkMode_Explorer", "Ptr", 0)
+	if (GuiInputs != "Filled")
+		return
+	if (cls = "Edit")
+		{
+		st := DllCall("GetWindowLong", "Ptr", h, "Int", -16, "Int")
+		DllCall("SetWindowLong", "Ptr", h, "Int", -16, "Int", st & ~0x800000)
+		ex := DllCall("GetWindowLong", "Ptr", h, "Int", -20, "Int")
+		DllCall("SetWindowLong", "Ptr", h, "Int", -20, "Int", ex & ~0x200)
+		DllCall("SetWindowPos", "Ptr", h, "Ptr", 0, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "UInt", 0x27)
+		DllCall("SendMessage", "Ptr", h, "UInt", 0xD3, "Ptr", 3, "Ptr", (7 << 16) | 7)
+		}
+	if (cls = "Edit" or cls = "ComboBox" or cls = "msctls_hotkey32")
+		{
+		CtrlSnapPos(h, cx, cy, cw, ch)
+		if (cw > 4 and ch > 4)
+			RoundCtrl(h, cw, ch, (ch > 40) ? 9 : 7)
+		}
+}
+
+; round every box-like control that was not rounded when it was made
+RoundExtras() {
+	global GuiHwnd, CtrlRgnR, GuiInputs
+	if (!GuiHwnd)
+		return
+	dhw := A_DetectHiddenWindows
+	DetectHiddenWindows, On
+	WinGet, lst, ControlListHwnd, ahk_id %GuiHwnd%
+	DetectHiddenWindows, %dhw%
+	Loop, Parse, lst, `n
+		{
+		h := A_LoopField + 0
+		if (CtrlRgnR.HasKey(h))
+			continue
+		VarSetCapacity(cb, 128, 0)
+		DllCall("GetClassName", "Ptr", h, "Str", cb, "Int", 64)
+		cls := cb
+		if (cls = "msctls_progress32" or cls = "ComboBox" or cls = "msctls_hotkey32" or (cls = "Edit" and GuiInputs = "Filled"))
+			{
+			CtrlSnapPos(h, cx, cy, cw, ch)
+			if (cw > 4 and ch > 4)
+				RoundCtrl(h, cw, ch, (cls = "msctls_progress32") ? 5 : ((ch > 40) ? 9 : 7))
+			}
+		}
+}
+
+; minimal look: the ? help icons go away (their tips go with them)
+HideHelpIcons() {
+	global GuiHwnd, GuiHelp, HelpHidden
+	if (GuiHelp != "Hide" or !GuiHwnd)
+		return
+	if (!IsObject(HelpHidden))
+		HelpHidden := {}
+	dhw := A_DetectHiddenWindows
+	DetectHiddenWindows, On
+	WinGet, lst, ControlListHwnd, ahk_id %GuiHwnd%
+	DetectHiddenWindows, %dhw%
+	Loop, Parse, lst, `n
+		{
+		h := A_LoopField + 0
+		if (HelpHidden.HasKey(h))
+			continue
+		VarSetCapacity(tb, 16, 0)
+		DllCall("GetWindowText", "Ptr", h, "Str", tb, "Int", 8)
+		if (tb = "?")
+			{
+			HelpHidden[h] := 1
+			DllCall("ShowWindow", "Ptr", h, "Int", 0)
+			}
+		}
+}
+
+ColorShift(hex, amt) {
+	r := Format("{:d}", "0x" . SubStr(hex, 1, 2)) + amt
+	g := Format("{:d}", "0x" . SubStr(hex, 3, 2)) + amt
+	b := Format("{:d}", "0x" . SubStr(hex, 5, 2)) + amt
+	r := (r > 255) ? 255 : ((r < 0) ? 0 : r)
+	g := (g > 255) ? 255 : ((g < 0) ? 0 : g)
+	b := (b > 255) ? 255 : ((b < 0) ? 0 : b)
+	return Format("{:02X}{:02X}{:02X}", r, g, b)
 }
 
 RoundCtrl(h, w, ht, r) {
-	global CtrlRgnR, CtrlW, CtrlH, DpiF
+	global CtrlRgnR, CtrlW, CtrlH, DpiF, GuiRoundMul
+	mul := (GuiRoundMul = "") ? 1 : GuiRoundMul
+	r := r * mul
+	if (r < 0.5)
+		r := 0.5
 	CtrlRgnR[h] := r
 	CtrlW[h] := w
 	CtrlH[h] := ht
@@ -22711,6 +22797,15 @@ RoundCtrl(h, w, ht, r) {
 BuildGui:
 
 IniRead, GuiTheme, %SettingsFile%, GUI, Theme, Mono
+IniRead, GuiCorners, %SettingsFile%, GUI, Corners, Rounded
+IniRead, GuiInputs, %SettingsFile%, GUI, Inputs, Filled
+IniRead, GuiHelp, %SettingsFile%, GUI, HelpIcons, Show
+GuiRoundMul := {"Square": 0, "Subtle": 0.55, "Rounded": 1, "Extra round": 1.7}[GuiCorners]
+if (GuiRoundMul = "")
+	{
+	GuiCorners := "Rounded"
+	GuiRoundMul := 1
+	}
 GuiThemes := {"Mono": ["0B0B0D", "101012", "17171A", "0D0D0F", "E6E6E8", "EDEDEF", "85858C", "26262B", "8E8E95"]
 	, "Midnight": ["0D1117", "121722", "171D2A", "0A0E15", "6E9BFF", "E3E8F2", "8590A6", "242C3D", "AEB8CC"]
 	, "Violet":  ["0F0D16", "15121F", "1C1829", "0B0A11", "A78BFA", "ECE8FA", "958CB0", "2B2540", "BDB4D6"]
@@ -22729,6 +22824,8 @@ ColorText := GtP[6]
 ColorMuted := GtP[7]
 ColorBorder := GtP[8]
 ColorNav := GtP[9]
+if (GuiInputs = "Filled")
+	ColorInput := ColorShift(ColorCard, 14)
 ColorGreen := "22C55E"
 ColorRed := "EF4444"
 ColorAmber := "F59E0B"
@@ -22930,6 +23027,7 @@ for i, d in NavDefs
 	RoundCtrl(hNB, 4, 34, 2)
 	NavHwnd["bar" . nk] := hNB
 	Gui, Add, Text, x12 y%NavY% w158 h34 +0x200 vNav%nk% gSidebarClick HwndhNV, %nl%
+	RoundCtrl(hNV, 158, 34, 8)
 	SpecialBrushes[hNV] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
 	NavHwnd[nk] := hNV
 	NavY += 38
@@ -22980,6 +23078,8 @@ ThemeCtl(hMgCodeBox)
 darkAttr := 1
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 20, "Int*", darkAttr, "Int", 4)
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 19, "Int*", darkAttr, "Int", 4)
+cornerPref := (GuiCorners = "Square") ? 1 : ((GuiCorners = "Subtle") ? 3 : 2)
+DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 33, "Int*", cornerPref, "Int", 4)
 
 SbX := WINW - 15
 Gui, Add, Text, x%SbX% y158 w9 h200 HwndSbTrack
@@ -22992,6 +23092,8 @@ GuiControl, 1:Hide, %SbThumb%
 
 Gui, Show, w%WINW% h%WINH%, DeepFish BETA
 SetTimer, HeaderStatsTick, 1000
+HideHelpIcons()
+RoundExtras()
 SetTimer, InfoPanelTick, 500
 SetTimer, DFCheckForUpdate, -1200
 SetTimer, OverlayHideTick, 250
@@ -23107,6 +23209,8 @@ while (tk <= tn)
 	ThemeCtl(ThemedCtrls[tk])
 	tk++
 	}
+HideHelpIcons()
+RoundExtras()
 if (NeedSection = "Minigame")
 	gosub, RefreshControlModes
 if (NeedSection = "Cast")
@@ -23278,6 +23382,7 @@ SpecialBrushes[hIpBezel] := {brush: hBrushBorder, text: ColorTextBGR}
 RoundCtrl(hIpBezel, IpBezW, IpBezH, 6)
 Gui, Add, Text, x%IpMonBX% y%IpMonBY% w%IpMonW% h%IpMonH% HwndhIpMon
 HomeCtrls.Push(hIpMon)
+RoundCtrl(hIpMon, IpMonW, IpMonH, 4)
 SpecialBrushes[hIpMon] := {brush: hBrushBG, text: ColorTextBGR}
 IpBoxW := Max(14, Round(IpMonW * InfoPanelPxW() / ImW))
 IpBoxH := Max(10, Round(IpMonH * InfoPanelPxH() / ImH))
@@ -23300,6 +23405,72 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%IpTxX% y622 w%IpTxW% h100 HwndhC, Drag the bright box around the screen shape - the info panel moves with it, live.`n`nIt shows on the screen Roblox is on. Turn it on with Info Panel above.
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+
+; ---- Appearance
+Gui, Font, s9 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%HmX% y760 w300 h18 HwndhC, Appearance
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+ApOpts := [ ["🎨   Theme", "ApTheme", "Mono|Midnight|Violet|Emerald|Crimson|Classic", GuiTheme]
+	, ["◻   Corners", "ApCorners", "Square|Subtle|Rounded|Extra round", GuiCorners]
+	, ["▭   Inputs", "ApInputs", "Filled|Outlined", GuiInputs]
+	, ["❔   Help icons", "ApHelp", "Show|Hide", GuiHelp] ]
+hC := AddPanel(HmX, 782, HmW, ApOpts.Length() * HmRowH + 4, 10)
+HomeCtrls.Push(hC)
+ry := 784
+for ri, r in ApOpts
+	{
+	if (ri > 1)
+		{
+		sx := HmX + 10
+		sw := HmW - 20
+		Gui, Add, Text, x%sx% y%ry% w%sw% h1 HwndhC
+		HomeCtrls.Push(hC)
+		SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorTextBGR}
+		}
+	lx := HmX + 14
+	ty := ry + 8
+	Gui, Font, s10 Norm c%ColorText%, Segoe UI
+	Gui, Add, Text, x%lx% y%ty% w260 h20 +0x200 HwndhC, % r[1]
+	HomeCtrls.Push(hC)
+	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+	dx := HmX + HmW - 194
+	dy := ry + 6
+	dv := r[2]
+	ApIdx := 1
+	Loop, Parse, % r[3], |
+		{
+		if (A_LoopField = r[4])
+			ApIdx := A_Index
+		}
+	Gui, Font, s9 Norm c%ColorText%, Segoe UI
+	Gui, Add, DropDownList, x%dx% y%dy% w180 h140 v%dv% gAppearanceChanged Choose%ApIdx% HwndhC, % r[3]
+	HomeCtrls.Push(hC)
+	ThemedCtrls.Push(hC)
+	ry += HmRowH
+	}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%HmX% y934 w%HmW% h18 HwndhC, Changing these restarts the window (your settings are saved first).
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
+return
+
+AppearanceChanged:
+GuiControlGet, ApV, 1:, %A_GuiControl%
+if (ErrorLevel or ApV = "")
+	return
+ApKey := {"ApTheme": "Theme", "ApCorners": "Corners", "ApInputs": "Inputs", "ApHelp": "HelpIcons"}[A_GuiControl]
+ApCur := {"ApTheme": GuiTheme, "ApCorners": GuiCorners, "ApInputs": GuiInputs, "ApHelp": GuiHelp}[A_GuiControl]
+if (ApKey = "" or ApV = ApCur)
+	return
+IniWrite, %ApV%, %SettingsFile%, GUI, %ApKey%
+if (MacroRunning)
+	{
+	MsgBox, 4160, DeepFish, Saved. It applies the next time the macro starts (it is running right now).
+	return
+	}
+gosub, SaveSettings
+Reload
 return
 
 InfoBoxDrag:
@@ -23312,7 +23483,7 @@ IdOffY := IdGy - IdBy
 IdWas := InfoPanelOn
 if (!InfoPanelOn)
 	InfoPanelOn := true
-while GetKeyState("LButton", "P")
+while KeyHeld("LButton")
 	{
 	InfoCursorGui(IdGx, IdGy)
 	IdNx := IdGx - IdOffX
@@ -23369,7 +23540,9 @@ if (!hInfoP)
 	Gui, InfoP:Show, Hide w%IpW% h%IpH%, DeepFish Info
 	DetectHiddenWindows, On
 	WinGetPos, , , IpPw, IpPh, ahk_id %hInfoP%
-	WinSet, Region, % "0-0 w" . IpPw . " h" . IpPh . " R14-14", ahk_id %hInfoP%
+	IpRad := Round(28 * ((GuiRoundMul = "") ? 1 : GuiRoundMul))
+	if (IpRad > 1)
+		WinSet, Region, % "0-0 w" . IpPw . " h" . IpPh . " R" . IpRad . "-" . IpRad, ahk_id %hInfoP%
 	WinSet, Transparent, 236, ahk_id %hInfoP%
 	Gui, 1:Default
 	}
@@ -25034,12 +25207,12 @@ GCancel := false
 GUWas := true
 Loop
 	{
-	if GetKeyState("Escape", "P")
+	if KeyHeld("Escape")
 		{
 		GCancel := true
 		break
 		}
-	GUNow := GetKeyState("u", "P")
+	GUNow := KeyHeld("u")
 	if (GUNow and !GUWas)
 		{
 		MouseGetPos, GMx, GMy
@@ -25094,16 +25267,16 @@ GCancel := false
 GPc := ""
 Loop
 	{
-	if GetKeyState("Escape", "P")
+	if KeyHeld("Escape")
 		{
 		GCancel := true
 		break
 		}
-	if GetKeyState("u", "P")
+	if KeyHeld("u")
 		{
 		MouseGetPos, GMx, GMy
 		PixelGetColor, GPc, %GMx%, %GMy%, RGB
-		while GetKeyState("u", "P")
+		while KeyHeld("u")
 			Sleep 20
 		break
 		}
@@ -25617,15 +25790,15 @@ KbPx := 0
 KbPy := 0
 Loop
 	{
-	if GetKeyState("Escape", "P")
+	if KeyHeld("Escape")
 		{
 		KbPickCancel := true
 		break
 		}
-	if GetKeyState("u", "P")
+	if KeyHeld("u")
 		{
 		MouseGetPos, KbPx, KbPy
-		while GetKeyState("u", "P")
+		while KeyHeld("u")
 			Sleep, % Tm(20)
 		break
 		}
@@ -25761,6 +25934,23 @@ return
 KbLineNop:
 return
 
+KbLineKeyDown:
+PickHeld[RegExReplace(A_ThisHotkey, "^\*")] := 1
+return
+
+KbLineKeyUp:
+PickHeld[RegExReplace(A_ThisHotkey, "^\*|\s+up$")] := 0
+return
+
+; held = physical press, OR injected/remote input (RustDesk, Parsec, TeamViewer...), OR a key the
+; power-line tool is swallowing with a hotkey. GetKeyState(k, "P") alone ignores remote-desktop input.
+KeyHeld(k) {
+	global PickHeld
+	if (GetKeyState(k, "P") or GetKeyState(k))
+		return true
+	return (IsObject(PickHeld) and PickHeld[k])
+}
+
 KeeperSetLine:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
@@ -25788,8 +25978,12 @@ else
 	KbLy2 := KbMy + 15
 	}
 KbLineKeys := ["Up", "Down", "Left", "Right", "Enter", "NumpadEnter", "Esc", "u", "LButton"]
+PickHeld := {}
 for i, kn in KbLineKeys
-	Hotkey, *%kn%, KbLineNop, On
+	{
+	Hotkey, *%kn%, KbLineKeyDown, On
+	Hotkey, *%kn% up, KbLineKeyUp, On
+	}
 Gui, KbLine:New, +AlwaysOnTop -Caption +ToolWindow +E0x20
 Gui, KbLine:Color, FF2D55
 KbLineSave := false
@@ -25803,15 +25997,15 @@ KbTR := 0
 VarSetCapacity(KbClip, 16, 0)
 Loop
 	{
-	if GetKeyState("Esc", "P")
+	if KeyHeld("Esc")
 		break
-	if (GetKeyState("Enter", "P") or GetKeyState("NumpadEnter", "P"))
+	if (KeyHeld("Enter") or KeyHeld("NumpadEnter"))
 		{
 		KbLineSave := true
 		break
 		}
 	MouseGetPos, KbMx, KbMy
-	KbUNow := GetKeyState("u", "P")
+	KbUNow := KeyHeld("u")
 	if (KbUNow and !KbUWas)
 		{
 		if (!KbLock)
@@ -25836,7 +26030,7 @@ Loop
 	KbUWas := KbUNow
 	if (KbLock)
 		KbLy2 := (KbMy > KbLy1 + 2) ? KbMy : KbLy1 + 2
-	KbLb := GetKeyState("LButton", "P")
+	KbLb := KeyHeld("LButton")
 	if (KbLb and !KbLock)
 		{
 		if (KbDrag = "")
@@ -25871,7 +26065,7 @@ Loop
 		}
 	else if (!KbLb)
 		KbDrag := ""
-	KbSt := GetKeyState("Shift", "P") ? 10 : 1
+	KbSt := KeyHeld("Shift") ? 10 : 1
 	if (!KbLock)
 		{
 		if (KbKeyStep("Up", KbTU))
@@ -25900,10 +26094,14 @@ Loop
 	Sleep 15
 	}
 DllCall("ClipCursor", "Ptr", 0)
-while (GetKeyState("Enter", "P") or GetKeyState("NumpadEnter", "P") or GetKeyState("Esc", "P") or GetKeyState("LButton", "P"))
+while (KeyHeld("Enter") or KeyHeld("NumpadEnter") or KeyHeld("Esc") or KeyHeld("LButton"))
 	Sleep 20
 for i, kn in KbLineKeys
-	Hotkey, *%kn%, KbLineNop, Off
+	{
+	Hotkey, *%kn%, KbLineKeyDown, Off
+	Hotkey, *%kn% up, KbLineKeyUp, Off
+	}
+PickHeld := {}
 Gui, KbLine:Destroy
 ToolTip, , , , 20
 CoordMode, Mouse, Client
@@ -25939,16 +26137,16 @@ KbPickCancel := false
 KbPc := ""
 Loop
 	{
-	if GetKeyState("Escape", "P")
+	if KeyHeld("Escape")
 		{
 		KbPickCancel := true
 		break
 		}
-	if GetKeyState("u", "P")
+	if KeyHeld("u")
 		{
 		MouseGetPos, KbPx, KbPy
 		PixelGetColor, KbPc, %KbPx%, %KbPy%, RGB
-		while GetKeyState("u", "P")
+		while KeyHeld("u")
 			Sleep 20
 		break
 		}
@@ -28612,17 +28810,17 @@ FrzAdded := 0
 FrzForceZ := true
 Loop
 	{
-	if (GetKeyState("Escape", "P") or GetKeyState("RButton", "P"))
+	if (KeyHeld("Escape") or KeyHeld("RButton"))
 		{
 		FrzCancelled := (FrzAdded = 0)
-		while GetKeyState("RButton", "P")
+		while KeyHeld("RButton")
 			Sleep, % Tm(5)
 		break
 		}
 	FrzSwitch := 0
 	Loop, % CMTargetKeys.MaxIndex()
 		{
-		if (A_Index <= 9 and GetKeyState(A_Index, "P"))
+		if (A_Index <= 9 and KeyHeld(A_Index))
 			{
 			FrzSwitch := A_Index
 			break
@@ -28630,7 +28828,7 @@ Loop
 		}
 	if (FrzSwitch)
 		{
-		while GetKeyState(FrzSwitch, "P")
+		while KeyHeld(FrzSwitch)
 			Sleep, % Tm(5)
 		FreezeTarget := CMTargetKeys[FrzSwitch]
 		CMSel := FreezeTarget
@@ -28645,9 +28843,9 @@ Loop
 	MouseGetPos, FrzMx, FrzMy
 	FreezePaintLoupe(FrzMx, FrzMy, FrzForceZ)
 	FrzForceZ := false
-	if GetKeyState("LButton", "P")
+	if KeyHeld("LButton")
 		{
-		while GetKeyState("LButton", "P")
+		while KeyHeld("LButton")
 			Sleep, % Tm(5)
 		FrzForceZ := true
 		FrzHex := FreezePixelAt(FrzMx, FrzMy)
