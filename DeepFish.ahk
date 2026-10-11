@@ -39,7 +39,7 @@
 DFBetaVersion := "1.1.7"
 CastSeenN := 0
 CastMissN := 0
-DFModBuild := 24
+DFModBuild := 28
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -80,6 +80,9 @@ ProfileFields.Push( ["General","AutoLowerGraphics","true","bool"]
                   , ["General","HideOverlay","false","bool"]
                   , ["General","PassiveAll","false","bool"]
                   , ["General","PassiveMs","500","num"]
+                  , ["General","InfoPanelOn","false","bool"]
+                  , ["General","InfoPanelX","0.02","num"]
+                  , ["General","InfoPanelY","0.35","num"]
                   , ["Update","AutoUpdate","false","bool"]
                   , ["Advanced","AdvancedOn","false","bool"]
                   , ["General","HoldRodCastDuration","1000","num"]
@@ -1080,13 +1083,13 @@ if (KeeperAuto and !KbBusy)
 				if (KbAutoRead(KbPct))
 					{
 					KbHandled := true
-					KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
-					if (KbPct < KbAutoAt)
+					if (KbPct < KbAutoAt + 4)
 						{
-						sleep 120
-						if (KbAutoRead(KbPct2) and KbPct2 < KbAutoAt)
-							KbDue := true
+						if (KbAutoReadStable(KbPct2, 3))
+							KbPct := KbPct2
+						KbDue := (KbPct < KbAutoAt)
 						}
+					KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
 					}
 				else
 					KbOcrLast := "power bar not found on screen"
@@ -3514,10 +3517,15 @@ CryptHashHex(pData, nData) {
 
 OverlayHideTick:
 OvWant := MacroRunning and (HideOverlay or (SwPassiveHide and ((SwPassive and SpecialRod = "Stellarwave Melody") or PassiveAll)))
+TipWant := OvWant or (InfoPanelOn and MacroRunning)
+if (TipWant != TipsHidden)
+	{
+	TipsHidden := TipWant ? true : false
+	OverlaySetHidden(TipsHidden)
+	}
 if (OvWant = OverlayHidden)
 	return
 OverlayHidden := OvWant ? true : false
-OverlaySetHidden(OverlayHidden)
 if (OverlayHidden)
 	gosub, HideHud
 return
@@ -3551,8 +3559,8 @@ OverlaySetHidden(hide) {
 }
 
 OverlayWinEvent(hHook, event, hwnd, idObject, idChild, thread, time) {
-	global OverlayHidden
-	if (!OverlayHidden or idObject != 0 or !hwnd)
+	global TipsHidden
+	if (!TipsHidden or idObject != 0 or !hwnd)
 		return
 	DetectHiddenWindows, On
 	WinGetClass, c, ahk_id %hwnd%
@@ -11904,7 +11912,7 @@ KbGrabEnd(hdcM, hbm, old) {
 
 ; finds the Keeperbound power bar (purple fill + dark navy track) on its own - no setup
 KbAutoFind() {
-	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH, KbBarTop, KbBarBot
 	KbBarY := -1
 	if (!RobloxHwnd)
 		return false
@@ -12005,6 +12013,8 @@ KbAutoFind() {
 		rs.Push(rows[bs + A_Index - 1][3])
 		}
 	KbBarY := y0 + rows[bs + (bn // 2)][1]
+	KbBarTop := y0 + rows[bs][1]
+	KbBarBot := y0 + rows[bs + bn - 1][1]
 	KbBarL := MedianOf(ls)
 	KbBarR := MedianOf(rs)
 	KbBarWW := ww
@@ -12013,67 +12023,209 @@ KbAutoFind() {
 }
 
 ; reads how full the power bar is, 0-100. false if the bar is not on screen
-KbAutoRead(ByRef pct) {
-	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH
+; The "45.0% Power" text sits on top of the middle of the bar with a thick navy outline (the same navy as
+; the empty track), so the fill edge cannot just be "where the navy starts". Instead every pixel is evidence:
+; purple = filled here, navy that is NOT part of a letter outline = empty here. The reading is the split point
+; that best separates the two (a step fit), which also sees through the gaps between the letters.
+KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH, KbBarTop, KbBarBot
 	pct := -1
+	lo := -1
+	hi := -1
 	if (!RobloxHwnd)
 		return false
 	Loop 2
 		{
 		RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
-		if (KbBarY = "" or KbBarY < 0 or ww != KbBarWW or wh != KbBarWH)
+		if (KbBarY = "" or KbBarY < 0 or KbBarTop = "" or ww != KbBarWW or wh != KbBarWH)
 			{
 			if (!KbAutoFind())
 				return false
 			}
 		w := Round(KbBarR - KbBarL + 1)
-		if (w < 20)
+		nr := KbBarBot - KbBarTop + 1
+		if (w < 20 or nr < 3)
 			{
 			KbBarY := -1
 			continue
 			}
-		pBits := KbGrab(wx + Round(KbBarL), wy + KbBarY - 2, w, 5, hdcM, hbm, old)
+		pBits := KbGrab(wx + Round(KbBarL), wy + KbBarTop, w, nr, hdcM, hbm, old)
 		if (!pBits)
 			return false
-		vals := []
-		need := Max(20, Round(w * 0.025))
-		Loop 5
+		; 1 = fill, 2 = navy, 3 = letter
+		VarSetCapacity(cls, w * nr, 0)
+		rowF := []
+		rowN := []
+		Loop % nr
 			{
-			base := pBits + (A_Index - 1) * w * 4
-			good := 0
-			run := 0
-			xn := -1
+			r := A_Index - 1
+			base := pBits + r * w * 4
+			ob := r * w
+			fc := 0
+			nc := 0
 			x := 0
 			while (x < w)
 				{
 				px := NumGet(base + 0, x * 4, "UInt")
-				if (KbPixNavy(px))
+				cr := (px >> 16) & 0xFF
+				cg := (px >> 8) & 0xFF
+				cb := px & 0xFF
+				if (cb >= 215 and cr >= 95 and cg <= 140 and cr > cg + 5)
 					{
-					good++
-					run++
-					if (run >= need and xn < 0)
-						xn := x - need + 1
+					NumPut(1, cls, ob + x, "UChar")
+					fc++
 					}
-				else
+				else if (cr <= 26 and cg >= 16 and cg <= 44 and cb >= 26 and cb <= 58)
 					{
-					run := 0
-					if (KbPixFill(px))
-						good++
+					NumPut(2, cls, ob + x, "UChar")
+					nc++
 					}
+				else if (cr >= 150 and cg >= 145 and cb >= 190)
+					NumPut(3, cls, ob + x, "UChar")
 				x++
 				}
-			if (good >= 0.6 * w)
-				vals.Push((xn < 0) ? 100.0 : xn * 100.0 / w)
+			rowF.Push(fc)
+			rowN.Push(nc)
 			}
 		KbGrabEnd(hdcM, hbm, old)
-		if (vals.Length() >= 3)
+		; drop the purple border rows at the top and bottom of the bar
+		maxN := 0
+		for i, v in rowN
+			maxN := (v > maxN) ? v : maxN
+		r0 := 2
+		r1 := nr - 1
+		if (nr <= 4)
 			{
-			pct := MedianOf(vals)
-			return true
+			r0 := 1
+			r1 := nr
 			}
-		KbBarY := -1
+		while (r0 < r1 and maxN > 0.05 * w and rowN[r0] < 0.02 * w and rowF[r0] > 0.9 * w)
+			r0++
+		while (r1 > r0 and maxN > 0.05 * w and rowN[r1] < 0.02 * w and rowF[r1] > 0.9 * w)
+			r1--
+		ih := r1 - r0 + 1
+		d := Round(ih * 0.25)
+		if (d < 2)
+			d := 2
+		; navy within d px of a letter is outline, not empty track
+		VarSetCapacity(nh, w * nr, 0)
+		r := r0
+		while (r <= r1)
+			{
+			ob := (r - 1) * w
+			last := -100000
+			x := 0
+			while (x < w)
+				{
+				if (NumGet(cls, ob + x, "UChar") = 3)
+					last := x
+				if (x - last <= d)
+					NumPut(1, nh, ob + x, "UChar")
+				x++
+				}
+			last := 100000
+			x := w - 1
+			while (x >= 0)
+				{
+				if (NumGet(cls, ob + x, "UChar") = 3)
+					last := x
+				if (last - x <= d)
+					NumPut(1, nh, ob + x, "UChar")
+				x--
+				}
+			r++
+			}
+		VarSetCapacity(fe, w * 8, 0)
+		totF := 0
+		totE := 0
+		x := 0
+		while (x < w)
+			{
+			f := 0
+			e := 0
+			r := r0
+			while (r <= r1)
+				{
+				c := NumGet(cls, (r - 1) * w + x, "UChar")
+				if (c = 1)
+					f++
+				else if (c = 2)
+					{
+					near := false
+					rr := (r - d < r0) ? r0 : r - d
+					re := (r + d > r1) ? r1 : r + d
+					while (rr <= re)
+						{
+						if (NumGet(nh, (rr - 1) * w + x, "UChar"))
+							{
+							near := true
+							break
+							}
+						rr++
+						}
+					if (!near)
+						e++
+					}
+				r++
+				}
+			NumPut(f, fe, x * 8, "UInt")
+			NumPut(e, fe, x * 8 + 4, "UInt")
+			totF += f
+			totE += e
+			x++
+			}
+		if (totF + totE < 0.3 * w * ih)
+			{
+			; not the bar any more (menu open, rod swapped, window moved) - look for it again
+			KbBarY := -1
+			continue
+			}
+		costL := 0
+		costR := totF
+		best := 0x7FFFFFFF
+		bx0 := 0
+		bx1 := 0
+		x := 0
+		while (x <= w)
+			{
+			cost := costL + costR
+			if (cost < best)
+				{
+				best := cost
+				bx0 := x
+				bx1 := x
+				}
+			else if (cost = best)
+				bx1 := x
+			if (x < w)
+				{
+				costL += NumGet(fe, x * 8 + 4, "UInt")
+				costR -= NumGet(fe, x * 8, "UInt")
+				}
+			x++
+			}
+		lo := bx0 * 100.0 / w
+		hi := bx1 * 100.0 / w
+		pct := (lo + hi) / 2
+		return true
 		}
 	return false
+}
+
+; a few frames, median - steadier than one frame
+KbAutoReadStable(ByRef pct, n := 3) {
+	vals := []
+	Loop % n
+		{
+		if (KbAutoRead(v))
+			vals.Push(v)
+		if (A_Index < n)
+			Sleep, 40
+		}
+	if (vals.Length() < (n + 1) // 2)
+		return false
+	pct := MedianOf(vals)
+	return true
 }
 
 KbLineNeed(tot) {
@@ -22106,12 +22258,6 @@ EnsureBrush(ByRef hBrush, hexColor) {
 
 WM_CTLCOLOREDIT(wParam, lParam, msg, hwnd) {
 	global hBrushInput, ColorInputBGR, ColorInput, hMgCodeBox, hBrushWhite
-	if (hMgCodeBox and lParam = hMgCodeBox)
-		{
-		DllCall("SetTextColor", "Ptr", wParam, "UInt", 0x101010)
-		DllCall("SetBkColor", "Ptr", wParam, "UInt", 0xFFFFFF)
-		return EnsureBrush(hBrushWhite, "FFFFFF")
-		}
 	DllCall("SetBkMode", "Ptr", wParam, "Int", 1)
 	DllCall("SetTextColor", "Ptr", wParam, "UInt", 0xFFFFFF)
 	DllCall("SetBkColor", "Ptr", wParam, "UInt", ColorInputBGR)
@@ -22543,6 +22689,13 @@ FixCardBrushes(lst) {
 		}
 }
 
+ThemeCtl(h) {
+	VarSetCapacity(cb, 128, 0)
+	DllCall("GetClassName", "Ptr", h, "Str", cb, "Int", 64)
+	cls := cb
+	DllCall("uxtheme\SetWindowTheme", "Ptr", h, "Str", (cls = "ComboBox") ? "DarkMode_CFD" : "DarkMode_Explorer", "Ptr", 0)
+}
+
 RoundCtrl(h, w, ht, r) {
 	global CtrlRgnR, CtrlW, CtrlH, DpiF
 	CtrlRgnR[h] := r
@@ -22557,14 +22710,25 @@ RoundCtrl(h, w, ht, r) {
 
 BuildGui:
 
-ColorBG := "121212"
-ColorPanel := "1E1E1E"
-ColorCard := "1B1B1B"
-ColorInput := "0E0E0E"
-ColorAccent := "5EA6FF"
-ColorText := "4EA1F7"
-ColorMuted := "3B6E99"
-ColorBorder := "2A2A2A"
+IniRead, GuiTheme, %SettingsFile%, GUI, Theme, Mono
+GuiThemes := {"Mono": ["0B0B0D", "101012", "17171A", "0D0D0F", "E6E6E8", "EDEDEF", "85858C", "26262B", "8E8E95"]
+	, "Midnight": ["0D1117", "121722", "171D2A", "0A0E15", "6E9BFF", "E3E8F2", "8590A6", "242C3D", "AEB8CC"]
+	, "Violet":  ["0F0D16", "15121F", "1C1829", "0B0A11", "A78BFA", "ECE8FA", "958CB0", "2B2540", "BDB4D6"]
+	, "Emerald": ["0B1210", "101915", "15211B", "08100D", "34D399", "E2F2EA", "86A597", "22322B", "AFC9BC"]
+	, "Crimson": ["130C0E", "1A1114", "22161A", "0E090A", "FB7185", "F4E6E9", "AA8B92", "3A242A", "D0B3B9"]
+	, "Classic": ["121212", "1E1E1E", "1B1B1B", "0E0E0E", "5EA6FF", "4EA1F7", "3B6E99", "2A2A2A", "4EA1F7"] }
+if (!GuiThemes.HasKey(GuiTheme))
+	GuiTheme := "Mono"
+GtP := GuiThemes[GuiTheme]
+ColorBG := GtP[1]
+ColorPanel := GtP[2]
+ColorCard := GtP[3]
+ColorInput := GtP[4]
+ColorAccent := GtP[5]
+ColorText := GtP[6]
+ColorMuted := GtP[7]
+ColorBorder := GtP[8]
+ColorNav := GtP[9]
 ColorGreen := "22C55E"
 ColorRed := "EF4444"
 ColorAmber := "F59E0B"
@@ -22583,6 +22747,7 @@ ColorGreenBGR := BGR(ColorGreen)
 ColorAmberBGR := BGR(ColorAmber)
 ColorYellowBGR := BGR("FACC15")
 ColorRedBGR := BGR(ColorRed)
+ColorNavBGR := BGR(ColorNav)
 
 hBrushBG := DllCall("CreateSolidBrush", "UInt", BGR(ColorBG), "Ptr")
 hBrushPanel := DllCall("CreateSolidBrush", "UInt", BGR(ColorPanel), "Ptr")
@@ -22603,6 +22768,7 @@ OnMessage(0x135, "WM_CTLCOLORBTN")
 OnMessage(0x138, "WM_CTLCOLORSTATIC")
 
 GeneralCtrls := []
+HomeCtrls := []
 CastCtrls := []
 NormalCastCtrls := []
 PerfectCastCtrls := []
@@ -22628,7 +22794,7 @@ CMCtrls := []
 NavHwnd := {}
 
 WINW := 760
-WINH := 560
+WINH := 620
 SIDEW := 176
 HEADH := 70
 BARH := 44
@@ -22660,6 +22826,9 @@ Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
 Gui, Add, Text, x22 y42 w320 h16 HwndhSubtitle, Version 1.1.7  •  Made by Yato
 SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
 
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x262 y28 w220 h18 Right vHeaderStats HwndhHeaderStats,
+SpecialBrushes[hHeaderStats] := {brush: hBrushBG, text: ColorMutedBGR}
 Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
 Gui, Add, Text, x490 y22 w130 h28 Center +0x100 +0x200 vRunStatusText HwndhRunStatus, ●  Idle
 SpecialBrushes[hRunStatus] := {brush: hBrushPanel, text: ColorMutedBGR}
@@ -22703,8 +22872,9 @@ Gui, Add, Text, x314 y79 w28 h26 Center +0x100 +0x200 gMgCopyCode HwndhTipCopy, 
 SpecialBrushes[hTipCopy] := {brush: hBrushBorder, text: ColorRedBGR}
 RoundCtrl(hTipCopy, 28, 26, 6)
 IconTips[hTipCopy] := "Copy your Minigame settings as a code"
-Gui, Font, s9 Norm c101010, Segoe UI
+Gui, Font, s9 Norm cFFFFFF, Segoe UI
 Gui, Add, Edit, x346 y80 w156 h24 -Multi vMgCodeBox gMgCodeBoxChanged HwndhMgCodeBox
+ThemedCtrls.Push(hMgCodeBox)
 MgCodeBoxPrevLen := 0
 MgCodeCue("Paste minigame code here")
 IconTips[hMgCodeBox] := "Paste a Minigame settings code someone sent you.`nIt is applied and saved as soon as you paste it."
@@ -22745,7 +22915,7 @@ SideH := WINH - SideY
 Gui, Add, Text, x0 y%SideY% w%SIDEW% h%SideH% HwndhSidebarBG
 SpecialBrushes[hSidebarBG] := {brush: hBrushPanel, text: ColorTextBGR}
 
-NavDefs := [ ["ReadThis","⚠  READ THIS"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
+NavDefs := [ ["ReadThis","⚠  READ THIS"], ["Home","🏠  Fishing"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
 	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"]
 	, ["Faq","❓  FAQ"], ["About","ℹ️  About"] ]
 
@@ -22760,7 +22930,7 @@ for i, d in NavDefs
 	RoundCtrl(hNB, 4, 34, 2)
 	NavHwnd["bar" . nk] := hNB
 	Gui, Add, Text, x12 y%NavY% w158 h34 +0x200 vNav%nk% gSidebarClick HwndhNV, %nl%
-	SpecialBrushes[hNV] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorTextBGR}
+	SpecialBrushes[hNV] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
 	NavHwnd[nk] := hNV
 	NavY += 38
 	}
@@ -22797,7 +22967,7 @@ AllManaged := []
 NeedSection := "General"
 gosub, EnsureSection
 
-TargetSection := ReadThisAccepted ? "General" : "ReadThis"
+TargetSection := ReadThisAccepted ? "Home" : "ReadThis"
 gosub, ApplyCastModeLocks
 gosub, ShowSection
 
@@ -22805,6 +22975,8 @@ if (GuiAlwaysOnTop)
 	Gui, +AlwaysOnTop
 
 RoundCtrl(hStartStopBtnHwnd, 108, 36, 10)
+ThemeCtl(hProfileSelect)
+ThemeCtl(hMgCodeBox)
 darkAttr := 1
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 20, "Int*", darkAttr, "Int", 4)
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 19, "Int*", darkAttr, "Int", 4)
@@ -22819,6 +22991,8 @@ GuiControl, 1:Hide, %SbTrack%
 GuiControl, 1:Hide, %SbThumb%
 
 Gui, Show, w%WINW% h%WINH%, DeepFish BETA
+SetTimer, HeaderStatsTick, 1000
+SetTimer, InfoPanelTick, 500
 SetTimer, DFCheckForUpdate, -1200
 SetTimer, OverlayHideTick, 250
 gosub, RepaintGui
@@ -22839,6 +23013,11 @@ if (NeedSection = "General")
 	{
 	gosub, BuildGeneralSection
 	NewLists := [GeneralCtrls]
+	}
+else if (NeedSection = "Home")
+	{
+	gosub, BuildHomeSection
+	NewLists := [HomeCtrls]
 	}
 else if (NeedSection = "Cast")
 	{
@@ -22925,7 +23104,7 @@ tk := ThemedMark + 1
 tn := ThemedCtrls.MaxIndex()
 while (tk <= tn)
 	{
-	DllCall("uxtheme\SetWindowTheme", "Ptr", ThemedCtrls[tk], "Str", "DarkMode_Explorer", "Ptr", 0)
+	ThemeCtl(ThemedCtrls[tk])
 	tk++
 	}
 if (NeedSection = "Minigame")
@@ -22936,6 +23115,26 @@ return
 
 RepaintGui:
 DllCall("RedrawWindow", "Ptr", GuiHwnd, "Ptr", 0, "Ptr", 0, "UInt", 0x0185)
+return
+
+HeaderStatsTick:
+if (!hHeaderStats)
+	return
+if (!WhStartTick or !MacroRunning)
+	HsTxt := MacroRunning ? "starting..." : ""
+else
+	{
+	HsMs := A_TickCount - WhStartTick
+	HsHr := HsMs / 3600000.0
+	HsRate := (HsHr > 0.01) ? Round(WhCatches / HsHr) : 0
+	HsMin := HsMs // 60000
+	HsTxt := "🐟 " . Round(WhCatches) . "  ·  " . HsRate . "/hr  ·  " . (HsMin // 60) . "h " . Mod(HsMin, 60) . "m"
+	}
+if (HsTxt != HsLast)
+	{
+	HsLast := HsTxt
+	GuiControl, 1:, HeaderStats, %HsTxt%
+	}
 return
 
 RefreshRunChip:
@@ -22957,6 +23156,388 @@ return
 
 ;====================================================================================================;
 
+BuildHomeSection:
+HmX := CARDX
+HmW := CARDW
+HmColW := (HmW - 14) // 2
+HmX2 := HmX + HmColW + 14
+HmRowH := 36
+
+Gui, Font, s18 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%HmX% y128 w300 h36 HwndhC, Fishing
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+
+; ---- Status + Statistics cards
+Gui, Font, s9 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%HmX% y174 w200 h18 HwndhC, Status
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+Gui, Add, Text, x%HmX2% y174 w200 h18 HwndhC, Statistics
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+
+HmCards := [[HmX, [["Phase", "HmPhase"], ["Progress", "HmProg"], ["Input", "HmInput"], ["Rod", "HmRod"]]]
+	, [HmX2, [["Caught", "HmCaught"], ["Per hour", "HmRate"], ["Session", "HmSess"], ["Rod power", "HmPower"]]]]
+for ci, card in HmCards
+	{
+	cx0 := card[1]
+	rows := card[2]
+	hC := AddPanel(cx0, 196, HmColW, rows.Length() * HmRowH + 4, 10)
+	HomeCtrls.Push(hC)
+	ry := 198
+	for ri, r in rows
+		{
+		if (ri > 1)
+			{
+			sx := cx0 + 10
+			sw := HmColW - 20
+			Gui, Add, Text, x%sx% y%ry% w%sw% h1 HwndhC
+			HomeCtrls.Push(hC)
+			SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorTextBGR}
+			}
+		lx := cx0 + 14
+		ty := ry + 8
+		Gui, Font, s10 Norm c%ColorText%, Segoe UI
+		Gui, Add, Text, x%lx% y%ty% w130 h20 +0x200 HwndhC, % r[1]
+		HomeCtrls.Push(hC)
+		SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+		vx := cx0 + HmColW - 154
+		vn := r[2]
+		Gui, Font, s10 Norm c%ColorMuted%, Segoe UI
+		Gui, Add, Text, x%vx% y%ty% w140 h20 Right +0x200 v%vn% HwndhC, ---
+		HomeCtrls.Push(hC)
+		SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+		ry += HmRowH
+		}
+	}
+
+; ---- Configuration
+Gui, Font, s9 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%HmX% y360 w200 h18 HwndhC, Configuration
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+HmCfg := [ ["🎯   Casting Mode", "DashCast", "Normal|Perfect", "How the rod is cast (same as the Cast page)."]
+	, ["🔁   Smart Cast", "DashSmart", "Off|On", "Recast straight away when a cast did not go through."]
+	, ["👁   Passive Mode", "DashPassive", "Off|On", "Do not cast or shake - just play the minigame`nwhenever it shows up (every rod)."]
+	, ["🫥   Hide Overlay", "DashHide", "Off|On", "Hide the info text and bar overlay while running."]
+	, ["🪟   Info Panel", "DashInfo", "Off|On", "A small always-on-top panel with your rod, phase,`ncatches, rate, session time and rod power.`nWhile it is on, it replaces the old text info`nin the corner.`n`nPlace it by dragging the box in the screen below."] ]
+hC := AddPanel(HmX, 382, HmW, HmCfg.Length() * HmRowH + 4, 10)
+HomeCtrls.Push(hC)
+ry := 384
+for ri, r in HmCfg
+	{
+	if (ri > 1)
+		{
+		sx := HmX + 10
+		sw := HmW - 20
+		Gui, Add, Text, x%sx% y%ry% w%sw% h1 HwndhC
+		HomeCtrls.Push(hC)
+		SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorTextBGR}
+		}
+	lx := HmX + 14
+	ty := ry + 8
+	Gui, Font, s10 Norm c%ColorText%, Segoe UI
+	Gui, Add, Text, x%lx% y%ty% w260 h20 +0x200 HwndhC, % r[1]
+	HomeCtrls.Push(hC)
+	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+	IconTips[hC] := r[4]
+	dx := HmX + HmW - 194
+	dy := ry + 6
+	dv := r[2]
+	Gui, Font, s9 Norm c%ColorText%, Segoe UI
+	Gui, Add, DropDownList, x%dx% y%dy% w180 h120 v%dv% gDashChanged HwndhC, % r[3]
+	HomeCtrls.Push(hC)
+	ThemedCtrls.Push(hC)
+	ry += HmRowH
+	}
+; ---- Info panel position: drag the box across the screen shape
+Gui, Font, s9 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%HmX% y582 w300 h18 HwndhC, Info panel position
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
+hC := AddPanel(HmX, 604, HmW, 138, 10)
+HomeCtrls.Push(hC)
+InfoMonGet(ImL, ImT, ImW, ImH)
+IpMonH := 110
+IpMonW := Round(IpMonH * ImW / ImH)
+if (IpMonW > 220)
+	{
+	IpMonW := 220
+	IpMonH := Round(IpMonW * ImH / ImW)
+	}
+IpMonBX := HmX + 16
+IpMonBY := 604 + (138 - IpMonH) // 2
+IpBezX := IpMonBX - 3
+IpBezY := IpMonBY - 3
+IpBezW := IpMonW + 6
+IpBezH := IpMonH + 6
+Gui, Add, Text, x%IpBezX% y%IpBezY% w%IpBezW% h%IpBezH% HwndhIpBezel
+HomeCtrls.Push(hIpBezel)
+SpecialBrushes[hIpBezel] := {brush: hBrushBorder, text: ColorTextBGR}
+RoundCtrl(hIpBezel, IpBezW, IpBezH, 6)
+Gui, Add, Text, x%IpMonBX% y%IpMonBY% w%IpMonW% h%IpMonH% HwndhIpMon
+HomeCtrls.Push(hIpMon)
+SpecialBrushes[hIpMon] := {brush: hBrushBG, text: ColorTextBGR}
+IpBoxW := Max(14, Round(IpMonW * InfoPanelPxW() / ImW))
+IpBoxH := Max(10, Round(IpMonH * InfoPanelPxH() / ImH))
+IpFx := InfoPanelX
+IpFy := InfoPanelY
+if IpFx is not number
+	IpFx := 0.02
+if IpFy is not number
+	IpFy := 0.35
+IpBoxX := IpMonBX + Round(IpFx * (IpMonW - IpBoxW))
+IpBoxY := IpMonBY + Round(IpFy * (IpMonH - IpBoxH))
+Gui, Add, Text, x%IpBoxX% y%IpBoxY% w%IpBoxW% h%IpBoxH% +0x100 gInfoBoxDrag HwndhIpBox
+HomeCtrls.Push(hIpBox)
+SpecialBrushes[hIpBox] := {brush: hBrushAccent, text: 0x101010}
+RoundCtrl(hIpBox, IpBoxW, IpBoxH, 3)
+IconTips[hIpBox] := "Drag me to where the info panel should sit on your screen."
+IpTxX := IpMonBX + IpMonW + 24
+IpTxW := HmX + HmW - IpTxX - 14
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%IpTxX% y622 w%IpTxW% h100 HwndhC, Drag the bright box around the screen shape - the info panel moves with it, live.`n`nIt shows on the screen Roblox is on. Turn it on with Info Panel above.
+HomeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+return
+
+InfoBoxDrag:
+InfoMonGet(ImL, ImT, ImW, ImH)
+CtrlSnapPos(hIpMon, IdMx, IdMy, IdMw, IdMh)
+CtrlSnapPos(hIpBox, IdBx, IdBy, IdBw, IdBh)
+InfoCursorGui(IdGx, IdGy)
+IdOffX := IdGx - IdBx
+IdOffY := IdGy - IdBy
+IdWas := InfoPanelOn
+if (!InfoPanelOn)
+	InfoPanelOn := true
+while GetKeyState("LButton", "P")
+	{
+	InfoCursorGui(IdGx, IdGy)
+	IdNx := IdGx - IdOffX
+	IdNy := IdGy - IdOffY
+	IdNx := (IdNx < IdMx) ? IdMx : ((IdNx > IdMx + IdMw - IdBw) ? IdMx + IdMw - IdBw : IdNx)
+	IdNy := (IdNy < IdMy) ? IdMy : ((IdNy > IdMy + IdMh - IdBh) ? IdMy + IdMh - IdBh : IdNy)
+	GuiControl, 1:Move, %hIpBox%, % "x" . IdNx . " y" . IdNy
+	InfoPanelX := (IdMw > IdBw) ? Round((IdNx - IdMx) / (IdMw - IdBw), 4) : 0
+	InfoPanelY := (IdMh > IdBh) ? Round((IdNy - IdMy) / (IdMh - IdBh), 4) : 0
+	gosub, InfoPanelTick
+	Sleep, 10
+	}
+InfoPanelOn := IdWas
+SetBase(hIpBox, IpMonBX + (IdNx - IdMx), IpMonBY + (IdNy - IdMy))
+DllCall("RedrawWindow", "Ptr", hIpMon, "Ptr", 0, "Ptr", 0, "UInt", 0x0185)
+gosub, InfoPanelTick
+gosub, QueueAutoSave
+return
+
+;---- the floating info panel ------------------------------------------------------------------------
+
+InfoPanelTick:
+if (!InfoPanelOn or OverlayHidden)
+	{
+	if (IpShown)
+		{
+		Gui, InfoP:Hide
+		IpShown := false
+		}
+	return
+	}
+if (!hInfoP)
+	{
+	Gui, InfoP:New, +AlwaysOnTop -Caption +ToolWindow +E0x20 +HwndhInfoP
+	Gui, InfoP:Color, %ColorCard%
+	Gui, InfoP:Margin, 0, 0
+	Gui, InfoP:Font, s10 Bold c%ColorText%, Segoe UI
+	Gui, InfoP:Add, Text, x14 y10 w200 h20 HwndhIpT, DeepFish
+	SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
+	IpRows := ["Rod", "Phase", "Caught", "Per hour", "Session", "Rod power"]
+	IpY := 36
+	for i, nm in IpRows
+		{
+		Gui, InfoP:Font, s9 Norm c%ColorMuted%, Segoe UI
+		Gui, InfoP:Add, Text, x14 y%IpY% w80 h18 HwndhIpT, %nm%
+		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorMutedBGR}
+		Gui, InfoP:Font, s9 Norm c%ColorText%, Segoe UI
+		Gui, InfoP:Add, Text, x92 y%IpY% w140 h18 Right vIpVal%i% HwndhIpT, ---
+		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
+		IpY += 20
+		}
+	IpW := 246
+	IpH := IpY + 8
+	Gui, InfoP:Show, Hide w%IpW% h%IpH%, DeepFish Info
+	DetectHiddenWindows, On
+	WinGetPos, , , IpPw, IpPh, ahk_id %hInfoP%
+	WinSet, Region, % "0-0 w" . IpPw . " h" . IpPh . " R14-14", ahk_id %hInfoP%
+	WinSet, Transparent, 236, ahk_id %hInfoP%
+	Gui, 1:Default
+	}
+gosub, HomeCompute
+IpNew := [HmV4, HmV1, HmV5, HmV6, HmV7, HmV8]
+for i, v in IpNew
+	{
+	if (IpLast%i% != v)
+		{
+		IpLast%i% := v
+		GuiControl, InfoP:, IpVal%i%, %v%
+		}
+	}
+InfoMonGet(ImL, ImT, ImW, ImH)
+IpFx := InfoPanelX
+IpFy := InfoPanelY
+if IpFx is not number
+	IpFx := 0.02
+if IpFy is not number
+	IpFy := 0.35
+IpSx := Round(ImL + IpFx * (ImW - IpPw))
+IpSy := Round(ImT + IpFy * (ImH - IpPh))
+if (!IpShown or IpSx != IpLastX or IpSy != IpLastY)
+	{
+	Gui, InfoP:Show, x%IpSx% y%IpSy% NoActivate
+	IpShown := true
+	IpLastX := IpSx
+	IpLastY := IpSy
+	}
+return
+
+InfoMonGet(ByRef l, ByRef t, ByRef w, ByRef h) {
+	global RobloxHwnd, GuiHwnd
+	hw := (RobloxHwnd and WinExist("ahk_id " . RobloxHwnd)) ? RobloxHwnd : GuiHwnd
+	hm := DllCall("MonitorFromWindow", "Ptr", hw, "UInt", 2, "Ptr")
+	VarSetCapacity(mi, 40, 0)
+	NumPut(40, mi, 0, "UInt")
+	if (!hm or !DllCall("GetMonitorInfo", "Ptr", hm, "Ptr", &mi))
+		{
+		l := 0
+		t := 0
+		w := A_ScreenWidth
+		h := A_ScreenHeight
+		return
+		}
+	l := NumGet(mi, 4, "Int")
+	t := NumGet(mi, 8, "Int")
+	w := NumGet(mi, 12, "Int") - l
+	h := NumGet(mi, 16, "Int") - t
+}
+
+InfoPanelPxW() {
+	global DpiF
+	return Round(246 * (DpiF ? DpiF : 1))
+}
+
+InfoPanelPxH() {
+	global DpiF
+	return Round(164 * (DpiF ? DpiF : 1))
+}
+
+InfoCursorGui(ByRef gx, ByRef gy) {
+	global GuiHwnd, DpiF
+	VarSetCapacity(pt, 8, 0)
+	DllCall("GetCursorPos", "Ptr", &pt)
+	DllCall("ScreenToClient", "Ptr", GuiHwnd, "Ptr", &pt)
+	f := DpiF ? DpiF : 1
+	gx := Round(NumGet(pt, 0, "Int") / f)
+	gy := Round(NumGet(pt, 4, "Int") / f)
+}
+
+HomeSync:
+if (!SectionBuilt.HasKey("Home"))
+	return
+GuiControl, 1:Choose, DashCast, % (CastMode = "Perfect") ? 2 : 1
+GuiControl, 1:Choose, DashSmart, % SmartCast ? 2 : 1
+GuiControl, 1:Choose, DashPassive, % PassiveAll ? 2 : 1
+GuiControl, 1:Choose, DashHide, % HideOverlay ? 2 : 1
+GuiControl, 1:Choose, DashInfo, % InfoPanelOn ? 2 : 1
+return
+
+DashChanged:
+GuiControlGet, DashV, 1:, %A_GuiControl%
+if (ErrorLevel)
+	return
+DashOn := (DashV = "On")
+if (A_GuiControl = "DashCast")
+	{
+	CastMode := DashV
+	GuiControl, 1:ChooseString, CastMode, %DashV%
+	gosub, ApplyCastModeLocks
+	}
+else if (A_GuiControl = "DashSmart")
+	{
+	SmartCast := DashOn
+	GuiControl, 1:, SmartCast, % DashOn ? 1 : 0
+	CastSeenN := 0
+	CastMissN := 0
+	}
+else if (A_GuiControl = "DashPassive")
+	{
+	PassiveAll := DashOn
+	GuiControl, 1:, PassiveAll, % DashOn ? 1 : 0
+	}
+else if (A_GuiControl = "DashHide")
+	{
+	HideOverlay := DashOn
+	GuiControl, 1:, HideOverlay, % DashOn ? 1 : 0
+	}
+else if (A_GuiControl = "DashInfo")
+	{
+	InfoPanelOn := DashOn
+	gosub, InfoPanelTick
+	}
+gosub, QueueAutoSave
+return
+
+HomeCompute:
+if (!MacroRunning)
+	HmV1 := "Idle"
+else if (KbBusy)
+	HmV1 := "Keeperbound recharge"
+else if (AqBusy)
+	HmV1 := "Aquarium"
+else if (MgInPlay)
+	HmV1 := "Reeling"
+else if (CastHolding)
+	HmV1 := "Casting"
+else if (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
+	HmV1 := "Watching (passive)"
+else
+	HmV1 := "Waiting for a bite"
+HmV2 := (MacroRunning and MgInPlay and WhiteBarSize != "") ? "Bar " . Round(WhiteBarSize) . " px" : "---"
+HmV3 := !MacroRunning ? "---" : (GetKeyState("LButton") ? "Holding" : "Released")
+HmV4 := (SpecialRod = "" or SpecialRod = "None") ? "Normal rod" : SpecialRod
+HmV5 := Round(WhCatches) . ""
+if (WhStartTick and MacroRunning)
+	{
+	HmMs := A_TickCount - WhStartTick
+	HmHr := HmMs / 3600000.0
+	HmV6 := ((HmHr > 0.01) ? Round(WhCatches / HmHr) : 0) . " / hr"
+	HmMin := HmMs // 60000
+	HmV7 := (HmMin // 60) . "h " . Mod(HmMin, 60) . "m"
+	}
+else
+	{
+	HmV6 := "---"
+	HmV7 := "---"
+	}
+HmV8 := (KeeperAuto and KbOcrLast != "") ? KbOcrLast : "---"
+HmV8 := StrReplace(HmV8, "power bar ", "")
+return
+
+HomeTick:
+gosub, HomeCompute
+for i, nm in ["HmPhase", "HmProg", "HmInput", "HmRod", "HmCaught", "HmRate", "HmSess", "HmPower"]
+	{
+	nv := HmV%i%
+	if (HmLast%i% != nv)
+		{
+		HmLast%i% := nv
+		GuiControl, 1:, %nm%, %nv%
+		}
+	}
+return
+
+;====================================================================================================;
+
 BuildGeneralSection:
 
 hC := AddPanel(CARDX, 120, CARDW, 152)
@@ -22967,7 +23548,7 @@ hC := AddPanel(CARDX, 460, CARDW, 308)
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y130 w%TXW% h16 HwndhL, HOTKEYS & WINDOW
+Gui, Add, Text, x%CX% y130 w%TXW% h16 HwndhL, HOTKEYS && WINDOW
 GeneralCtrls.Push(hL)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
@@ -22991,12 +23572,23 @@ for i, d in GeneralHotDefs
 
 Gui, Font, s9 c%ColorText%, Segoe UI
 aotChk := GuiAlwaysOnTop ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vGuiAlwaysOnTop %aotChk% gToggleAlwaysOnTop HwndhC, Window always on top
+Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiAlwaysOnTop %aotChk% gToggleAlwaysOnTop HwndhC, Window always on top
 GeneralCtrls.Push(hC)
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%IX% y%Y% w%IW% h20 HwndhL, Theme (restarts the window):
+GeneralCtrls.Push(hL)
+Gui, Font, s9 c%ColorText%, Segoe UI
 Y += 22
+ThemeY := Y - 2
+ThemeList := "Mono|Midnight|Violet|Emerald|Crimson|Classic"
+ThemeIdx := {"Mono": 1, "Midnight": 2, "Violet": 3, "Emerald": 4, "Crimson": 5, "Classic": 6}[GuiTheme]
+Gui, Add, DropDownList, x%IX% y%ThemeY% w%IW% h200 vGuiThemePick gGuiThemeChanged Choose%ThemeIdx% HwndhC, %ThemeList%
+GeneralCtrls.Push(hC)
+ThemedCtrls.Push(hC)
+IconTips[hC] := "Colour theme for this window.`n`nMono - near-black, minimal (default)`nMidnight - dark blue-grey`nViolet, Emerald, Crimson - other accents`nClassic - the original all-blue look"
 
 keepChk := GuiKeepOpen ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vGuiKeepOpen %keepChk% gToggleKeepOpen HwndhC, Always open after pressing Start
+Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiKeepOpen %keepChk% gToggleKeepOpen HwndhC, Always open after pressing Start
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -23154,6 +23746,20 @@ GuiControlGet, PaMsV, 1:, PassiveMs
 if (!ErrorLevel and PaMsV != "")
 	PassiveMs := PaMsV + 0
 gosub, QueueAutoSave
+return
+
+GuiThemeChanged:
+GuiControlGet, GtV, 1:, GuiThemePick
+if (ErrorLevel or GtV = "" or GtV = GuiTheme)
+	return
+IniWrite, %GtV%, %SettingsFile%, GUI, Theme
+if (MacroRunning)
+	{
+	MsgBox, 4160, DeepFish, Theme saved. It applies the next time the macro starts (it is running right now).
+	return
+	}
+gosub, SaveSettings
+Reload
 return
 
 AutoUpdateChanged:
@@ -25106,7 +25712,7 @@ WinActivate, ahk_id %RobloxHwnd%
 WinWaitActive, ahk_id %RobloxHwnd%, , 2
 Sleep 300
 KbBarY := -1
-KbTok := KbAutoRead(KbTp)
+KbTok := KbAutoReadStable(KbTp, 5)
 Gui, Show
 TargetSection := "Keeper"
 gosub, ShowSection
@@ -26476,6 +27082,9 @@ return
 BuildVersionsSection:
 
 VersionNotes := []
+VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
+	, "Old Max sign speed engine is back, Signs before bar is back"
+	, "New look: Fishing dashboard, themes (Mono default), live stats"]])
 VersionNotes.Push(["Version 1.1.7 (mod build 18)", ["Merged the official 1.1.7 (Dreambreaker fix, faster Stellarwave engine) into this build"
 	, "Stellarwave: Wait for all signs, then click them in one fast burst"]])
 VersionNotes.Push(["Version 1.1.7", ["Fixed Dreambreaker"
@@ -26654,6 +27263,15 @@ OnColors := (OnMini and MiniTab = "Colors")
 SecTopEdge := OnMini ? 158 : 120
 
 ShowList(GeneralCtrls, TargetSection = "General")
+ShowList(HomeCtrls, TargetSection = "Home")
+if (TargetSection = "Home")
+	{
+	gosub, HomeSync
+	gosub, HomeTick
+	SetTimer, HomeTick, 250
+	}
+else
+	SetTimer, HomeTick, Off
 ShowList(CastCtrls, OnCast)
 ShowList(NormalCastCtrls, OnCast and CastMode = "Normal")
 ShowList(PerfectCastCtrls, OnCast and CastMode != "Normal")
@@ -26774,7 +27392,7 @@ for i, d in NavDefs
 		}
 	else
 		{
-		SpecialBrushes[hv] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorTextBGR}
+		SpecialBrushes[hv] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
 		SpecialBrushes[hb] := {brush: hBrushPanel, text: ColorTextBGR}
 		}
 	}
