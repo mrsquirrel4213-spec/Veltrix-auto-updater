@@ -39,7 +39,7 @@
 DFBetaVersion := "1.1.7"
 CastSeenN := 0
 CastMissN := 0
-DFModBuild := 23
+DFModBuild := 24
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
