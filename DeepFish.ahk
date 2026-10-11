@@ -39,7 +39,7 @@
 DFBetaVersion := "1.1.7"
 CastSeenN := 0
 CastMissN := 0
-DFModBuild := 31
+DFModBuild := 33
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -311,7 +311,7 @@ SbTrackH := 0
 SbThumbH := 0
 SbShown := -1
 ContentTopEdge := 120
-SecTopEdge := 120
+SecTopEdge := 58
 DpiF := (A_ScreenDPI > 0) ? (A_ScreenDPI / 96) : 1
 SecScroll := {}
 SecMaxScroll := 0
@@ -22386,10 +22386,41 @@ SnapshotBase(lst) {
 		}
 }
 
+; pages are built in design coordinates; move each new control into the slim shell once
+; (General's own controls also drop below the Profile card)
+ShiftCtrls(lst, keepFirst := 0) {
+	global XS, YS, PROFDY, DpiF, ShiftedSet
+	if (!IsObject(ShiftedSet))
+		ShiftedSet := {}
+	for i, h in lst
+		{
+		if (ShiftedSet.HasKey(h))
+			continue
+		ShiftedSet[h] := 1
+		CtrlSnapPos(h, cx, cy, cw, ch)
+		dy := (keepFirst and i > keepFirst) ? PROFDY : 0
+		DllCall("SetWindowPos", "Ptr", h, "Ptr", 0, "Int", Round((cx - XS) * DpiF), "Int", Round((cy - YS + dy) * DpiF)
+			, "Int", 0, "Int", 0, "UInt", 0x15)
+		}
+}
+
+ShellDragDown(wParam, lParam, msg, hwnd) {
+	global GuiHwnd, TOPH, SIDEW, DpiF
+	if (hwnd != GuiHwnd)
+		return
+	y := (lParam >> 16) & 0xFFFF
+	x := lParam & 0xFFFF
+	if (y < TOPH * DpiF or x < SIDEW * DpiF)
+		{
+		PostMessage, 0xA1, 2, 0, , ahk_id %GuiHwnd%
+		return 0
+		}
+}
+
 SetBase(h, x, y) {
-	global CtrlBaseX, CtrlBaseY, CtrlW, CtrlH
-	CtrlBaseX[h] := x
-	CtrlBaseY[h] := y
+	global CtrlBaseX, CtrlBaseY, CtrlW, CtrlH, XS, YS
+	CtrlBaseX[h] := x - XS
+	CtrlBaseY[h] := y - YS
 	if (!CtrlH.HasKey(h) or !CtrlW.HasKey(h))
 		{
 		CtrlSnapPos(h, cx, cy, cw, ch)
@@ -22708,7 +22739,7 @@ ThemeCtl(h) {
 		DllCall("SetWindowPos", "Ptr", h, "Ptr", 0, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "UInt", 0x27)
 		DllCall("SendMessage", "Ptr", h, "UInt", 0xD3, "Ptr", 3, "Ptr", (7 << 16) | 7)
 		}
-	if (cls = "Edit" or cls = "ComboBox" or cls = "msctls_hotkey32")
+	if (cls = "Edit" or cls = "ComboBox")
 		{
 		CtrlSnapPos(h, cx, cy, cw, ch)
 		if (cw > 4 and ch > 4)
@@ -22733,7 +22764,7 @@ RoundExtras() {
 		VarSetCapacity(cb, 128, 0)
 		DllCall("GetClassName", "Ptr", h, "Str", cb, "Int", 64)
 		cls := cb
-		if (cls = "msctls_progress32" or cls = "ComboBox" or cls = "msctls_hotkey32" or (cls = "Edit" and GuiInputs = "Filled"))
+		if (cls = "msctls_progress32" or cls = "ComboBox" or (cls = "Edit" and GuiInputs = "Filled"))
 			{
 			CtrlSnapPos(h, cx, cy, cw, ch)
 			if (cw > 4 and ch > 4)
@@ -22890,11 +22921,17 @@ ThemedCtrls := []
 CMCtrls := []
 NavHwnd := {}
 
-WINW := 760
+; Swift-style shell: slim icon sidebar + slim top strip. Pages are still laid out in their original
+; ("design") coordinates and shifted left/up by XS/YS when built, so nothing inside them had to change.
+XS := 108
+YS := 62
+PROFDY := 104
+WINW := 652
 WINH := 620
-SIDEW := 176
-HEADH := 70
-BARH := 44
+SIDEW := 64
+TOPH := 48
+HEADH := 48
+BARH := 0
 CARDX := 188
 CARDW := 556
 CX := 204
@@ -22910,153 +22947,171 @@ RH := 26
 TXW := 524
 ContentTop := 136
 
-Gui, +HwndGuiHwnd -MaximizeBox +0x02000000
+Gui, +HwndGuiHwnd -MaximizeBox -Caption +MinimizeBox +0x02000000
 Gui, Font, s9 c%ColorText%, Segoe UI
 Gui, Color, %ColorBG%, %ColorBG%
 Gui, Margin, 0, 0
 
-;---- Header ----------------------------------------------------------------------------------
-
-Gui, Font, s14 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x20 y13 w320 h28, 🐟 DeepFish ULTIMATE
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x22 y42 w320 h16 HwndhSubtitle, Version 1.1.7  •  Made by Yato
-SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
-
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x262 y28 w220 h18 Right vHeaderStats HwndhHeaderStats,
-SpecialBrushes[hHeaderStats] := {brush: hBrushBG, text: ColorMutedBGR}
-Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x490 y22 w130 h28 Center +0x100 +0x200 vRunStatusText HwndhRunStatus, ●  Idle
-SpecialBrushes[hRunStatus] := {brush: hBrushPanel, text: ColorMutedBGR}
-RoundCtrl(hRunStatus, 130, 28, 14)
-
-StartStopLabel := MacroRunning ? "⏹ Stop" : "▶ Start"
-Gui, Font, s10 Bold cFFFFFF, Segoe UI
-Gui, Add, Text, x632 y18 w108 h36 Center +0x100 +0x200 vStartStopDisplay gPreviewOrToggle HwndhStartStopBtnHwnd, %StartStopLabel%
-
-Gui, Add, Text, x0 y%HEADH% w%WINW% h1 HwndhDiv1
-SpecialBrushes[hDiv1] := {brush: hBrushBorder, text: ColorTextBGR}
-
-;---- Profile bar -----------------------------------------------------------------------------
-
-ProfBarY := HEADH + 1
-Gui, Add, Text, x0 y%ProfBarY% w%WINW% h%BARH% HwndhProfBG
-SpecialBrushes[hProfBG] := {brush: hBrushPanel, text: ColorTextBGR}
-
-Gui, Font, s9 c%ColorText%, Segoe UI
-Gui, Add, Text, x20 y82 w20 h22 +0x200 HwndhProfIcon, 📁
-SpecialBrushes[hProfIcon] := {brush: hBrushPanel, text: ColorTextBGR}
-Gui, Add, DropDownList, x42 y80 w168 h240 vProfileSelect gProfileSelect HwndhProfileSelect
-ThemedCtrls.Push(hProfileSelect)
-gosub, RefreshProfileList
+;---- Top strip (drag the window by it) -------------------------------------------------------------
 
 IconTips := {}
 
-Gui, Add, Text, x218 y79 w28 h26 Center +0x100 +0x200 gProfileNew HwndhTipNew, ➕
-SpecialBrushes[hTipNew] := {brush: hBrushBorder, text: ColorTextBGR}
-RoundCtrl(hTipNew, 28, 26, 6)
-IconTips[hTipNew] := "New profile"
-Gui, Add, Text, x250 y79 w28 h26 Center +0x100 +0x200 gProfileDuplicate HwndhTipDup, 📄
-SpecialBrushes[hTipDup] := {brush: hBrushBorder, text: ColorTextBGR}
-RoundCtrl(hTipDup, 28, 26, 6)
-IconTips[hTipDup] := "Duplicate current profile"
-Gui, Add, Text, x282 y79 w28 h26 Center +0x100 +0x200 gProfileDelete HwndhTipDel, 🗑
-SpecialBrushes[hTipDel] := {brush: hBrushBorder, text: ColorTextBGR}
-RoundCtrl(hTipDel, 28, 26, 6)
-IconTips[hTipDel] := "Delete current profile"
-Gui, Add, Text, x314 y79 w28 h26 Center +0x100 +0x200 gMgCopyCode HwndhTipCopy, 📋
-SpecialBrushes[hTipCopy] := {brush: hBrushBorder, text: ColorRedBGR}
-RoundCtrl(hTipCopy, 28, 26, 6)
-IconTips[hTipCopy] := "Copy your Minigame settings as a code"
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Edit, x346 y80 w156 h24 -Multi vMgCodeBox gMgCodeBoxChanged HwndhMgCodeBox
-ThemedCtrls.Push(hMgCodeBox)
-MgCodeBoxPrevLen := 0
-MgCodeCue("Paste minigame code here")
-IconTips[hMgCodeBox] := "Paste a Minigame settings code someone sent you.`nIt is applied and saved as soon as you paste it."
+Gui, Font, s11 Bold c%ColorText%, Segoe UI
+TitleX := SIDEW + 16
+Gui, Add, Text, x%TitleX% y9 w220 h20 HwndhTitleText, DeepFish
+SpecialBrushes[hTitleText] := {brush: hBrushBG, text: ColorTextBGR}
+Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%TitleX% y28 w260 h14 HwndhSubtitle, ULTIMATE  ·  v1.1.7  ·  Made by Yato
+SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
 
-Gui, Font, s9 c%ColorAccent%, Segoe UI
-Gui, Add, Text, x508 y79 w28 h26 Center +0x100 +0x200 gRevertSettings HwndhTipRevert, ↶
-SpecialBrushes[hTipRevert] := {brush: hBrushBorder, text: ColorAccentBGR}
-RoundCtrl(hTipRevert, 28, 26, 6)
-IconTips[hTipRevert] := "Undo the last save (restores the previous saved values)"
-Gui, Font, s9 Bold, Segoe UI
-Gui, Add, Text, x546 y78 w84 h28 Center +0x100 +0x200 vSaveStatusText gSaveSettings HwndhTipSave, 💾 Save
-SpecialBrushes[hTipSave] := {brush: hBrushAccent, text: 0x101010}
-RoundCtrl(hTipSave, 84, 28, 7)
-IconTips[hTipSave] := "Save settings to current profile"
+CloseX := WINW - 44
+MinX := CloseX - 40
+Gui, Font, s11 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%MinX% y8 w36 h30 Center +0x100 +0x200 gShellMin HwndhShellMin, ─
+SpecialBrushes[hShellMin] := {brush: hBrushBG, text: ColorMutedBGR}
+RoundCtrl(hShellMin, 36, 30, 8)
+IconTips[hShellMin] := "Minimize"
+Gui, Add, Text, x%CloseX% y8 w36 h30 Center +0x100 +0x200 gShellClose HwndhShellClose, ✕
+SpecialBrushes[hShellClose] := {brush: hBrushBG, text: ColorMutedBGR}
+RoundCtrl(hShellClose, 36, 30, 8)
+
+StartX := MinX - 92
+StartStopLabel := MacroRunning ? "⏹ Stop" : "▶ Start"
+Gui, Font, s9 Bold cFFFFFF, Segoe UI
+Gui, Add, Text, x%StartX% y9 w84 h30 Center +0x100 +0x200 vStartStopDisplay gPreviewOrToggle HwndhStartStopBtnHwnd, %StartStopLabel%
+StatusX := StartX - 98
+Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%StatusX% y11 w90 h26 Center +0x100 +0x200 vRunStatusText HwndhRunStatus, ●  Idle
+SpecialBrushes[hRunStatus] := {brush: hBrushPanel, text: ColorMutedBGR}
+RoundCtrl(hRunStatus, 90, 26, 13)
+
+
+;---- Profile tools: they live in a card at the top of General -----------------------------------------
+; (made here in General's design coordinates, then handed to General so they move with it)
+
+ProfCardH := 94
+hC := AddPanel(CARDX, 120, CARDW, ProfCardH)
+GeneralCtrls.Push(hC)
+Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y130 w200 h16 HwndhProfIcon, PROFILE
+SpecialBrushes[hProfIcon] := {brush: hBrushCard, text: ColorMutedBGR}
+GeneralCtrls.Push(hProfIcon)
+Gui, Font, s9 c%ColorText%, Segoe UI
+Gui, Add, DropDownList, x%CX% y150 w170 h240 vProfileSelect gProfileSelect HwndhProfileSelect
+ThemedCtrls.Push(hProfileSelect)
+GeneralCtrls.Push(hProfileSelect)
+gosub, RefreshProfileList
+
+PfX := CX + 178
+for i, d in [["ProfileNew", "hTipNew", "➕", "New profile"], ["ProfileDuplicate", "hTipDup", "📄", "Duplicate current profile"]
+	, ["ProfileDelete", "hTipDel", "🗑", "Delete current profile"], ["RevertSettings", "hTipRevert", "↶", "Undo the last save (restores the previous saved values)"]]
+	{
+	pg := d[1]
+	Gui, Add, Text, x%PfX% y149 w30 h26 Center +0x100 +0x200 g%pg% HwndhPf, % d[3]
+	PfVar := d[2]
+	%PfVar% := hPf
+	SpecialBrushes[hPf] := {brush: hBrushBorder, text: ColorTextBGR}
+	RoundCtrl(hPf, 30, 26, 7)
+	IconTips[hPf] := d[4]
+	GeneralCtrls.Push(hPf)
+	PfX += 34
+	}
 
 Gui, Font, s9 Norm c%ColorText%, Segoe UI
 autoChk := GuiAutoSave ? "Checked" : ""
-Gui, Add, CheckBox, x640 y83 w100 h20 c%ColorText% vGuiAutoSave %autoChk% gToggleAutoSave HwndhTipAuto, Auto-save
-SpecialBrushes[hTipAuto] := {brush: hBrushPanel, text: ColorTextBGR}
+AsX := CARDX + CARDW - 16 - 84 - 96
+Gui, Add, CheckBox, x%AsX% y152 w90 h20 c%ColorText% vGuiAutoSave %autoChk% gToggleAutoSave HwndhTipAuto, Auto-save
+SpecialBrushes[hTipAuto] := {brush: hBrushCard, text: ColorTextBGR}
 IconTips[hTipAuto] := "Save automatically whenever a setting changes"
+GeneralCtrls.Push(hTipAuto)
+SvX := CARDX + CARDW - 16 - 84
+Gui, Font, s9 Bold, Segoe UI
+Gui, Add, Text, x%SvX% y148 w84 h28 Center +0x100 +0x200 vSaveStatusText gSaveSettings HwndhTipSave, 💾 Save
+SpecialBrushes[hTipSave] := {brush: hBrushAccent, text: 0x101010}
+RoundCtrl(hTipSave, 84, 28, 8)
+IconTips[hTipSave] := "Save settings to current profile"
+GeneralCtrls.Push(hTipSave)
+
+Gui, Font, s9 c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y181 w30 h26 Center +0x100 +0x200 gMgCopyCode HwndhTipCopy, 📋
+SpecialBrushes[hTipCopy] := {brush: hBrushBorder, text: ColorTextBGR}
+RoundCtrl(hTipCopy, 30, 26, 7)
+IconTips[hTipCopy] := "Copy your Minigame settings as a code"
+GeneralCtrls.Push(hTipCopy)
+CbX := CX + 38
+Gui, Font, s9 Norm cFFFFFF, Segoe UI
+Gui, Add, Edit, x%CbX% y182 w260 h24 -Multi vMgCodeBox gMgCodeBoxChanged HwndhMgCodeBox
+ThemedCtrls.Push(hMgCodeBox)
+GeneralCtrls.Push(hMgCodeBox)
+MgCodeBoxPrevLen := 0
+MgCodeCue("Paste a minigame code here")
+IconTips[hMgCodeBox] := "Paste a Minigame settings code someone sent you.`nIt is applied and saved as soon as you paste it."
+GenProfN := GeneralCtrls.Length()
 
 Gui, Font, s9 c%ColorAccent%, Segoe UI
 
 OnMessage(0x200, "WM_MOUSEMOVE")
 OnMessage(0x20A, "WM_MOUSEWHEEL")
 OnMessage(0x20, "WM_SETCURSOR")
+OnMessage(0x201, "ShellDragDown")
 
-DivY := HEADH + BARH + 1
-Gui, Add, Text, x0 y%DivY% w%WINW% h4 HwndhDivFill
-SpecialBrushes[hDivFill] := {brush: hBrushBG, text: ColorTextBGR}
-Gui, Add, Text, x0 y%DivY% w%WINW% h1 HwndhDiv2
-SpecialBrushes[hDiv2] := {brush: hBrushBorder, text: ColorTextBGR}
+;---- Sidebar: icons only ---------------------------------------------------------------------------
 
-;---- Sidebar ---------------------------------------------------------------------------------
-
-SideY := DivY + 1
-SideH := WINH - SideY
-Gui, Add, Text, x0 y%SideY% w%SIDEW% h%SideH% HwndhSidebarBG
+Gui, Add, Text, x0 y0 w%SIDEW% h%WINH% HwndhSidebarBG
 SpecialBrushes[hSidebarBG] := {brush: hBrushPanel, text: ColorTextBGR}
+SideLineX := SIDEW
+Gui, Add, Text, x%SideLineX% y0 w1 h%WINH% HwndhDiv1
+SpecialBrushes[hDiv1] := {brush: hBrushBorder, text: ColorTextBGR}
+
+Gui, Font, s15 Norm c%ColorText%, Segoe UI
+Gui, Add, Text, x10 y8 w44 h40 Center +0x200 HwndhLogoTile, 🐟
+SpecialBrushes[hLogoTile] := {brush: hBrushPanel, text: ColorTextBGR}
 
 NavDefs := [ ["ReadThis","⚠  READ THIS"], ["Home","🏠  Fishing"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
 	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"]
 	, ["Faq","❓  FAQ"], ["About","ℹ️  About"] ]
 
-Gui, Font, s10 Bold c%ColorText%, Segoe UI
-NavY := SideY + 12
+NavY := 62
 for i, d in NavDefs
 	{
 	nk := d[1]
-	nl := d[2]
-	Gui, Add, Text, x4 y%NavY% w4 h34 vNavBar%nk% HwndhNB
+	np := StrSplit(d[2], "  ")
+	nl := np[1]
+	BarY := NavY + 10
+	Gui, Add, Text, x2 y%BarY% w3 h20 vNavBar%nk% HwndhNB
 	SpecialBrushes[hNB] := {brush: hBrushPanel, text: ColorTextBGR}
-	RoundCtrl(hNB, 4, 34, 2)
+	RoundCtrl(hNB, 3, 20, 2)
 	NavHwnd["bar" . nk] := hNB
-	Gui, Add, Text, x12 y%NavY% w158 h34 +0x200 vNav%nk% gSidebarClick HwndhNV, %nl%
-	RoundCtrl(hNV, 158, 34, 8)
+	Gui, Font, s13 Norm c%ColorText%, Segoe UI
+	Gui, Add, Text, x10 y%NavY% w44 h40 Center +0x200 vNav%nk% gSidebarClick HwndhNV, %nl%
+	RoundCtrl(hNV, 44, 40, 10)
 	SpecialBrushes[hNV] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
+	IconTips[hNV] := Trim(np[2])
 	NavHwnd[nk] := hNV
-	NavY += 38
+	NavY += 46
 	}
 
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-AddKeyBtnY := WINH - 112
-Gui, Add, Text, x12 y%AddKeyBtnY% w152 h26 Center +0x100 +0x200 gAddKeyClick HwndhAddKeyBtn, 🔑  Add key
-SpecialBrushes[hAddKeyBtn] := {brush: hBrushBorder, text: ColorAccentBGR}
-RoundCtrl(hAddKeyBtn, 152, 26, 7)
-Gui, Font, s9 Bold c%ColorRed%, Segoe UI
-VersionsBtnY := WINH - 80
-Gui, Add, Text, x12 y%VersionsBtnY% w152 h28 Center +0x100 +0x200 gVersionsClick HwndhVersionsBtn, 📜  Versions
-SpecialBrushes[hVersionsBtn] := {brush: hBrushBorder, text: ColorRedBGR}
-RoundCtrl(hVersionsBtn, 152, 28, 7)
-
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-SideFootY := WINH - 42
-Gui, Add, Text, x14 y%SideFootY% w156 h16 HwndhSideFoot1, F9  ·  Colors
-SpecialBrushes[hSideFoot1] := {brush: hBrushPanel, text: ColorMutedBGR}
-SideFootY += 16
-Gui, Add, Text, x14 y%SideFootY% w156 h16 HwndhSideFoot2, © 2026 Yato
-SpecialBrushes[hSideFoot2] := {brush: hBrushPanel, text: ColorMutedBGR}
+Gui, Font, s12 Norm c%ColorAccent%, Segoe UI
+AddKeyBtnY := WINH - 100
+Gui, Add, Text, x10 y%AddKeyBtnY% w44 h40 Center +0x100 +0x200 gAddKeyClick HwndhAddKeyBtn, 🔑
+SpecialBrushes[hAddKeyBtn] := {brush: hBrushPanel, text: ColorAccentBGR}
+RoundCtrl(hAddKeyBtn, 44, 40, 10)
+IconTips[hAddKeyBtn] := "Add key"
+Gui, Font, s12 Norm c%ColorRed%, Segoe UI
+VersionsBtnY := WINH - 54
+Gui, Add, Text, x10 y%VersionsBtnY% w44 h40 Center +0x100 +0x200 gVersionsClick HwndhVersionsBtn, 📜
+SpecialBrushes[hVersionsBtn] := {brush: hBrushPanel, text: ColorRedBGR}
+RoundCtrl(hVersionsBtn, 44, 40, 10)
+IconTips[hVersionsBtn] := "Versions  (F9 = Colors)"
 
 Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y122 w150 h30 Center +0x100 +0x200 vMiniTabSetup gMiniTabClick HwndhMT, Setup
+MtX := CARDX - XS
+MtY := 122 - YS
+Gui, Add, Text, x%MtX% y%MtY% w150 h30 Center +0x100 +0x200 vMiniTabSetup gMiniTabClick HwndhMT, Setup
 MiniTabSetupH := hMT
 RoundCtrl(hMT, 150, 30, 8)
-Gui, Add, Text, x336 y122 w170 h30 Center +0x100 +0x200 vMiniTabColors gMiniTabClick HwndhMT, Color Manager
+MtX2 := 336 - XS
+Gui, Add, Text, x%MtX2% y%MtY% w170 h30 Center +0x100 +0x200 vMiniTabColors gMiniTabClick HwndhMT, Color Manager
 MiniTabColorsH := hMT
 RoundCtrl(hMT, 170, 30, 8)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
@@ -23072,7 +23127,7 @@ gosub, ShowSection
 if (GuiAlwaysOnTop)
 	Gui, +AlwaysOnTop
 
-RoundCtrl(hStartStopBtnHwnd, 108, 36, 10)
+RoundCtrl(hStartStopBtnHwnd, 84, 30, 9)
 ThemeCtl(hProfileSelect)
 ThemeCtl(hMgCodeBox)
 darkAttr := 1
@@ -23198,6 +23253,7 @@ else
 for i, lst in NewLists
 	{
 	FixCardBrushes(lst)
+	ShiftCtrls(lst, (NeedSection = "General") ? GenProfN : 0)
 	SnapshotBase(lst)
 	for j, h in lst
 		AllManaged.Push(h)
@@ -27458,7 +27514,7 @@ OnMini := (TargetSection = "Minigame")
 OnCast := (TargetSection = "Cast")
 OnSetup := (OnMini and MiniTab != "Colors")
 OnColors := (OnMini and MiniTab = "Colors")
-SecTopEdge := OnMini ? 158 : 120
+SecTopEdge := (OnMini ? 158 : 120) - YS
 
 ShowList(GeneralCtrls, TargetSection = "General")
 ShowList(HomeCtrls, TargetSection = "Home")
@@ -27585,7 +27641,7 @@ for i, d in NavDefs
 	hb := NavHwnd["bar" . nk]
 	if (nk = NavActive)
 		{
-		SpecialBrushes[hv] := {brush: hBrushBG, text: (nk = "ReadThis") ? ColorRedBGR : ColorAccentBGR}
+		SpecialBrushes[hv] := {brush: hBrushBorder, text: (nk = "ReadThis") ? ColorRedBGR : ColorTextBGR}
 		SpecialBrushes[hb] := {brush: hBrushAccent, text: ColorAccentBGR}
 		}
 	else
@@ -29136,6 +29192,14 @@ return
 
 GuiClose:
 gosub, DoExit
+return
+
+ShellMin:
+WinMinimize, ahk_id %GuiHwnd%
+return
+
+ShellClose:
+gosub, GuiClose
 return
 
 GuiEscape:
