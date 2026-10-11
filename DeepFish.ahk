@@ -36,8 +36,10 @@
 #SingleInstance Force
 #MaxThreadsPerHotkey 2
 
-DFBetaVersion := "1.1.6"
-DFModBuild := 16
+DFBetaVersion := "1.1.7"
+CastSeenN := 0
+CastMissN := 0
+DFModBuild := 23
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -76,6 +78,8 @@ ProfileFields.Push( ["General","AutoLowerGraphics","true","bool"]
                   , ["General","RestartDelay","1000","num"]
                   , ["General","TimeOffset","0","num"]
                   , ["General","HideOverlay","false","bool"]
+                  , ["General","PassiveAll","false","bool"]
+                  , ["General","PassiveMs","500","num"]
                   , ["Update","AutoUpdate","false","bool"]
                   , ["Advanced","AdvancedOn","false","bool"]
                   , ["General","HoldRodCastDuration","1000","num"]
@@ -91,7 +95,8 @@ ProfileFields.Push( ["Cast","CastMode","Normal","castmode"]
                   , ["Cast","PerfectWhiteTolerance","0","num"]
                   , ["Cast","PerfectFailTimeout","20","num"]
                   , ["Cast","PerfectReleaseTiming","0","num"]
-                  , ["Cast","PerfectWaitCycles","1","num"] )
+                  , ["Cast","PerfectWaitCycles","1","num"]
+                  , ["Cast","SmartCast","true","bool"] )
 ProfileFields.Push( ["Shake","ShakeMode","Navigation","shakemode"]
                   , ["Shake","FishBarColorTolerance","3","num"]
                   , ["Shake","ShakeAreaLeftPct","21","num"]
@@ -143,10 +148,10 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","HalibutPlayMinigame","true","bool"]
 				  , ["Rods","SwClickSigns","true","bool"]
 				  , ["Rods","SwFastClicks","false","bool"]
-				  , ["Rods","SwInstantClicks","false","bool"]
-				  , ["Rods","SwSignsFirst","false","bool"]
 				  , ["Rods","SwRetryFails","false","bool"]
 				  , ["Rods","SwMaxSigns","false","bool"]
+				  , ["Rods","SwAllSigns","false","bool"]
+				  , ["Rods","SwSignsFirst","false","bool"]
 				  , ["Rods","SwPassive","false","bool"]
 				  , ["Rods","SwPassiveMs","500","num"]
 				  , ["Rods","SwPassiveHide","false","bool"]
@@ -196,7 +201,9 @@ ProfileFields.Push( ["Keeper","KeeperAuto","false","bool"]
                   , ["Keeper","KeeperLineY1","0","num"]
                   , ["Keeper","KeeperLineY2","0","num"]
                   , ["Keeper","KeeperLineColor","-1","num"]
-                  , ["Keeper","KeeperLineTol","40","num"] )
+                  , ["Keeper","KeeperLineTol","40","num"]
+                  , ["Keeper","KeeperAutoBar","true","bool"]
+                  , ["Keeper","KeeperAutoPct","15","num"] )
 ProfileFields.Push( ["Aquarium","AquariumAuto","false","bool"]
                   , ["Aquarium","AquariumEveryMin","63","num"]
                   , ["Aquarium","AquariumFoodCount","12","num"]
@@ -1043,6 +1050,9 @@ RestartMacro:
 if (!MacroRunning)
 	goto Idle
 
+if (SwPressK)
+	SwPressEnd()
+SwWantK := 0
 send {lbutton up}
 send {rbutton up}
 if (SwPreK)
@@ -1054,10 +1064,40 @@ if (SwPreK)
 
 if (KeeperAuto and !KbBusy)
 	{
+	KbHandled := false
 	KbDue := false
-	if (KeeperOcrOn)
+	if (KeeperAutoBar or KeeperOcrOn)
 		{
 		if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
+			{
+			KbOcrCatches := 0
+			KbHandled := false
+			if (KeeperAutoBar)
+				{
+				KbAutoAt := KeeperAutoPct
+				if KbAutoAt is not number
+					KbAutoAt := 15
+				if (KbAutoRead(KbPct))
+					{
+					KbHandled := true
+					KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
+					if (KbPct < KbAutoAt)
+						{
+						sleep 120
+						if (KbAutoRead(KbPct2) and KbPct2 < KbAutoAt)
+							KbDue := true
+						}
+					}
+				else
+					KbOcrLast := "power bar not found on screen"
+				}
+			if (!KbHandled and !KeeperOcrOn)
+				KbDue := (KbCatches >= Round(KeeperEveryCatches))
+			}
+		}
+	if (KeeperOcrOn and !KbHandled)
+		{
+		if (KeeperAutoBar or KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
 			{
 			KbOcrCatches := 0
 			KbLr := KbLineCheck(KbLm, KbLt)
@@ -1072,7 +1112,7 @@ if (KeeperAuto and !KbBusy)
 				KbOcrLast := ((KbLr = 1) ? "LOW" : "ok") . " (" . KbLm . " of " . KbLt . " px off)"
 			}
 		}
-	else if (KbCatches >= Round(KeeperEveryCatches))
+	else if (!KeeperAutoBar and !KeeperOcrOn and KbCatches >= Round(KeeperEveryCatches))
 		KbDue := true
 	if (KbDue)
 		gosub, KeeperRun
@@ -1089,9 +1129,9 @@ if (!MacroRunning)
 
 tooltip, , , , 9
 
+tooltip, Current Task: AutoLookDownCamera, %TooltipX%, %Tooltip7%, 7
 if (AutoLookDownCamera == true)
 	{
-	tooltip, Current Task: AutoLookDownCamera, %TooltipX%, %Tooltip7%, 7
 	send {rbutton up}
 	Sleep, % Tm(AutoLookDelay)
 	mousemove, LookDownX, LookDownY
@@ -1114,6 +1154,7 @@ if (AutoLookDownCamera == true)
 if (!MacroRunning)
 	goto Idle
 
+tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
 if (AutoBlurCamera == true)
 	{
 	tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
@@ -1126,7 +1167,7 @@ if (AutoBlurCamera == true)
 if (!MacroRunning)
 	goto Idle
 
-if (SwPassive and SpecialRod = "Stellarwave Melody")
+if (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
 	goto SwPassiveWatch
 
 if (!CamModeOn and RodSlotKey != "" and !RodEquippedOnce)
@@ -1168,8 +1209,47 @@ else
 	{
 	send {lbutton down}
 	tooltip, Action: Casting For %HoldRodCastDuration%ms, %TooltipX%, %Tooltip8%, 8
-	sleep %HoldRodCastDuration%
+	CastSeen := false
+	if (SmartCast)
+		{
+		CastT0 := A_TickCount
+		while (A_TickCount - CastT0 < HoldRodCastDuration)
+			{
+			if (!CastSeen)
+				CastSeen := CastBarSeen()
+			else
+				Sleep, 1
+			}
+		}
+	else
+		sleep %HoldRodCastDuration%
 	send {lbutton up}
+	if (SmartCast and !CastSeen)
+		{
+		CastPostT := A_TickCount
+		while (!CastSeen and A_TickCount - CastPostT < TA("castpost", 120))
+			CastSeen := CastBarSeen()
+		}
+	if (SmartCast and CastSeen)
+		{
+		CastSeenN := CastSeenN + 1
+		CastMissN := 0
+		}
+	else if (SmartCast and CastSeenN >= 3)
+		{
+		CastMissN := CastMissN + 1
+		if (CastMissN <= 2)
+			{
+			CastHolding := false
+			tooltip, Action: Cast did not go through - recasting (%CastMissN%/2), %TooltipX%, %Tooltip8%, 8
+			Sleep, % Tm(TA("castretry", 150))
+			if (CastMissN = 2 and RodSlotKey != "")
+				ForceReEquip := true
+			goto RestartMacro
+			}
+		CastMissN := 0
+		CastSeenN := 0
+		}
 	}
 CastHolding := false
 if (!MacroRunning)
@@ -1189,39 +1269,60 @@ goto NavigationShakeMode
 SwPassiveWatch:
 send {lbutton up}
 send {rbutton up}
-tooltip, Current Task: Passive - watching for the Stellarwave minigame, %TooltipX%, %Tooltip7%, 7
+tooltip, Current Task: Passive - watching for the minigame, %TooltipX%, %Tooltip7%, 7
 tooltip, , , , 8
 tooltip, , , , 10
 MgInPlay := false
-SwFightReset()
-SwPassSeen := 0
+if (SpecialRod = "Stellarwave Melody")
+	SwFightReset()
+if (SpecialRod = "Tranquility")
+	TqResetAll()
+PasSeen := 0
 Loop
 	{
 	if (!MacroRunning)
 		goto Idle
-	if (!SwPassive or SpecialRod != "Stellarwave Melody")
+	PasStellar := (SwPassive and SpecialRod = "Stellarwave Melody")
+	if (!PassiveAll and !PasStellar)
 		goto RestartMacro
 	gosub, CaptureFishBar
-	if (FishLineVisible() or BarPresent())
+	if (SpecialRod = "Tranquility")
 		{
-		tooltip, , , , 7
-		goto BarMinigame
-		}
-	if (SwFrameTop() >= 0)
-		{
-		SwBurstT0 := A_TickCount
-		while (MacroRunning and A_TickCount - SwBurstT0 < 1500)
+		PasSeen := ManiaVisible() ? PasSeen + 1 : 0
+		if (PasSeen >= 2)
 			{
-			gosub, CaptureFishBar
-			if (FishLineVisible() or BarPresent())
-				{
-				tooltip, , , , 7
-				goto BarMinigame
-				}
+			tooltip, , , , 7
+			goto BarMinigame
+			}
+		if (PasSeen)
+			{
 			Sleep, 5
+			continue
 			}
 		}
-	SwPassWait := SwPassiveMs
+	else
+		{
+		if (FishLineVisible() or BarPresent())
+			{
+			tooltip, , , , 7
+			goto BarMinigame
+			}
+		if ((SpecialRod = "Stellarwave Melody") ? (SwFrameTop() >= 0) : MinigameVisible(6))
+			{
+			SwBurstT0 := A_TickCount
+			while (MacroRunning and A_TickCount - SwBurstT0 < 1500)
+				{
+				gosub, CaptureFishBar
+				if (FishLineVisible() or BarPresent())
+					{
+					tooltip, , , , 7
+					goto BarMinigame
+					}
+				Sleep, 5
+				}
+			}
+		}
+	SwPassWait := PasStellar ? SwPassiveMs : PassiveMs
 	if SwPassWait is not number
 		SwPassWait := 500
 	Sleep, % (SwPassWait < 10) ? 10 : Round(SwPassWait)
@@ -1368,6 +1469,10 @@ return
 
 BarMinigame:
 MgInPlay := true
+DbX0 := -1
+DbSeenQ := 0
+DbMoveQ := 0
+DbInv := false
 if (SpecialRod = "Stellarwave Melody" and ShakeMode == "Disabled")
 	SwFightReset()
 UiEdgeReset()
@@ -1398,7 +1503,12 @@ ForceReset := false
 BarCalcFailsafeCounter := 0
 MgFightMode := false
 MgOverWhy := ""
-settimer, BarCalculationFailsafe, 1000
+PasNow := (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
+PasLastSeen := A_TickCount
+if (!PasNow)
+	settimer, BarCalculationFailsafe, 1000
+else
+	tooltip, Failsafe: off (passive), %TooltipX%, %Tooltip10%, 10
 
 if (SpecialRod = "Noiseform")
 	{
@@ -1451,8 +1561,20 @@ if (ForceReset == true)
 	goto RestartMacro
 	}
 gosub, CaptureFishBar
+if (PasNow)
+	{
+	if (BarPresent() or FishLineVisible() or MinigameVisible(6) or (SpecialRod = "Stellarwave Melody" and SwFrameTop() >= 0))
+		PasLastSeen := A_TickCount
+	else if (A_TickCount - PasLastSeen > TA("passivelost", 3000))
+		{
+		tooltip, , , , 10
+		goto RestartMacro
+		}
+	}
 if (BarPresent() and (SpecialRod = "Stellarwave Melody" or UiStartGate()))
 	{
+	if (SpecialRod = "Dreambreaker" and !DbSeenQ)
+		DllCall("QueryPerformanceCounter", "Int64*", DbSeenQ)
 	BarWidthSamples := []
 	BarWidthSamples.Push(RunWidth)
 	NoiseEntryFish := NoiseFishFresh ? 1 : 0
@@ -1727,6 +1849,8 @@ DllCall("QueryPerformanceCounter", "Int64*", PfA)
 PfDt := PfPrev ? Round((PfA - PfPrev) * 1000.0 / QpcFreq, 1) : 0
 PfPrev := PfA
 sleep 0
+if (SwPressK)
+	SwPressTick()
 DllCall("QueryPerformanceCounter", "Int64*", PfB)
 gosub, CaptureFishBar
 DllCall("QueryPerformanceCounter", "Int64*", PfC)
@@ -1861,9 +1985,11 @@ if (!FoundBar and !LineSeen)
 	MinigameLost++
 	if (MinigameLost = 1)
 		{
-		if (UiState != 2)
+		if (UiState != 2 and !SwPressK)
 			gosub, CastChargeCheck
-		send {lbutton up}
+		if (!SwPressK)
+			send {lbutton up}
+		SwWantK := 0
 		PrecisionDown := false
 		DllCall("QueryPerformanceCounter", "Int64*", BarLostAt)
 		HudLossHidden := false
@@ -2283,6 +2409,18 @@ if (!FoundBar)
 BarX := RunLeft + (RunWidth/2)
 CastBlindN := 0
 MoveHudBarSpan(RunLeft, RunWidth)
+if (SpecialRod = "Dreambreaker" and !DbInv)
+	{
+	DllCall("QueryPerformanceCounter", "Int64*", DbNowQ)
+	if (DbX0 < 0)
+		{
+		DbX0 := BarX
+		if (!DbSeenQ)
+			DbSeenQ := DbNowQ
+		}
+	else if (!DbMoveQ and Abs(BarX - DbX0) > Max(6, 12 * WindowHeight / 1440))
+		DbMoveQ := DbNowQ
+	}
 
 ; --- velocities -------------------------------------------------------------------------------
 DllCall("QueryPerformanceCounter", "Int64*", tNowP)
@@ -2546,7 +2684,13 @@ if (SpecialRod = "Noiseform" and WantDown and !PrecisionDown and NoiseStaleN >= 
 	}
 else
 	NoiseStaleBlk := 0
-if (SpecialRod = "Dreambreaker")
+if (SpecialRod = "Dreambreaker" and !DbInv and DbSeenQ)
+	{
+	DllCall("QueryPerformanceCounter", "Int64*", DbNowQ)
+	if ((DbMoveQ and (DbNowQ - DbMoveQ) / QpcFreq >= 1.4) or ((DbNowQ - DbSeenQ) / QpcFreq >= 3.1))
+		DbInv := true
+	}
+if (SpecialRod = "Dreambreaker" and DbInv)
 	WantDown := !WantDown
 if (WantDown)
 	gosub, PrecisionHold
@@ -2555,9 +2699,11 @@ else
 goto BarMinigame2
 
 PrecisionHold:
+if (SpecialRod = "Stellarwave Melody" and (SwPressK or SwWantK))
+	return
 if (SwClickFirst())
 	{
-	if (PrecisionDown or GetKeyState("LButton"))
+	if (PrecisionDown or (GetKeyState("LButton") and !SwPressK))
 		{
 		send {lbutton up}
 		PrecisionDown := false
@@ -2567,7 +2713,7 @@ if (SwClickFirst())
 	}
 if (!PrecisionDown)
 	{
-	SwMinRel := (SpecialRod = "Requiem") ? ReelMinRelease : ((SpecialRod = "Stellarwave Melody" and SwPhase) ? ((SwFastClicks or SwInstantClicks) ? (SwPreK ? 320 : 250) : 100) : 0)
+	SwMinRel := (SpecialRod = "Requiem") ? ReelMinRelease : ((SpecialRod = "Stellarwave Melody" and SwPhase) ? ((SwDwell and (SwRetryClicks ? (SwPressN + SwRetry < 3 and SwClickSlot != SwOverS) : !SwPressN)) ? 500 : (SwPreK ? 320 : ((SwFastClicks or SwMaxSigns) ? 250 : 100))) : 0)
 	if (SwMinRel > 0 and PrecisionUpAt)
 		{
 		DllCall("QueryPerformanceCounter", "Int64*", ReelNow)
@@ -2603,16 +2749,6 @@ if (!GetKeyState("LButton") or ((ReelNow - PrecisionResendAt) * 1000.0 / QpcFreq
 return
 
 PrecisionRelease:
-if (SwClickFirst())
-	{
-	if (PrecisionDown or GetKeyState("LButton"))
-		{
-		send {lbutton up}
-		PrecisionDown := false
-		DllCall("QueryPerformanceCounter", "Int64*", PrecisionUpAt)
-		}
-	return
-	}
 if (PrecisionDown)
 	{
 	SwMinHold := (SpecialRod = "Requiem") ? ReelMinHold : ((SpecialRod = "Stellarwave Melody" and SwPhase) ? 250 : 0)
@@ -2627,7 +2763,7 @@ if (PrecisionDown)
 	DllCall("QueryPerformanceCounter", "Int64*", PrecisionUpAt)
 	return
 	}
-if (GetKeyState("LButton"))
+if (GetKeyState("LButton") and !SwPressK)
 	send {lbutton up}
 return
 
@@ -2649,6 +2785,9 @@ return
 ;====================================================================================================;
 
 BarMinigameOver:
+if (SwPressK)
+	SwPressEnd()
+SwWantK := 0
 NoFishAt := 0
 BarLiveL := -1
 BarLiveR := -1
@@ -2679,6 +2818,8 @@ if (MgCastCharged)
 		ForceReEquip := true
 	}
 
+tooltip, Current Task: Restarting, %TooltipX%, %Tooltip7%, 7
+tooltip, , , , 8
 tooltip, , , , 10
 tooltip, , , , 11
 tooltip, , , , 12
@@ -3103,6 +3244,9 @@ return
 
 Idle:
 
+if (SwPressK)
+	SwPressEnd()
+SwWantK := 0
 send {lbutton up}
 send {rbutton up}
 PrecisionDown := false
@@ -3369,7 +3513,7 @@ CryptHashHex(pData, nData) {
 }
 
 OverlayHideTick:
-OvWant := MacroRunning and (HideOverlay or (SwPassiveHide and SwPassive and SpecialRod = "Stellarwave Melody"))
+OvWant := MacroRunning and (HideOverlay or (SwPassiveHide and ((SwPassive and SpecialRod = "Stellarwave Melody") or PassiveAll)))
 if (OvWant = OverlayHidden)
 	return
 OverlayHidden := OvWant ? true : false
@@ -4005,6 +4149,17 @@ PCLastT := PCCapT
 goto PerfectCastLoop
 
 ;====================================================================================================;
+
+CastBarSeen() {
+	global PCSearchTop, PCSearchBottom, WindowHeight, PCVerifyOff, PCGreenY, PCGreenL, PCGreenR
+	if (WindowHeight < 100)
+		return false
+	PCSearchTop := Round(WindowHeight * 0.13)
+	PCSearchBottom := Round(WindowHeight * 0.90)
+	PCVerifyOff := false
+	PCGreenY := -1
+	return PerfectAcquireGreen()
+}
 
 PerfectAcquireGreen() {
 	global PCGreenY, PCGreenL, PCGreenR, PerfectGreenColor, PerfectGreenTolerance
@@ -5054,6 +5209,8 @@ NumPut(40, NoteBMI, 0, "UInt")
 NoteFullH := NoteIndep ? NoteH : (NoteH + CaptureH + 20)
 if (!NoteIndep)
 	NoteFullH := NoteFullH + CapExtra
+if (SpecialRod = "Stellarwave Melody" and NoteIndep and Round(FishBarTop) - 18 >= NoteOriginY and Round(FishBarLeft) >= NoteOriginX and Round(FishBarLeft) - NoteOriginX + CaptureW <= NoteW)
+	NoteFullH := Max(NoteH, Round(FishBarTop) - 18 + CaptureH + 38 + CapExtra - NoteOriginY)
 NumPut(NoteW, NoteBMI, 4, "Int")
 NumPut(-NoteFullH, NoteBMI, 8, "Int")
 NumPut(1, NoteBMI, 12, "UShort")
@@ -6289,6 +6446,17 @@ CaptureStrip() {
 	if (NoteIndep and hNoteMemDC)
 		{
 		DllCall("QueryPerformanceCounter", "Int64*", NoteNowT)
+		if (SpecialRod = "Stellarwave Melody" and NoteFullH > NoteH)
+			{
+			NoteFresh := true
+			NoteBlitAt := NoteNowT
+			DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
+				, "Ptr", hCaptureScreenDC, "Int", cwx + NoteOriginX, "Int", cwy + NoteOriginY, "UInt", 0x00CC0020)
+			pCaptureBits := pCaptureOwn
+			DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
+				, "Ptr", hNoteMemDC, "Int", Round(FishBarLeft) - NoteOriginX, "Int", Round(FishBarTop) - 18 - NoteOriginY, "UInt", 0x00CC0020)
+			return
+			}
 		NoteRefreshMs := (SwMaxSigns and SpecialRod = "Stellarwave Melody") ? 0 : ((NoteLockX >= 0) ? 80 : 45)
 		NoteFresh := (!NoteBlitAt or ((NoteNowT - NoteBlitAt) * 1000.0 / QpcFreq) >= NoteRefreshMs)
 		if (NoteFresh)
@@ -6747,6 +6915,9 @@ AdvRegistry() {
 	r.Push(["Window", "L", "winfocus", 100, "ms|Pause after pulling Roblox back to the front"])
 	r.Push(["Casting", "V", "RestartDelay", 0, "ms|Restart delay after a catch"])
 	r.Push(["Casting", "V", "HoldRodCastDuration", 0, "ms|Cast hold (how long the click is held)"])
+	r.Push(["Casting", "L", "castpost", 120, "ms|Smart cast: keep looking for the power bar after letting go"])
+	r.Push(["Casting", "L", "castretry", 150, "ms|Smart cast: pause before recasting"])
+	r.Push(["Casting", "L", "passivelost", 3000, "ms|Passive: go back to watching if the minigame is gone for"])
 	r.Push(["Casting", "V", "WaitForBobberDelay", 0, "ms|Wait for the bobber after casting"])
 	r.Push(["Casting", "L", "chg", 40, "ms|Charged-cast check: pause before the second look"])
 	r.Push(["Casting", "L", "reeq1", 120, "ms|Re-equip rod: pause before switching away"])
@@ -6766,10 +6937,7 @@ AdvRegistry() {
 	r.Push(["Minigame", "L", "twig1", 40, "ms|Splitbranch Twig: hover before clicking a fish"])
 	r.Push(["Minigame", "L", "twig2", 40, "ms|Splitbranch Twig: click hold"])
 	r.Push(["Minigame", "L", "twig3", 260, "ms|Splitbranch Twig: pause after clicking"])
-	r.Push(["Stellarwave Melody", "L", "swfail", 1000, "ms|Wait for a star before calling a click failed"])
-	r.Push(["Stellarwave Melody", "L", "swfailmax", 400, "ms|...same, with Max sign speed"])
-	r.Push(["Stellarwave Melody", "L", "swgiveup", 1500, "ms|Give up on a click after"])
-	r.Push(["Stellarwave Melody", "L", "swgiveupmax", 600, "ms|...same, with Max sign speed"])
+	r.Push(["Stellarwave Melody", "L", "swallwait", 700, "ms|All signs: start anyway if no new sign for"])
 	r.Push(["Stellarwave Melody", "L", "swretry", 500, "ms|Retry: wait before re-clicking"])
 	r.Push(["Stellarwave Melody", "L", "swretrymax", 150, "ms|...same, with Max sign speed"])
 	r.Push(["Stellarwave Melody", "L", "swrcneutral", 40, "ms|Retry click: pause at the neutral spot"])
@@ -6815,7 +6983,7 @@ AdvRegistry() {
 	r.Push(["Aquarium", "L", "aqtap", 55, "ms|Click: hover before clicking"])
 	r.Push(["Totem", "V", "TotemActDelay", 0, "ms|Wait after using a totem"])
 	r.Push(["Totem", "V", "TotemPollSec", 0, "s|Check for a totem every"])
-	r.Push(["Totem", "L", "totemcatch", 2000, "ms|Wait after a catch before using a totem"])
+	r.Push(["Totem", "L", "totemcatch", 0, "ms|Wait after a catch before using a totem"])
 	r.Push(["Totem", "L", "totemsettle", 250, "ms|Pause while the totem bar settles"])
 	r.Push(["Totem", "L", "totemkey", 300, "ms|Pause after selecting a totem before using it"])
 	r.Push(["Totem", "L", "totemmax", 40000, "ms|Longest wait for the right time of day"])
@@ -9613,11 +9781,13 @@ if (!TotemAuto or !MacroRunning)
 if (TotemLastCheck and (A_TickCount - TotemLastCheck) < (TotemPollSec * 1000))
 	return
 TotemLastCheck := A_TickCount
+tooltip, Current Task: Checking Totems, %TooltipX%, %Tooltip7%, 7
+tooltip, , , , 8
 if (WhLastCatchTick)
 	{
 	TotemSinceCatch := A_TickCount - WhLastCatchTick
-	if (TotemSinceCatch >= 0 and TotemSinceCatch < TA("totemcatch", 2000))
-		Sleep, % Tm(TA("totemcatch", 2000) - TotemSinceCatch)
+	if (TotemSinceCatch >= 0 and TotemSinceCatch < TA("totemcatch", 0))
+		Sleep, % Tm(TA("totemcatch", 0) - TotemSinceCatch)
 	}
 gosub, TotemRunCycle
 return
@@ -11688,6 +11858,223 @@ TotemCaptureStrip() {
 ;====================================================================================================;
 ;
 ;====================================================================================================;
+
+KbPixFill(px) {
+	r := (px >> 16) & 0xFF
+	g := (px >> 8) & 0xFF
+	b := px & 0xFF
+	return (b >= 215 and r >= 95 and g <= 140 and r > g + 5)
+}
+
+KbPixNavy(px) {
+	r := (px >> 16) & 0xFF
+	g := (px >> 8) & 0xFF
+	b := px & 0xFF
+	return (Abs(r - 12) <= 14 and Abs(g - 30) <= 14 and Abs(b - 42) <= 16)
+}
+
+KbGrab(x, y, w, h, ByRef hdcM, ByRef hbm, ByRef old) {
+	hdcS := DllCall("GetDC", "Ptr", 0, "Ptr")
+	hdcM := DllCall("CreateCompatibleDC", "Ptr", hdcS, "Ptr")
+	VarSetCapacity(bi, 40, 0)
+	NumPut(40, bi, 0, "UInt")
+	NumPut(w, bi, 4, "Int")
+	NumPut(-h, bi, 8, "Int")
+	NumPut(1, bi, 12, "UShort")
+	NumPut(32, bi, 14, "UShort")
+	pBits := 0
+	hbm := DllCall("CreateDIBSection", "Ptr", hdcM, "Ptr", &bi, "UInt", 0, "Ptr*", pBits, "Ptr", 0, "UInt", 0, "Ptr")
+	if (!hbm)
+		{
+		DllCall("DeleteDC", "Ptr", hdcM)
+		DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
+		return 0
+		}
+	old := DllCall("SelectObject", "Ptr", hdcM, "Ptr", hbm, "Ptr")
+	DllCall("BitBlt", "Ptr", hdcM, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", x, "Int", y, "UInt", 0x00CC0020)
+	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
+	return pBits
+}
+
+KbGrabEnd(hdcM, hbm, old) {
+	DllCall("SelectObject", "Ptr", hdcM, "Ptr", old)
+	DllCall("DeleteObject", "Ptr", hbm)
+	DllCall("DeleteDC", "Ptr", hdcM)
+}
+
+; finds the Keeperbound power bar (purple fill + dark navy track) on its own - no setup
+KbAutoFind() {
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH
+	KbBarY := -1
+	if (!RobloxHwnd)
+		return false
+	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	if (ww < 200 or wh < 200)
+		return false
+	y0 := Round(wh * 0.45)
+	h := wh - y0
+	w := ww
+	pBits := KbGrab(wx, wy + y0, w, h, hdcM, hbm, old)
+	if (!pBits)
+		return false
+	gap := Round(w * 0.07)
+	minRun := Round(w * 0.18)
+	rows := []
+	Loop % h
+		{
+		y := A_Index - 1
+		base := pBits + y * w * 4
+		hits := 0
+		hx := -1
+		Loop 9
+			{
+			x := Round(w * (0.30 + 0.05 * (A_Index - 1)))
+			px := NumGet(base + 0, x * 4, "UInt")
+			if (KbPixFill(px) or KbPixNavy(px))
+				{
+				hits++
+				hx := x
+				}
+			}
+		if (hits < 2)
+			continue
+		L := hx
+		R := hx
+		good := 1
+		miss := 0
+		x := hx - 1
+		while (x >= 0)
+			{
+			px := NumGet(base + 0, x * 4, "UInt")
+			if (KbPixFill(px) or KbPixNavy(px))
+				{
+				L := x
+				good++
+				miss := 0
+				}
+			else if (++miss > gap)
+				break
+			x--
+			}
+		miss := 0
+		x := hx + 1
+		while (x < w)
+			{
+			px := NumGet(base + 0, x * 4, "UInt")
+			if (KbPixFill(px) or KbPixNavy(px))
+				{
+				R := x
+				good++
+				miss := 0
+				}
+			else if (++miss > gap)
+				break
+			x++
+			}
+		if (R - L + 1 >= minRun and good >= 0.6 * (R - L + 1))
+			rows.Push([y, L, R])
+		}
+	KbGrabEnd(hdcM, hbm, old)
+	if (rows.Length() < 3)
+		return false
+	; the bar is the longest run of consecutive rows
+	bs := 1
+	bn := 1
+	cs := 1
+	Loop % rows.Length() - 1
+		{
+		i := A_Index + 1
+		if (rows[i][1] = rows[i - 1][1] + 1)
+			{
+			if (i - cs + 1 > bn)
+				{
+				bn := i - cs + 1
+				bs := cs
+				}
+			}
+		else
+			cs := i
+		}
+	if (bn < 3)
+		return false
+	ls := []
+	rs := []
+	Loop % bn
+		{
+		ls.Push(rows[bs + A_Index - 1][2])
+		rs.Push(rows[bs + A_Index - 1][3])
+		}
+	KbBarY := y0 + rows[bs + (bn // 2)][1]
+	KbBarL := MedianOf(ls)
+	KbBarR := MedianOf(rs)
+	KbBarWW := ww
+	KbBarWH := wh
+	return true
+}
+
+; reads how full the power bar is, 0-100. false if the bar is not on screen
+KbAutoRead(ByRef pct) {
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH
+	pct := -1
+	if (!RobloxHwnd)
+		return false
+	Loop 2
+		{
+		RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+		if (KbBarY = "" or KbBarY < 0 or ww != KbBarWW or wh != KbBarWH)
+			{
+			if (!KbAutoFind())
+				return false
+			}
+		w := Round(KbBarR - KbBarL + 1)
+		if (w < 20)
+			{
+			KbBarY := -1
+			continue
+			}
+		pBits := KbGrab(wx + Round(KbBarL), wy + KbBarY - 2, w, 5, hdcM, hbm, old)
+		if (!pBits)
+			return false
+		vals := []
+		need := Max(20, Round(w * 0.025))
+		Loop 5
+			{
+			base := pBits + (A_Index - 1) * w * 4
+			good := 0
+			run := 0
+			xn := -1
+			x := 0
+			while (x < w)
+				{
+				px := NumGet(base + 0, x * 4, "UInt")
+				if (KbPixNavy(px))
+					{
+					good++
+					run++
+					if (run >= need and xn < 0)
+						xn := x - need + 1
+					}
+				else
+					{
+					run := 0
+					if (KbPixFill(px))
+						good++
+					}
+				x++
+				}
+			if (good >= 0.6 * w)
+				vals.Push((xn < 0) ? 100.0 : xn * 100.0 / w)
+			}
+		KbGrabEnd(hdcM, hbm, old)
+		if (vals.Length() >= 3)
+			{
+			pct := MedianOf(vals)
+			return true
+			}
+		KbBarY := -1
+		}
+	return false
+}
 
 KbLineNeed(tot) {
 	return 3
@@ -16197,8 +16584,115 @@ SwCover(rr, a, b) {
 	return t
 }
 
+SwGlowAdd(x, now) {
+	global SwGlowX, SwGlowT
+	if (!IsObject(SwGlowX))
+		{
+		SwGlowX := []
+		SwGlowT := []
+		}
+	SwGlowX.Push(x)
+	SwGlowT.Push(now)
+	while (SwGlowX.Length() > 8)
+		{
+		SwGlowX.RemoveAt(1)
+		SwGlowT.RemoveAt(1)
+		}
+}
+
+SwGlowZones(now) {
+	global SwGlowX, SwGlowT, SwZL, SwZH, SwPitch
+	SwZL := []
+	SwZH := []
+	if (!IsObject(SwGlowX))
+		return 0
+	lo := []
+	hi := []
+	Loop % SwGlowX.Length()
+		{
+		a := now - SwGlowT[A_Index]
+		h := (a < 0.55) ? 1.4 : ((a < 0.7) ? 1.0 : ((a < 0.85) ? 0.5 : 0))
+		if (a < 0 or h <= 0)
+			continue
+		r := Round(h * SwPitch)
+		l := SwGlowX[A_Index] - r
+		j := lo.Length() + 1
+		while (j > 1 and lo[j - 1] > l)
+			j--
+		lo.InsertAt(j, l)
+		hi.InsertAt(j, SwGlowX[A_Index] + r)
+		}
+	Loop % lo.Length()
+		{
+		n := SwZL.Length()
+		if (n and lo[A_Index] <= SwZH[n] + 1)
+			{
+			if (hi[A_Index] > SwZH[n])
+				SwZH[n] := hi[A_Index]
+			}
+		else
+			{
+			SwZL.Push(lo[A_Index])
+			SwZH.Push(hi[A_Index])
+			}
+		}
+	return SwZL.Length()
+}
+
+SwGlowNear(x, h, amax, now) {
+	global SwGlowX, SwGlowT, SwPitch
+	if (!IsObject(SwGlowX))
+		return false
+	Loop % SwGlowX.Length()
+		{
+		a := now - SwGlowT[A_Index]
+		if (a >= 0 and a < amax and Abs(SwGlowX[A_Index] - x) <= h * SwPitch)
+			return true
+		}
+	return false
+}
+
+SwCoverX(rr, a, b) {
+	global SwZL, SwZH
+	c := SwCover(rr, a, b)
+	Loop % SwZL.Length()
+		{
+		l := (SwZL[A_Index] > a) ? SwZL[A_Index] : a
+		h := (SwZH[A_Index] < b) ? SwZH[A_Index] : b
+		if (h >= l)
+			c := c - SwCover(rr, l, h)
+		}
+	return c
+}
+
+SwZoneLen(a, b) {
+	global SwZL, SwZH
+	n := 0
+	Loop % SwZL.Length()
+		{
+		l := (SwZL[A_Index] > a) ? SwZL[A_Index] : a
+		h := (SwZH[A_Index] < b) ? SwZH[A_Index] : b
+		if (h >= l)
+			n := n + h - l + 1
+		}
+	return n
+}
+
+SwInZone(x, m) {
+	global SwZL, SwZH
+	Loop % SwZL.Length()
+		{
+		if (x >= SwZL[A_Index] - m and x <= SwZH[A_Index] + m)
+			return true
+		}
+	return false
+}
+
 SwFightReset() {
-	global SwPreK, SwParkAt
+	global SwPreK, SwParkAt, SwFrStillRef, SwFrStillT, SwFrameT, SwReactEst, SwFoundT, SwBarHold, SwGlowX, SwGlowT, SwZL, SwZH, SwFishHeld
+	global SwPressK, SwPressQ, SwPressMs, SwPressDecT, SwPressNom, SwPressCx, SwPressCy, SwPressPre, SwPressSx, SwPressSy, SwWantK, SwWantT, SwWantNom, SwWantPre, SwWantSx, SwWantSy, SwWantCx, SwWantCy
+	global SwLitFastT, SwLitFastV, SwHov1, SwHov2, SwMoveOn, SwHyb, SwWantStrk, SwPressLit, SwLitRawN
+	global SwMaxSigns
 	static tp := false
 	if (!tp)
 		{
@@ -16244,6 +16738,8 @@ SwFightReset() {
 	SwFrRef := -1
 	SwFrRefT := 0
 	SwFrMoveT := 0
+	SwFrStillRef := -1
+	SwFrStillT := 0
 	SwLastC := -1
 	SwLastL := -1
 	SwW := Round(WindowHeight * 0.625)
@@ -16281,17 +16777,63 @@ SwFightReset() {
 	SwTipT := 0
 	SwScanned := false
 	SwLockFail := (SwLockN >= 3)
+	SwFrameT := 0
+	SwReactEst := 0.12
+	SwFoundT := 0
+	SwBarHold := false
+	SwGlowX := []
+	SwGlowT := []
+	SwZL := []
+	SwZH := []
+	SwFishHeld := false
 	SwPreK := 0
 	SwParkAt := 0
+	SwPressK := 0
+	SwPressQ := 0
+	SwPressMs := 90
+	SwPressDecT := 0
+	SwPressNom := 0
+	SwPressCx := 0
+	SwPressCy := 0
+	SwPressPre := false
+	SwPressSx := 0
+	SwPressSy := 0
+	SwWantK := 0
+	SwWantT := 0
+	SwWantNom := 0
+	SwWantPre := false
+	SwWantSx := 0
+	SwWantSy := 0
+	SwWantCx := 0
+	SwWantCy := 0
+	SwLitFastT := 0
+	SwLitFastV := 0
+	SwWantStrk := 0
+	SwPressLit := 0
+	SwLitRawN := 0
+	SwHov1 := 0.025
+	SwHov2 := 0.03
+	SwMoveOn := 0.06
+	SwHyb := 0.012
 	SwPhaseReset()
 	if (MacroRunning and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
 		MouseMove, %LookDownX%, %LookDownY%, 0
 }
 
 SwPhaseReset() {
+	global SwVetoM, SwVetoZ, SwRecZ, SwDwell, SwDwellPN, SwPressN, SwClickStall, SwPress0At, SwUnsureK, SwUnsureT, SwUnsureR
+	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwRetry, SwSlotBlind
+	global SwStop, SwStopWhy, SwLastClick, SwTie, SwLastOnset, SwGradOk, SwPurpleN, SwClickTook, SwTieWas, SwWantK, SwWantStrk
+	global SwOverK, SwOverT, SwOverL, SwOverR, SwOverS, SwTryAt
 	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwRetry, SwFailN, SwFailAt, SwRetryK, SwGuessTried, SwGuessDone, SwMem
 	global SwStop, SwStopWhy, SwLastClick, SwTie, SwLastOnset, SwGradOk, SwPurpleN, SwClickTook, SwTieWas
+	global SwAllN, SwAllT, SwAllI
 	SwPreEnd("reset")
+	SwAllN := 0
+	SwAllI := 0
+	SwDwell := false
+	SwWantK := 0
+	SwWantStrk := 0
 	SwSlotSt := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	if (!IsObject(SwMem))
 		SwMemReset()
@@ -16304,8 +16846,12 @@ SwPhaseReset() {
 	SwSlotHits := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	SwSlotLvl := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	SwSlotGone := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	SwSlotBlind := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	SwTie := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	SwTieWas := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	SwVetoM := 0
+	SwVetoZ := -1
+	SwRecZ := -1
 	SwOrder := []
 	SwK0 := -1
 	SwClicks := 0
@@ -16318,6 +16864,19 @@ SwPhaseReset() {
 	SwRetryK := 0
 	SwPurpleN := 0
 	SwClickTook := 0
+	SwDwellPN := 0
+	SwPressN := 0
+	SwClickStall := 0
+	SwPress0At := 0
+	SwUnsureK := 0
+	SwUnsureT := 0
+	SwUnsureR := 0
+	SwOverK := 0
+	SwOverT := 0
+	SwOverL := 0
+	SwOverR := -1
+	SwOverS := 0
+	SwTryAt := 0
 	SwStop := false
 	SwStopWhy := ""
 	SwLastClick := 0
@@ -16331,9 +16890,9 @@ SwSlotX(k) {
 }
 
 SwScan() {
-	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh
+	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh, SwFrameT
 	global SwFound, SwBarL, SwBarW, SwFishX, SwPhase, SwPhaseT, SwInvalidT, SwUndarkT, SwStarsValid, SwLit, SwLitPrev, SwLastStep, SwK0, SwClicks, SwStop, SwStopWhy, SwGradOk, SwWRing, SwStarStableT, SwLastClick
-	global SwW, SwWMeas, SwMeasN, SwPostT
+	global SwW, SwWMeas, SwMeasN, SwPostT, SwBarHold, SwCleanL, SwCleanW
 	if (SwScanned)
 		return true
 	SwScanned := true
@@ -16342,6 +16901,7 @@ SwScan() {
 	if (!pCaptureBits or CaptureW < 40 or CaptureH < 40)
 		return false
 	now := SwNow()
+	SwFrameT := now
 	SwStarsRead(now)
 	SwBarScan(now)
 	SwFishScan(now)
@@ -16401,10 +16961,12 @@ SwScan() {
 		}
 	if (SwPhase and SwFound)
 		{
-		if (!SwGradOk)
+		if (!SwGradOk and !SwZoneLen(SwCleanL, SwCleanL + Round(SwCleanW) - 1))
 			SwGradLearn()
 		SwSlotsScan(now)
 		}
+	else if (SwPhase and SwBarHold and SwGradOk)
+		SwSlotsScan(now, true)
 	if (SwPhase and SwLastStep and now - SwLastStep > 1.0 and !SwStop and SwOrderCount() > 0)
 		{
 		SwStop := true
@@ -16424,7 +16986,8 @@ SwOrderCount() {
 SwStarsRead(now) {
 	global SwMaxSigns
 	global pNoteBits, NoteW, NoteH, NoteOriginX, NoteOriginY, SwS, SwSB, SwSX, WindowWidth, SwPrmWh, SwPrmWhI, SwPrmStU, SwPrmStUI
-	global SwStarFound, SwStarY, SwStarX0, SwStarPitch, SwStarRetryT, SwStarV, SwStarT, SwStarsValid, SwLit, SwPitch, SwSlotC0, SwPhase, SwStarOkT, SwLitRaw, SwLitRawT, SwFastClicks, SwInstantClicks
+	global SwStarFound, SwStarY, SwStarX0, SwStarPitch, SwStarRetryT, SwStarV, SwStarT, SwStarsValid, SwLit, SwPitch, SwSlotC0, SwPhase, SwStarOkT, SwLitRaw, SwLitRawT, SwFastClicks
+	global SwClickAt, SwClickLit, SwLitFastT, SwLitFastV, SwLitRawN, SwClickSlot, FishBarLeft
 	global SwPitchRef, SwPitchRefH, SwStarStableT, WindowHeight, SwStarYRef, SwStarYRefH
 	if (!pNoteBits or NoteW < 40 or NoteH < 8)
 		{
@@ -16530,11 +17093,27 @@ SwStarsRead(now) {
 		{
 		if (lit != SwLitRaw)
 			{
+			if (SwClickAt and SwClickSlot and (lit = SwClickLit + 1 or (SwClickLit = 11 and lit = 0)))
+				SwGlowAdd(Round(SwSlotX(SwClickSlot)) - Round(FishBarLeft), now)
 			SwLitRaw := lit
 			SwLitRawT := now
+			SwLitRawN := 1
 			}
-		if (now - SwLitRawT >= SwSec(SwMaxSigns ? 0 : ((SwFastClicks or SwInstantClicks) ? 0.05 : 0.1)))
+		else
+			SwLitRawN := SwLitRawN + 1
+		if (SwLitFastT and now - SwLitFastT < 0.1 and SwLitRaw = SwLitFastV - 1)
+			{
+			SwLog("star revert " . SwLitFastV . "->" . SwLitRaw)
+			SwLitFastT := 0
+			}
+		if (now - SwLitRawT >= SwSec(SwMaxSigns ? 0 : (SwFastClicks ? 0.03 : 0.1)))
 			SwLit := SwLitRaw
+		else if (SwClickAt and SwLitRaw = SwClickLit + 1 and SwLit != SwLitRaw and SwLitRawN >= 2)
+			{
+			SwLit := SwLitRaw
+			SwLitFastT := now
+			SwLitFastV := SwLitRaw
+			}
 		SwStarOkT := now
 		}
 	else if (SwPhase and SwStarOkT and now - SwStarOkT > 0.5)
@@ -16711,10 +17290,12 @@ SwFrameTop() {
 }
 
 SwBarScan(now) {
+	global SwFrStillRef, SwFrStillT, SwFoundT, SwBarHold, SwLitRawT
 	global pCaptureBits, CaptureW, CaptureH, SwS, SwSB, SwPrmFr, SwPrmFrI, SwFrTop, SwFrMiss, SwLastC, SwLastL, SwW, SwWSign, SwWRing, SwFound, SwBarL, SwBarW
 	global SwPhase, FishBarLeft, FishBarTop, WindowWidth, WindowHeight, SwFrLearned, SwPiano, SwPianoDis, SwCleanL, SwCleanW, SwFrRef, SwFrRefT, SwFrMoveT
 	global SwXBar, SwXBarN, SwWMeas, SwMeasN, SwMeasT, SwSM, SwSB, SwFrH, SwFrHC, SwFrT, SwFrTC, SwFrHT, SwFrBad, SwFrOk
 	global SwCacheW, SwCacheH, SwCacheSB, SwCacheFrH, SwCacheFrT
+	SwGlowZones(now)
 	ft := SwFrameTop()
 	nom := Round(1208 * SwS) - Round(FishBarTop)
 	if (ft >= 0 and ft >= nom - Round(0.01 * WindowHeight) and ft <= nom + Round(0.06 * WindowHeight))
@@ -16731,10 +17312,16 @@ SwBarScan(now) {
 			}
 		SwFrTop := ft
 		SwFrMiss := 0
+		if (SwFrStillRef < 0 or Abs(ft - SwFrStillRef) > 3 * SwSB)
+			{
+			SwFrStillRef := ft
+			SwFrStillT := now
+			}
 		}
 	else
 		SwFrMiss++
 	SwFound := false
+	SwBarHold := false
 	SwCleanL := -1
 	SwCleanW := 0
 	if (SwFrMiss > 6)
@@ -16896,8 +17483,9 @@ SwBarScan(now) {
 		}
 	if (L < 0)
 		{
-		if (SwFrMiss = 0 and now - SwFrMoveT >= 0.2 and Abs(SwFrTop - SwFrRef) <= 1 and SwDarkTest())
+		if (SwFrMiss = 0 and now - SwFrMoveT >= 0.2 and Abs(SwFrTop - SwFrRef) <= 1 and now - SwLitRawT >= 0.8 and SwDarkTest())
 			SwFrBad++
+		SwBarHold := (SwFoundT and now - SwFoundT < 0.5 and now - SwLitRawT < 0.6 and SwFrMiss = 0)
 		return
 		}
 	SwFrBad := 0
@@ -16911,6 +17499,7 @@ SwBarScan(now) {
 		SwCacheFrT := SwFrT
 		}
 	SwFound := true
+	SwFoundT := now
 	SwBarL := Round(FishBarLeft) + L
 	SwBarW := w
 	SwLastL := L
@@ -17010,7 +17599,7 @@ SwFrameBot(ft, ByRef t0, ByRef t1, ByRef r0, ByRef r1) {
 }
 
 SwCleanFrame(ra, rb, yt, yb, ByRef cl, ByRef cw, now) {
-	global pCaptureBits, CaptureW, SwS, SwSB, SwPhase, WindowWidth, SwPrmFr, SwWMeas, SwPostT
+	global pCaptureBits, CaptureW, SwS, SwSB, SwPhase, WindowWidth, SwPrmFr, SwWMeas, SwPostT, SwPitch
 	cl := -1
 	cw := 0
 	if (!ra.Length() or !rb.Length())
@@ -17048,7 +17637,15 @@ SwCleanFrame(ra, rb, yt, yb, ByRef cl, ByRef cw, now) {
 	w1 := b1 - a1 + 1
 	if (w1 < 0.08 * WindowWidth or w1 > 0.5 * WindowWidth)
 		return false
-	if (SwCover(ra, a1, b1) < 0.85 * w1 or SwCover(rb, a2, b2) < 0.85 * (b2 - a2 + 1))
+	m := Round(0.2 * SwPitch)
+	if (SwInZone(a1, m) or SwInZone(b1, m) or SwInZone(a2, m) or SwInZone(b2, m))
+		return false
+	e1 := SwZoneLen(a1, b1)
+	e2 := SwZoneLen(a2, b2)
+	c1 := SwCover(ra, a1, b1)
+	c2 := SwCover(rb, a2, b2)
+	w2 := b2 - a2 + 1
+	if ((c1 < 0.85 * w1 or c2 < 0.85 * w2) and (e1 > 0.7 * w1 or 0.15 * c1 + 0.85 * SwCoverX(ra, a1, b1) < 0.85 * (w1 - e1) or 0.15 * c2 + 0.85 * SwCoverX(rb, a2, b2) < 0.85 * (w2 - e2)))
 		return false
 	if (SwPhase and SwDarkTest())
 		{
@@ -17136,12 +17733,14 @@ SwFit(ra, rb, yt, yb, w, ByRef L) {
 	lim := Round(0.1 * WindowWidth)
 	best := -999999
 	bestIn := 0
+	bestEx := 0
 	for i, c in cands
 		{
 		if (SwLastL >= 0 and Abs(c - SwLastL) > lim)
 			continue
-		inside := SwCover(ra, c, c + w - 1) + SwCover(rb, c, c + w - 1)
-		outside := SwCover(ra, c - d, c - 1) + SwCover(ra, c + w, c + w + d - 1) + SwCover(rb, c - d, c - 1) + SwCover(rb, c + w, c + w + d - 1)
+		inside := SwCoverX(ra, c, c + w - 1) + SwCoverX(rb, c, c + w - 1)
+		ex := SwZoneLen(c, c + w - 1)
+		outside := SwCoverX(ra, c - d, c - 1) + SwCoverX(ra, c + w, c + w + d - 1) + SwCoverX(rb, c - d, c - 1) + SwCoverX(rb, c + w, c + w + d - 1)
 		dark := SwCover(ka, c, c + w - 1) + SwCover(kb, c, c + w - 1)
 		sc := inside - outside - 5 * dark
 		if (SwLastL >= 0)
@@ -17151,9 +17750,11 @@ SwFit(ra, rb, yt, yb, w, ByRef L) {
 			best := sc
 			L := c
 			bestIn := inside
+			bestEx := ex
 			}
 		}
-	if (L < 0 or bestIn < 1.4 * w)
+	pl := (L < 0) ? 0 : SwCover(ra, L, L + w - 1) + SwCover(rb, L, L + w - 1)
+	if (L < 0 or ((bestEx > 0.7 * w or 0.3 * pl + 0.7 * bestIn < 1.4 * (w - bestEx)) and pl < 1.4 * w))
 		{
 		L := -1
 		return false
@@ -17221,7 +17822,8 @@ SwPianoCheck() {
 }
 
 SwFishScan(now) {
-	global pCaptureBits, CaptureW, CaptureH, SwS, SwSB, SwFrTop, SwFishX, SwFishAt, SwFishLast, FishBarLeft, WindowWidth, SwPrmCap, SwPrmCapI, SwPrmHd, SwPrmHdI
+	global pCaptureBits, CaptureW, CaptureH, SwS, SwSB, SwFrTop, SwFishX, SwFishAt, SwFishLast, FishBarLeft, WindowWidth, SwPrmCap, SwPrmCapI, SwPrmHd, SwPrmHdI, SwFishHeld
+	global SwFrMiss, SwFound, SwBarL, SwBarW
 	global SwXCap, SwXCapN, SwXHd, SwXHdN
 	SwFishX := -1
 	yc := SwFrTop - Round(5 * SwSB)
@@ -17279,14 +17881,26 @@ SwFishScan(now) {
 			fx := h
 		}
 	if (fx < 0)
+		{
+		held := (SwFishLast >= 0 and now - SwFishAt < 0.6 and SwFrMiss = 0 and SwFound and SwFishLast >= SwBarL + 0.15 * SwBarW
+			and SwFishLast <= SwBarL + 0.85 * SwBarW and SwGlowNear(SwFishLast - Round(FishBarLeft), 1.1, 0.7, now))
+		if (held)
+			{
+			SwFishX := SwFishLast
+			if (!SwFishHeld)
+				SwLog("fish held at " . Round(SwFishLast))
+			}
+		SwFishHeld := held
 		return
+		}
+	SwFishHeld := false
 	SwFishX := Round(FishBarLeft) + fx
 	SwFishLast := SwFishX
 	SwFishAt := now
 }
 
 SwDarkTest() {
-	global pCaptureBits, CaptureW, SwS, SwSB, SwFrTop, FishBarLeft, WindowWidth
+	global pCaptureBits, CaptureW, SwS, SwSB, SwFrTop, FishBarLeft, WindowWidth, SwZL
 	y := SwFrTop - Round(12 * SwSB)
 	if (y < 0)
 		return false
@@ -17296,7 +17910,7 @@ SwDarkTest() {
 	Loop 24
 		{
 		x := Round(WindowWidth * (0.225 + 0.55 * (A_Index - 0.5) / 24)) - Round(FishBarLeft)
-		if (x < 0 or x >= CaptureW)
+		if (x < 0 or x >= CaptureW or SwInZone(x, 0))
 			continue
 		px := NumGet(p + x * 4, 0, "UInt")
 		b := px & 0xFF
@@ -17307,7 +17921,7 @@ SwDarkTest() {
 		if (mx < 50)
 			d++
 		}
-	return (n >= 12 and d >= 0.85 * n)
+	return (n >= (SwZL.Length() ? 8 : 12) and d >= 0.85 * n)
 }
 
 SwGradLearn() {
@@ -17463,9 +18077,9 @@ SwSlotWhite(k) {
 	return (cnt >= 2)
 }
 
-SwSlotsScan(now) {
-	global SwInstantClicks
+SwSlotsScan(now, held := false) {
 	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ
+	global SwSlotBlind, SwFishX, SwSB, SwMaxSigns
 	Loop 12
 		{
 		k := A_Index
@@ -17484,11 +18098,11 @@ SwSlotsScan(now) {
 				SwSlotHits[k] := (c >= 2) ? 1 : 0
 				}
 			else
-				SwSlotHits[k] := (c >= 2) ? SwSlotHits[k] + 1 : 0
-			if (SwSlotSt[k] = 1 and SwSlotHits[k] >= (SwInstantClicks ? 1 : 2))
+				SwSlotHits[k] := (c >= 2) ? SwSlotHits[k] + 1 : SwSlotHits[k]
+			if (SwSlotSt[k] = 1 and (SwSlotHits[k] >= (SwMaxSigns ? 1 : 2) or c >= 4))
 				SwAssign(k, now)
 			}
-		else if (st = 1)
+		else if (st = 1 and !held)
 			{
 			if (!SwSlotGone[k])
 				SwSlotGone[k] := now
@@ -17499,12 +18113,14 @@ SwSlotsScan(now) {
 				SwSlotGone[k] := 0
 				}
 			}
+		else if (st = 0 and !held and (SwFishX < 0 or Abs(SwFishX - SwSlotX(k)) >= 40 * SwSB))
+			SwSlotBlind[k] := now
 		}
 }
 
 SwAssign(k, now) {
 	global SwMaxSigns
-	global SwSlotSt, SwSlotFirst, SwSlotLvl, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ, SwPhaseT, SwStarStableT, SwLitRaw, SwLitRawT, SwTieWas
+	global SwSlotSt, SwSlotFirst, SwSlotLvl, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ, SwPhaseT, SwStarStableT, SwLitRaw, SwLitRawT, SwTieWas, SwSlotBlind
 	SwSlotSt[k] := 2
 	if (SwK0 < 0 and now - SwStarStableT >= SwSec(SwMaxSigns ? 0 : 0.1) and SwLit = SwLitRaw and now - SwLitRawT >= SwSec(SwMaxSigns ? 0.05 : 0.3))
 		SwK0 := SwLit
@@ -17536,10 +18152,29 @@ SwAssign(k, now) {
 		SwTie[k] := 1
 		SwTie[SwOrder[pos + 1]] := 1
 		}
-	if (pos > 1 and SwSlotLvl[k] >= 6 and now - SwPhaseT > 0.4)
+	b := SwSlotBlind[k]
+	if (b < SwPhaseT)
+		b := SwPhaseT
+	Loop % pos - 1
 		{
-		SwTie[k] := 1
-		SwTie[SwOrder[pos - 1]] := 1
+		o := SwOrder[A_Index]
+		if (o != k and SwSlotFirst[o] >= b - 0.05)
+			{
+			SwTie[o] := 1
+			SwTie[k] := 1
+			}
+		}
+	Loop % SwOrder.Length() - pos
+		{
+		o := SwOrder[pos + A_Index]
+		bo := SwSlotBlind[o]
+		if (bo < SwPhaseT)
+			bo := SwPhaseT
+		if (SwSlotFirst[k] >= bo - 0.05)
+			{
+			SwTie[o] := 1
+			SwTie[k] := 1
+			}
 		}
 	Loop 12
 		{
@@ -18012,22 +18647,12 @@ SwGuessRun(lit) {
 	SwLog("auto retry " . log)
 }
 
-SwClickFirst() {
-	global SpecialRod, SwSignsFirst, SwClickSigns, SwPhase, SwStop, SwLockFail, SwLit, SwK0, SwOrder, SwClickAt, SwRetryK
-	if (SpecialRod != "Stellarwave Melody" or !SwSignsFirst or !SwClickSigns or !SwPhase or SwStop or SwLockFail or SwLit >= 12)
-		return false
-	if (SwClickAt or SwRetryK)
-		return true
-	if (SwK0 < 0)
-		return (SwOrder.Length() > 0)
-	return (SwLit - SwK0 + 1 <= SwOrder.Length())
-}
-
-SwClickStep() {
+SwClickStepMax() {
+	global SwVetoM, SwVetoZ, SwRecZ
 	global SwMaxSigns, SwRetryFails
-	global SwClickSigns, SwStop, SwStopWhy, SwPhase, SwStarsValid, SwFound, SwFishX, SwLit, SwK0, SwOrder, SwSlotSt, SwSlotFirst, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwFastClicks, SwInstantClicks
+	global SwClickSigns, SwStop, SwStopWhy, SwPhase, SwStarsValid, SwFound, SwFishX, SwLit, SwK0, SwOrder, SwSlotSt, SwSlotFirst, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwFastClicks
 	global SwRetry, SwLastClick, SwLastOnset, SwTie, SwLockFail, SwBarL, SwBarW, SwS, SwSB, SwFrMiss, WindowWidth, SwPhaseT, SwStarStableT, SwPurpleN, SwFrMoveT, SwLitRaw, SwClickTook, SwLitRawT
-	global SwTieWas, SwSlotGone, PrecisionDown, PrecisionDownAt, QpcFreq, SwSignsFirst, SwFailN, SwFailAt, SwBurstN, SwRetryK, SwGuessOn, SwGuessDone, SwGuessGuess
+	global SwAllSigns, SwTieWas, SwSlotGone, PrecisionDown, PrecisionDownAt, QpcFreq, SwSignsFirst, SwFailN, SwFailAt, SwBurstN, SwRetryK, SwGuessOn, SwGuessDone, SwGuessGuess
 	if (SwGuessOn and SwPhase and SwClickSigns and !SwLockFail and !SwGuessDone and SwStarsValid and SwLit >= (SwGuessGuess ? 12 - SwGuessN() : 11) and SwLit < 12)
 		{
 		if (SwGuessGuess and SwGuessReady())
@@ -18140,12 +18765,12 @@ SwClickStep() {
 		return
 	if (SwK0 < 0)
 		{
-		if (now - SwStarStableT < SwSec(SwMaxSigns ? 0 : 0.1) or now - SwLitRawT < SwSec(SwMaxSigns ? 0 : (SwInstantClicks ? 0.1 : 0.3)) or !SwOrder.Length())
+		if (now - SwStarStableT < SwSec(SwMaxSigns ? 0 : 0.1) or now - SwLitRawT < SwSec(SwMaxSigns ? 0 : (1 ? 0.1 : 0.3)) or !SwOrder.Length())
 			return
 		SwK0 := SwLit
 		SwLog("k0 " . SwK0)
 		}
-	if (SwLit >= 12 or now - SwLastClick < SwSec(SwInstantClicks ? 0 : (SwFastClicks ? 0.05 : 0.2)))
+	if (SwLit >= 12 or now - SwLastClick < SwSec(1 ? 0 : (SwFastClicks ? 0.05 : 0.2)))
 		return
 	if (SwLit < SwK0)
 		{
@@ -18165,13 +18790,15 @@ SwClickStep() {
 		SwLog("stop: " . SwStopWhy . " slot " . k)
 		return
 		}
-	fast := (SwInstantClicks or (SwFastClicks and !SwTie[k] and !SwTieWas[k]))
-	if (now - SwSlotFirst[k] < SwSec(SwInstantClicks ? 0 : (fast ? 0.1 : 0.35)) or (!SwFailN and SwSlotWhite(k)))
+	fast := (1 or (SwFastClicks and !SwTie[k] and !SwTieWas[k]))
+	if (now - SwSlotFirst[k] < SwSec(1 ? 0 : (fast ? 0.1 : 0.35)) or (!SwFailN and SwSlotWhite(k)))
 		return
-	settled := SwInstantClicks or (SwOrder.Length() >= 12 - SwK0) or (SwOrder.Length() > i) or (now - SwLastOnset >= SwSec(fast ? 0.15 : 0.35))
+	if (SwAllSigns and SwOrder.Length() < 12 - SwK0 and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
+		return
+	settled := 1 or (SwOrder.Length() >= 12 - SwK0) or (SwOrder.Length() > i) or (now - SwLastOnset >= SwSec(fast ? 0.15 : 0.35))
 	if (!settled)
 		return
-	if (fast and !SwInstantClicks)
+	if (fast and !1)
 		{
 		Loop 12
 			{
@@ -18271,15 +18898,15 @@ SwClickStep() {
 			return
 			}
 		if (SwMaxSigns and !SwFailN)
-			SwBurst(i, k, now)
+			SwBurstMax(i, k, now)
 		else
-			SwDoClick(k, now, SwFailN > 0)
+			SwDoClickMax(k, now, SwFailN > 0)
 		return
 		}
 	res := SwTplOk(k, z)
 	if (res = 1)
 		{
-		SwDoClick(k, now, SwFailN > 0)
+		SwDoClickMax(k, now, SwFailN > 0)
 		return
 		}
 	if (res = 3)
@@ -18287,7 +18914,7 @@ SwClickStep() {
 	if (SwRetryFails)
 		{
 		SwLog("shape veto overridden " . SwZodiac(z) . " slot " . k)
-		SwDoClick(k, now, SwFailN > 0)
+		SwDoClickMax(k, now, SwFailN > 0)
 		return
 		}
 	SwStop := true
@@ -18295,12 +18922,12 @@ SwClickStep() {
 	SwLog("stop: " . SwStopWhy)
 }
 
-SwBurst(i, k, now) {
+SwBurstMax(i, k, now) {
 	global SwOrder, SwSlotSt, SwTie, SwK0, SwLit, SwStop, SwBurstN, SwNextI, SwClickLit, SwClickSlot
 	global SwSignsFirst, SwFishX, SwBarL, SwBarW, SwSB, SwRetryFails, SwGuessOn, SwGuessGuess
 	lit0 := SwLit
 	SwNextI := i + 1
-	if (!SwDoClick(k, now, false))
+	if (!SwDoClickMax(k, now, false))
 		{
 		SwNextI := 0
 		return
@@ -18318,7 +18945,7 @@ SwBurst(i, k, now) {
 		if (!SwRetryFails and SwTplOk(kk, Mod(SwK0 + j - 1, 12)) = 0)
 			break
 		SwNextI := j + 1
-		if (!SwDoClick(kk, SwNow(), false))
+		if (!SwDoClickMax(kk, SwNow(), false))
 			break
 		n++
 		j++
@@ -18330,73 +18957,9 @@ SwBurst(i, k, now) {
 	SwLog("burst " . n . " from lit " . lit0)
 }
 
-SwMs(ms) {
-	global TimeOffset
-	off := TimeOffset
-	if off is not number
-		off := 0
-	v := ms + off
-	return (v < 0) ? 0 : v
-}
-
-SwSec(sec) {
-	global TimeOffset
-	off := TimeOffset
-	if off is not number
-		off := 0
-	v := sec + off / 1000.0
-	return (v < 0) ? 0 : v
-}
-
-SwCursorGuard() {
-	global RobloxHwnd, MacroRunning, FishBarLeft, FishBarRight, FishBarTop, FishBarBottom, WindowHeight, LookDownX, LookDownY
-	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwStop
-	if (!MacroRunning or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
-		return false
-	moved := false
-	if (SwPreK)
-		{
-		CoordMode, Mouse, Screen
-		MouseGetPos, mx, my
-		el := SwNow() - SwPreAt
-		if (Abs(mx - SwPreX - SwPreNudge) > 2 or Abs(my - SwPreY) > 2)
-			{
-			CoordMode, Mouse, Client
-			SwPreK := 0
-			moved := true
-			SwLog("prehover ended (cursor moved)")
-			}
-		else if (SwStop or el >= 0.8)
-			{
-			CoordMode, Mouse, Client
-			SwPreEnd(SwStop ? "stop" : "timeout")
-			return true
-			}
-		else
-			{
-			if (!SwPreNudge and el >= 0.04)
-				{
-				MouseMove, % SwPreX + 1, % SwPreY, 0
-				SwPreNudge := 1
-				SwPreNudgeAt := SwNow()
-				}
-			CoordMode, Mouse, Client
-			return false
-			}
-		}
-	MouseGetPos, mx, my
-	if (my < FishBarTop - 0.03 * WindowHeight or my > FishBarBottom or mx < FishBarLeft or mx > FishBarRight)
-		return false
-	MouseMove, %LookDownX%, %LookDownY%, 0
-	if (moved)
-		SwParkSet()
-	SwLog("cursor parked from " . mx . "," . my)
-	return true
-}
-
-SwDoClick(k, now, slow := false) {
+SwDoClickMax(k, now, slow := false) {
 	global SwMaxSigns, SwBurstN, SwNextI
-	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY, SwClickAt, SwClickLit, SwClickSlot, SwClicks, SwLastClick, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwClickTook, SwFastClicks, SwInstantClicks
+	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY, SwClickAt, SwClickLit, SwClickSlot, SwClicks, SwLastClick, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwClickTook, SwFastClicks
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwK0, SwOrder, SwSlotSt, ControlMode, MacroRunning
 	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
 		return false
@@ -18455,12 +19018,12 @@ SwDoClick(k, now, slow := false) {
 	else
 		{
 		MouseMove, %sx%, %sy%, 0
-		if (SwFastClicks or SwInstantClicks)
+		if (SwFastClicks or 1)
 			PreciseSleep(SwMs(SwMaxSigns ? 10 : 40))
 		else
 			PreciseSleep(SwMs(75))
 		MouseMove, % sx + 1, % sy, 0
-		if (SwFastClicks or SwInstantClicks)
+		if (SwFastClicks or 1)
 			PreciseSleep(SwMs(SwMaxSigns ? 5 : 30))
 		else
 			PreciseSleep(SwMs(75))
@@ -18479,17 +19042,17 @@ SwDoClick(k, now, slow := false) {
 	send {lbutton down}
 	if (slow)
 		PreciseSleep(80)
-	else if (SwFastClicks or SwInstantClicks)
+	else if (SwFastClicks or 1)
 		PreciseSleep(SwMs(SwMaxSigns ? 20 : 50))
 	else
 		PreciseSleep(SwMs(90))
 	send {lbutton up}
-	if (SwFastClicks or SwInstantClicks)
+	if (SwFastClicks or 1)
 		PreciseSleep(SwMs(SwMaxSigns ? 5 : 40))
 	else
 		PreciseSleep(SwMs(60))
 	nk := 0
-	if (MacroRunning and (SwFastClicks or SwInstantClicks) and ControlMode != "Manual" and !SwStop and SwK0 >= 0 and SwLit < 11)
+	if (MacroRunning and (SwFastClicks or 1) and ControlMode != "Manual" and !SwStop and SwK0 >= 0 and SwLit < 11)
 		{
 		i := SwNextI ? SwNextI : SwLit - SwK0 + 2
 		if (i >= 1 and i <= SwOrder.Length())
@@ -18537,11 +19100,847 @@ SwDoClick(k, now, slow := false) {
 	return true
 }
 
+SwClickStep() {
+	global SwFrStillT, SwVetoM, SwVetoZ, SwDwell, SwDwellPN, SwPressN, SwClickStall, SwFrameT, SwReactEst, SwUnsureK, SwUnsureT, SwUnsureR, SwPressK, SwWantK, SwWantT, SwLitRaw
+	global SwClickSigns, SwStop, SwStopWhy, SwPhase, SwStarsValid, SwFound, SwFishX, SwLit, SwK0, SwOrder, SwSlotSt, SwSlotFirst, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwFastClicks
+	global SwRetry, SwLastClick, SwLastOnset, SwTie, SwLockFail, SwBarL, SwBarW, SwS, SwSB, SwFrMiss, WindowWidth, SwPhaseT, SwStarStableT, SwPurpleN, SwFrMoveT, SwLitRaw, SwClickTook, SwLitRawT
+	global SwTieWas, SwSlotGone, PrecisionDown, PrecisionDownAt, QpcFreq, SwSlotBlind, SwBarHold, MacroRunning, SwRetryClicks, SwTryAt, SwOverS
+	global SwMaxSigns, SwRetryFails, SwFailN, SwFailAt, SwRetryK, SwGuessOn, SwGuessDone, SwGuessGuess, SwAllSigns, SwAllN, SwAllT, SwAllI, FishBarLeft, SwSignsFirst
+	SwRetryClicks := SwRetryFails
+	SwPressTick()
+	if (SwMaxSigns and !SwPressK and !SwWantK)
+		{
+		SwClickStepMax()
+		return
+		}
+	if (SwPhase and SwClickSigns)
+		SwCursorGuard()
+	if (SwPressK)
+		return
+	if (SwAllN)
+		{
+		nowA := SwNow()
+		got := SwLit - SwClickLit
+		if (SwLit = 0 and SwClickLit > 0 and SwClickLit + SwAllN >= 12)
+			got := SwAllN
+		if (got > SwAllN)
+			got := SwAllN
+		if (got < SwAllN and nowA - SwClickAt < TA("swallconf", 450) / 1000.0)
+			return
+		if (got < 0)
+			got := 0
+		Loop % got
+			{
+			bj := SwAllI + A_Index - 1
+			if (bj >= 1 and bj <= SwOrder.Length())
+				{
+				SwSlotSt[SwOrder[bj]] := 3
+				SwMemMark(SwOrder[bj])
+				SwGlowAdd(Round(SwSlotX(SwOrder[bj])) - Round(FishBarLeft), nowA)
+				}
+			}
+		SwLog("all-signs burst " . got . "/" . SwAllN . " confirmed")
+		if (SwClickLit + got >= 12)
+			SwMemReset()
+		n0 := SwAllN
+		SwAllN := 0
+		if (got > 0)
+			{
+			SwClickAt := 0
+			SwRetry := 0
+			SwFailN := 0
+			SwPurpleN := 0
+			SwPressN := 0
+			SwTryAt := 0
+			SwOverS := 0
+			SwDwell := false
+			return
+			}
+		bj := SwAllI
+		if (bj >= 1 and bj <= SwOrder.Length())
+			SwClickSlot := SwOrder[bj]
+		}
+	if (SwGuessOn and SwPhase and SwClickSigns and !SwLockFail and !SwGuessDone and SwStarsValid and SwLit >= (SwGuessGuess ? 12 - SwGuessN() : 11) and SwLit < 12)
+		{
+		if (SwGuessGuess and SwGuessReady())
+			{
+			gl := SwGuessStars()
+			if (gl >= 12 - SwGuessN() and gl < 12)
+				{
+				SwGuessRun(gl)
+				return
+				}
+			}
+		else if (SwLit = 11 and SwLastOnly())
+			return
+		}
+	if (SwRetryK and SwPhase and SwClickSigns and !SwStop and !SwLockFail)
+		{
+		if (SwNow() >= SwFailAt)
+			{
+			k := SwRetryK
+			SwRetryK := 0
+			SwRetryClick(k)
+			}
+		return
+		}
+	if (SwWantK)
+		{
+		if (SwStop or SwLockFail or !SwPhase or !SwClickSigns or !MacroRunning)
+			SwWantK := 0
+		else if (SwSlotWhite(SwWantK) or (SwClickAt and SwWantK = SwClickSlot and (SwLitRaw = SwClickLit + 1 or (SwClickLit = 11 and SwLitRaw = 0))))
+			{
+			SwLog("want dropped slot " . SwWantK)
+			SwWantK := 0
+			}
+		else if (SwNow() - SwWantT > 0.25)
+			{
+			SwLog("want expired slot " . SwWantK)
+			SwWantK := 0
+			}
+		else if ((!SwFound and !SwBarHold) or (SwFishX < 0 and !SwSignsFirst))
+			return
+		else if (!SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB) and !(SwFastClicks and !PrecisionDown and SwFishX < SwBarL - 10 * SwSB))
+			{
+			SwLog("want dropped slot " . SwWantK . " (fish outside)")
+			SwWantK := 0
+			}
+		else
+			{
+			SwDoClick(SwWantK, SwWantT)
+			return
+			}
+		}
+	if (!SwClickSigns or SwStop or SwLockFail or !SwPhase or !SwStarsValid)
+		return
+	now := SwNow()
+	if (SwClickAt and (SwLit = SwClickLit + 1 or (SwClickLit = 11 and SwLit = 0)))
+		{
+		if (SwDwell)
+			SwReactLearn()
+		SwSlotSt[SwClickSlot] := 3
+		SwMemMark(SwClickSlot)
+		if (SwClickLit = 11)
+			SwMemReset()
+		SwClickAt := 0
+		SwFailN := 0
+		SwRetry := 0
+		SwPurpleN := 0
+		SwPressN := 0
+		SwTryAt := 0
+		SwOverS := 0
+		SwLog("click ok slot " . SwClickSlot . " lit " . SwLit)
+		if (SwDwell)
+			SwDwellEnd()
+		return
+		}
+	if ((!SwFound and !SwBarHold) or (SwFishX < 0 and !SwSignsFirst))
+		return
+	if (SwClickAt)
+		{
+		if (SwLit != SwClickLit)
+			{
+			SwStop := true
+			SwStopWhy := "lit " . SwClickLit . "->" . SwLit
+			SwLog("stop: " . SwStopWhy)
+			return
+			}
+		ta := (SwRetryClicks and SwTryAt > SwClickAt) ? SwTryAt : SwClickAt
+		fout := !SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB) and !(SwFastClicks and !PrecisionDown and SwFishX < SwBarL - 10 * SwSB)
+		left := SwRetryClicks and SwPressN + SwRetry < 3 and SwClickSlot != SwOverS
+		more := left and !fout
+		if (SwDwell)
+			{
+			if (SwLitRaw != SwClickLit or SwSlotWhite(SwClickSlot) or SwFrameT - SwClickAt >= 0.5)
+				{
+				if (SwLitRaw = SwClickLit + 1 or (SwClickLit = 11 and SwLitRaw = 0))
+					SwReactLearn()
+				SwDwellEnd()
+				}
+			else
+				{
+				SwDwellPN := (SwSlotStrokes(SwClickSlot) >= 2) ? SwDwellPN + 1 : 0
+				fl := Max(0.35, 1.5 * SwReactEst) + SwClickStall
+				if (SwDwellPN >= 2 and (SwRetryClicks ? more : SwPressN < 1) and fl <= 0.45 and SwFrameT - ta >= fl and !(SwFrMoveT and now - SwFrMoveT < 0.4))
+					{
+					SwPressN := SwPressN + 1
+					SwDwellPN := 0
+					SwTryAt := now
+					SwLog("repress " . SwPressN . " slot " . SwClickSlot)
+					SwDoClick(SwClickSlot, now)
+					return
+					}
+				}
+			}
+		if (now - ta < 1.0 + SwClickTook)
+			return
+		if (SwSlotWhite(SwClickSlot))
+			{
+			if (now - SwClickAt < 1.0 or (SwLitRaw != SwClickLit and now - SwClickAt < 1.5))
+				return
+			if (SwSoftFail("white", now))
+				return
+			SwStop := true
+			SwStopWhy := "white, star not lit"
+			SwLog("stop: " . SwStopWhy)
+			return
+			}
+		if (SwSlotStrokes(SwClickSlot) >= 2)
+			SwPurpleN := SwPurpleN + 1
+		else
+			SwPurpleN := 0
+		if (SwPurpleN >= 2 and (SwRetryClicks ? more : SwRetry < 1) and !(SwFrMoveT and now - SwFrMoveT < 0.4) and now - SwLitRawT >= 0.3)
+			{
+			SwRetry := SwRetry + 1
+			SwPurpleN := 0
+			SwTryAt := now
+			SwLog("retry " . SwRetry . " slot " . SwClickSlot . " (still purple)")
+			SwRetryClick(SwClickSlot)
+			return
+			}
+		if (now - ta < 1.5 or (left and fout))
+			return
+		if (SwSoftFail("click failed", now))
+			return
+		SwStop := true
+		SwStopWhy := "click failed"
+		SwLog("stop: " . SwStopWhy)
+		return
+		}
+	if (SwFailAt and now < SwFailAt)
+		return
+	if (SwLit != SwLitRaw)
+		return
+	if (SwK0 < 0)
+		{
+		if (now - SwStarStableT < 0.1 or now - SwLitRawT < 0.3 or !SwOrder.Length())
+			return
+		SwK0 := SwLit
+		SwLog("k0 " . SwK0)
+		}
+	if (SwLit >= 12 or now - SwLastClick < (SwFastClicks ? 0.05 : 0.2))
+		return
+	if (SwLit < SwK0)
+		{
+		SwStop := true
+		SwStopWhy := "lit below k0"
+		SwLog("stop: " . SwStopWhy)
+		return
+		}
+	i := SwLit - SwK0 + 1
+	if (i > SwOrder.Length())
+		return
+	k := SwOrder[i]
+	if (SwSlotSt[k] = 3)
+		{
+		SwStop := true
+		SwStopWhy := "target already clicked"
+		SwLog("stop: " . SwStopWhy . " slot " . k)
+		return
+		}
+	if (!SwFound and (SwTie[k] or SwTieWas[k]))
+		return
+	fast := (SwFastClicks and !SwTie[k] and !SwTieWas[k])
+	if (now - SwSlotFirst[k] < (SwFastClicks ? (SwTie[k] ? 0.2 : 0.1) : 0.35) or SwSlotWhite(k))
+		return
+	if (SwAllSigns and SwOrder.Length() < 12 - SwK0 and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
+		return
+	settled := (SwOrder.Length() >= 12 - SwK0) or (SwOrder.Length() > i) or (now - SwLastOnset >= (SwFastClicks ? 0.15 : 0.35))
+	if (!settled)
+		return
+	if (fast)
+		{
+		Loop 12
+			{
+			if (A_Index != k and SwSlotSt[A_Index] = 1 and !SwSlotGone[A_Index] and now - SwSlotFirst[A_Index] < 0.5 and (SwSlotFirst[A_Index] <= SwSlotFirst[k] + 0.15 or Max(SwSlotBlind[A_Index], SwPhaseT) <= SwSlotFirst[k] + 0.15))
+				return
+			}
+		}
+	if (SwFrMiss or (SwFrMoveT and now - SwFrMoveT < 0.4 and now - SwFrStillT < 0.15))
+		return
+	if (!SwAllSigns and !SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB) and !(SwFastClicks and !PrecisionDown and SwFishX < SwBarL - 10 * SwSB))
+		return
+	z := Mod(SwK0 + i - 1, 12)
+	if (SwTie[k])
+		{
+		j := i + 1
+		while (j <= SwOrder.Length() and SwTie[SwOrder[j]])
+			j++
+		if (j - 1 > i)
+			{
+			best := k
+			bestS := -9
+			secondS := -9
+			nleft := 0
+			lone := 0
+			firstLeft := 0
+			Loop % j - i
+				{
+				kk := SwOrder[i + A_Index - 1]
+				if (z = SwVetoZ and (SwVetoM >> (kk - 1)) & 1)
+					continue
+				tdZ := -1
+				tdS := -9
+				sc := SwTplBest2(kk, z, tdZ, tdS)
+				if (tdS >= 0.5 and tdZ != z and tdS >= sc + 0.2)
+					{
+					SwLog("tie drop slot " . kk . " looks like " . SwZodiac(tdZ) . " (" . Round(tdS, 3) . ")")
+					continue
+					}
+				if (nleft = 0)
+					firstLeft := kk
+				nleft++
+				lone := kk
+				if (sc > bestS)
+					{
+					secondS := bestS
+					bestS := sc
+					best := kk
+					}
+				else if (sc > secondS)
+					secondS := sc
+				}
+			if (nleft = 1)
+				best := lone
+			else if (nleft > 1 and !(bestS >= 0.5 and bestS - secondS >= 0.08))
+				{
+				best := firstLeft
+				SwLog("tie by order slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . " vs " . Round(secondS, 3) . ")")
+				}
+			if (nleft = 0 and !SwRetryFails)
+				{
+				if (SwRecover(i, z))
+					return
+				if (now - SwLastOnset > 1.0)
+					{
+					SwStop := true
+					SwStopWhy := "tie unresolved " . SwZodiac(z)
+					SwLog("stop: " . SwStopWhy . " (" . Round(bestS, 3) . " vs " . Round(secondS, 3) . ")")
+					}
+				return
+				}
+			if (best != k)
+				{
+				Loop % SwOrder.Length()
+					{
+					if (SwOrder[A_Index] = best)
+						{
+						SwOrder.RemoveAt(A_Index)
+						break
+						}
+					}
+				SwOrder.InsertAt(i, best)
+				SwLog("tie pick slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . ")")
+				k := best
+				}
+			}
+		SwTie[k] := 0
+		}
+	if (SwFastClicks and PrecisionDown and !SwSignsFirst)
+		{
+		DllCall("QueryPerformanceCounter", "Int64*", qn)
+		if ((qn - PrecisionDownAt) * 1000.0 / QpcFreq < 250)
+			return
+		}
+	if (fast)
+		{
+		if (SwTplOk(k, z) = 0)
+			{
+			if (SwRecover(i, z))
+				return
+			if (SwRetryClicks)
+				{
+				SwOverride(i, k, z, now)
+				return
+				}
+			SwStop := true
+			SwStopWhy := "shape veto " . SwZodiac(z) . " slot " . k
+			SwLog("stop: " . SwStopWhy)
+			return
+			}
+		SwDoClick(k, now)
+		return
+		}
+	res := SwTplOk(k, z)
+	if (res = 1)
+		{
+		SwDoClick(k, now)
+		return
+		}
+	rearm := (SwTieWas[k] and i < SwOrder.Length() and SwTie[SwOrder[i + 1]])
+	if (res = 3)
+		{
+		if (SwUnsureK != k * 16 + z)
+			{
+			SwUnsureK := k * 16 + z
+			SwUnsureT := now
+			}
+		if ((!SwFastClicks and !SwRetryClicks) or now - SwUnsureT < 0.2)
+			return
+		if (rearm and SwUnsureR != k * 16 + z)
+			{
+			SwUnsureR := k * 16 + z
+			SwTie[k] := 1
+			SwLog("unsure retie slot " . k . " for " . SwZodiac(z))
+			return
+			}
+		SwLog("unsure click slot " . k . " for " . SwZodiac(z))
+		SwDoClick(k, now)
+		return
+		}
+	if (SwRecover(i, z))
+		return
+	if (rearm)
+		{
+		if (SwVetoZ != z)
+			{
+			SwVetoZ := z
+			SwVetoM := 0
+			}
+		SwVetoM := SwVetoM | (1 << (k - 1))
+		SwTie[k] := 1
+		SwLog("tie retry slot " . k . " not " . SwZodiac(z))
+		return
+		}
+	if (SwRetryClicks)
+		{
+		SwOverride(i, k, z, now)
+		return
+		}
+	SwStop := true
+	SwStopWhy := "shape veto " . SwZodiac(z) . " slot " . k
+	SwLog("stop: " . SwStopWhy)
+}
+
+SwMs(ms) {
+	global TimeOffset
+	off := TimeOffset
+	if off is not number
+		off := 0
+	v := ms + off
+	return (v < 0) ? 0 : v
+}
+
+SwSec(sec) {
+	global TimeOffset
+	off := TimeOffset
+	if off is not number
+		off := 0
+	v := sec + off / 1000.0
+	return (v < 0) ? 0 : v
+}
+
+SwClickFirst() {
+	global SpecialRod, SwSignsFirst, SwClickSigns, SwPhase, SwStop, SwLockFail, SwLit, SwK0, SwOrder, SwClickAt, SwRetryK, SwAllN
+	if (SpecialRod != "Stellarwave Melody" or !SwSignsFirst or !SwClickSigns or !SwPhase or SwStop or SwLockFail or SwLit >= 12)
+		return false
+	if (SwClickAt or SwRetryK or SwAllN)
+		return true
+	if (SwK0 < 0)
+		return (SwOrder.Length() > 0)
+	return (SwLit - SwK0 + 1 <= SwOrder.Length())
+}
+
+SwOverride(i, k, z, now) {
+	global SwOverK, SwOverT, SwOverL, SwOverR, SwOverS, SwRecZ
+	if (SwOverK != k * 16 + z or now - SwOverL > 0.1)
+		{
+		SwOverK := k * 16 + z
+		SwOverT := now
+		}
+	SwOverL := now
+	if (now - SwOverT < 0.2)
+		return
+	if (SwOverR != z)
+		{
+		SwOverR := z
+		SwRecZ := -1
+		if (SwRecover(i, z))
+			return
+		}
+	SwOverS := k
+	SwLog("veto override slot " . k . " for " . SwZodiac(z))
+	SwDoClick(k, now)
+}
+
+SwCursorGuard() {
+	global RobloxHwnd, MacroRunning, FishBarLeft, FishBarRight, FishBarTop, FishBarBottom, WindowHeight, LookDownX, LookDownY
+	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwStop, SwDwell, SwClickSlot, SwClickAt, SwFastClicks
+	global SwPressK, SwHov1, SwMoveOn, SwHyb, SwWantK, SwLockN, SwLockFail, SwStopWhy, SwWantStrk
+	if (!MacroRunning or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	if (SwPressK)
+		return false
+	moved := false
+	if (SwPreK)
+		{
+		CoordMode, Mouse, Screen
+		MouseGetPos, mx, my
+		el := SwNow() - SwPreAt
+		if (Abs(mx - SwPreX - SwPreNudge) > 2 or Abs(my - SwPreY) > 2)
+			{
+			CoordMode, Mouse, Client
+			SwPreK := 0
+			SwDwell := false
+			moved := true
+			SwLog("prehover ended (cursor moved)")
+			if (SwWantK and (Abs(mx - SwPreX - SwPreNudge) > 8 or Abs(my - SwPreY) > 8))
+				{
+				SwWantStrk := SwWantStrk + 1
+				if (SwWantStrk >= 3)
+					{
+					SwWantK := 0
+					SwLockN++
+					SwLockFail := true
+					SwStop := true
+					SwStopWhy := "cursor locked"
+					SwLog("stop: cursor locked (" . mx . "," . my . " vs " . SwPreX . "," . SwPreY . ")")
+					}
+				}
+			}
+		else if (SwStop or el >= 0.8)
+			{
+			CoordMode, Mouse, Client
+			SwPreEnd(SwStop ? "stop" : "timeout")
+			return true
+			}
+		else if (SwDwell and SwFastClicks and SwPreK = SwClickSlot and SwNow() - SwClickAt >= SwMoveOn - SwHyb)
+			{
+			rem := SwMoveOn - (SwNow() - SwClickAt)
+			if (rem > 0)
+				PreciseSleep(rem * 1000)
+			CoordMode, Mouse, Client
+			SwPreNext()
+			return false
+			}
+		else
+			{
+			h1 := SwFastClicks ? SwHov1 : 0.075
+			if (!SwPreNudge and el >= h1 - SwHyb)
+				{
+				rem := h1 - el
+				if (rem > 0)
+					PreciseSleep(rem * 1000)
+				MouseMove, % SwPreX + 1, % SwPreY, 0
+				SwPreNudge := 1
+				SwPreNudgeAt := SwNow()
+				}
+			CoordMode, Mouse, Client
+			return false
+			}
+		}
+	MouseGetPos, mx, my
+	if (my < FishBarTop - 0.03 * WindowHeight or my > FishBarBottom or mx < FishBarLeft or mx > FishBarRight)
+		return false
+	MouseMove, %LookDownX%, %LookDownY%, 0
+	if (moved)
+		SwParkSet()
+	SwLog("cursor parked from " . mx . "," . my)
+	return true
+}
+
+SwDoClick(k, now) {
+	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, SwClickLit, SwClickSlot, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwFastClicks
+	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, ControlMode, MacroRunning
+	global SwDwell, SwPressN, SwWantK, SwWantT, SwWantNom, SwWantPre, SwWantSx, SwWantSy, SwWantCx, SwWantCy, SwPressK, SwPressQ, SwPressMs, SwPressDecT, SwPressNom, SwPressCx, SwPressCy, SwPressPre, SwPressSx, SwPressSy, SwHov1, SwHov2, SwHyb
+	global SwWantStrk, SwPressLit, SwMaxSigns
+	if (SwPressK)
+		return false
+	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	wasWant := SwWantK
+	atomic := (ControlMode = "Manual" or !MacroRunning)
+	nomA := 0
+	if (PrecisionDown or GetKeyState("LButton"))
+		{
+		send {lbutton up}
+		PrecisionDown := false
+		DllCall("QueryPerformanceCounter", "Int64*", PrecisionUpAt)
+		}
+	if (wasWant = k)
+		{
+		cx := SwWantCx
+		cy := SwWantCy
+		sx := SwWantSx
+		sy := SwWantSy
+		}
+	else
+		{
+		cx := Round(SwSlotX(k))
+		if (Abs(SwFishX - cx) < 20 * SwSB)
+			cx := cx + ((SwFishX >= cx) ? -Round(22 * SwSB) : Round(22 * SwSB))
+		cy := Round(FishBarTop) + SwFrTop + Round(44 * SwSB)
+		VarSetCapacity(pt, 8, 0)
+		NumPut(cx, pt, 0, "Int")
+		NumPut(cy, pt, 4, "Int")
+		DllCall("ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
+		sx := NumGet(pt, 0, "Int")
+		sy := NumGet(pt, 4, "Int")
+		}
+	h1 := SwFastClicks ? SwHov1 : 0.075
+	h2 := SwFastClicks ? SwHov2 : 0.075
+	CoordMode, Mouse, Screen
+	pre := false
+	if (SwPreK = k and Abs(sx - SwPreX) <= 3 and Abs(sy - SwPreY) <= 3)
+		{
+		MouseGetPos, mx, my
+		if (Abs(mx - SwPreX - SwPreNudge) <= 2 and Abs(my - SwPreY) <= 2)
+			{
+			pre := true
+			sx := SwPreX
+			sy := SwPreY
+			}
+		}
+	if (!pre)
+		{
+		MouseMove, %sx%, %sy%, 0
+		SwPreX := sx
+		SwPreY := sy
+		SwPreK := k
+		SwPreNudge := 0
+		SwPreNudgeAt := 0
+		SwPreAt := SwNow()
+		SwDwell := false
+		if (!atomic)
+			{
+			CoordMode, Mouse, Client
+			if (wasWant != k)
+				{
+				SwWantK := k
+				SwWantT := now
+				SwWantNom := (h1 + h2) * 1000
+				SwWantPre := false
+				SwWantSx := sx
+				SwWantSy := sy
+				SwWantCx := cx
+				SwWantCy := cy
+				SwWantStrk := 0
+				}
+			else
+				{
+				SwWantNom := SwWantNom + (h1 + h2) * 1000
+				SwWantPre := false
+				}
+			return false
+			}
+		PreciseSleep(h1 * 1000)
+		MouseMove, % sx + 1, % sy, 0
+		SwPreNudge := 1
+		SwPreNudgeAt := SwNow()
+		PreciseSleep(h2 * 1000)
+		nomA := (h1 + h2) * 1000
+		}
+	else
+		{
+		if (!SwPreNudge)
+			{
+			rem := SwPreAt + h1 - SwNow()
+			if (rem > SwHyb and !atomic)
+				{
+				CoordMode, Mouse, Client
+				if (!SwWantK)
+					{
+					SwWantK := k
+					SwWantT := now
+					SwWantNom := (rem + h2) * 1000
+					SwWantPre := true
+					SwWantSx := sx
+					SwWantSy := sy
+					SwWantCx := cx
+					SwWantCy := cy
+					SwWantStrk := 0
+					}
+				return false
+				}
+			if (rem > 0)
+				{
+				PreciseSleep(rem * 1000)
+				nomA := nomA + rem * 1000
+				}
+			MouseMove, % sx + 1, % sy, 0
+			SwPreNudge := 1
+			SwPreNudgeAt := SwNow()
+			}
+		rem := SwPreNudgeAt + h2 - SwNow()
+		if (rem > SwHyb and !atomic)
+			{
+			CoordMode, Mouse, Client
+			if (!SwWantK)
+				{
+				SwWantK := k
+				SwWantT := now
+				SwWantNom := rem * 1000
+				SwWantPre := true
+				SwWantSx := sx
+				SwWantSy := sy
+				SwWantCx := cx
+				SwWantCy := cy
+				SwWantStrk := 0
+				}
+			return false
+			}
+		if (rem > 0)
+			{
+			PreciseSleep(rem * 1000)
+			nomA := nomA + rem * 1000
+			}
+		}
+	MouseGetPos, mx, my
+	CoordMode, Mouse, Client
+	if (Abs(mx - sx) > 8 or Abs(my - sy) > 8)
+		{
+		SwWantK := 0
+		SwLockN++
+		SwLockFail := true
+		SwStop := true
+		SwStopWhy := "cursor locked"
+		SwLog("stop: cursor locked (" . mx . "," . my . " vs " . sx . "," . sy . ")")
+		return false
+		}
+	pr := SwPressN ? 120 : 90
+	SwPressNom := (wasWant ? SwWantNom : nomA) + pr
+	SwPressDecT := wasWant ? SwWantT : now
+	SwPressPre := wasWant ? SwWantPre : pre
+	SwWantK := 0
+	SwPreK := 0
+	SwDwell := false
+	SwPressLit := SwLit
+	SwPressCx := cx
+	SwPressCy := cy
+	SwPressSx := sx
+	SwPressSy := sy
+	SwPressMs := pr
+	SendInput {lbutton down}
+	DllCall("QueryPerformanceCounter", "Int64*", SwPressQ)
+	SwPressK := k
+	SwLastStep := SwNow()
+	if (atomic)
+		{
+		PreciseSleep(pr)
+		SwPressEnd()
+		}
+	return true
+}
+
+SwPressTick() {
+	global SwPressK, SwPressQ, SwPressMs, QpcFreq, SwHyb
+	if (!SwPressK)
+		return
+	if (GetKeyState("LButton"))
+		{
+		DllCall("QueryPerformanceCounter", "Int64*", q)
+		rem := SwPressMs - (q - SwPressQ) * 1000.0 / QpcFreq
+		if (rem > 20)
+			return
+		if (rem > 0)
+			PreciseSleep(rem)
+		SendInput {lbutton up}
+		}
+	SwPressDone()
+}
+
+SwPressEnd() {
+	global SwPressK
+	if (!SwPressK)
+		return
+	if (GetKeyState("LButton"))
+		SendInput {lbutton up}
+	SwPressDone()
+}
+
+SwPressDone() {
+	global SwPressK, SwPressDecT, SwPressNom, SwPressCx, SwPressCy, SwPressPre, SwPressSx, SwPressSy, SwPressN, SwRetry, SwClicks, SwClickAt, SwClickLit, SwClickTook, SwClickStall, SwPress0At, SwLastClick, SwLastStep
+	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwDwell, SwDwellPN, PrecisionUpAt, MacroRunning, ControlMode, SwPressLit, SwClickSlot
+	k := SwPressK
+	SwPressK := 0
+	SwClickLit := SwPressLit
+	SwClickSlot := k
+	SwPreX := SwPressSx
+	SwPreY := SwPressSy
+	SwPreNudge := 1
+	SwPreNudgeAt := SwNow()
+	SwPreAt := SwPreNudgeAt
+	SwPreK := k
+	SwDwell := true
+	SwDwellPN := 0
+	DllCall("QueryPerformanceCounter", "Int64*", PrecisionUpAt)
+	SwClickAt := SwNow()
+	if (!SwPressN)
+		SwPress0At := SwClickAt
+	SwClickTook := SwClickAt - SwPressDecT
+	SwClickStall := SwClickTook - SwPressNom / 1000.0
+	if (SwClickStall < 0)
+		SwClickStall := 0
+	if (!SwRetry and !SwPressN)
+		SwClicks++
+	SwLastClick := SwClickAt
+	SwLastStep := SwClickAt
+	SwLog("click slot " . k . " at " . SwPressCx . "," . SwPressCy . " lit " . SwClickLit . " took " . Round(SwClickTook * 1000) . (SwPressPre ? " pre" : "") . (SwPressN ? " repress" : ""))
+	if (!MacroRunning or ControlMode = "Manual")
+		SwPreEnd("park")
+}
+
+SwDwellEnd() {
+	global SwDwell, SwPreK, SwClickSlot
+	SwDwell := false
+	if (!SwPreK or SwPreK != SwClickSlot)
+		return
+	if (!SwPreNext())
+		SwPreEnd("done")
+}
+
+SwPreNext() {
+	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwFastClicks, MacroRunning, ControlMode, SwStop, SwK0, SwClickLit, SwOrder, SwSlotSt, SwClickSlot
+	global SwFishX, SwSB, SwFrTop, FishBarTop, RobloxHwnd
+	nk := 0
+	if (MacroRunning and SwFastClicks and ControlMode != "Manual" and !SwStop and SwK0 >= 0 and SwClickLit < 11 and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
+		{
+		i := SwClickLit - SwK0 + 2
+		if (i >= 1 and i <= SwOrder.Length())
+			{
+			nk := SwOrder[i]
+			if (nk = SwClickSlot or SwSlotSt[nk] != 2)
+				nk := 0
+			}
+		}
+	if (!nk)
+		return false
+	cx := Round(SwSlotX(nk))
+	if (Abs(SwFishX - cx) < 20 * SwSB)
+		cx := cx + ((SwFishX >= cx) ? -Round(22 * SwSB) : Round(22 * SwSB))
+	cy := Round(FishBarTop) + SwFrTop + Round(44 * SwSB)
+	VarSetCapacity(pt, 8, 0)
+	NumPut(cx, pt, 0, "Int")
+	NumPut(cy, pt, 4, "Int")
+	DllCall("ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
+	SwPreX := NumGet(pt, 0, "Int")
+	SwPreY := NumGet(pt, 4, "Int")
+	CoordMode, Mouse, Screen
+	MouseMove, %SwPreX%, %SwPreY%, 0
+	CoordMode, Mouse, Client
+	SwPreK := nk
+	SwPreNudge := 0
+	SwPreAt := SwNow()
+	SwLog("prehover slot " . nk)
+	return true
+}
+
+SwReactLearn() {
+	global SwFrameT, SwClickAt, SwPress0At, SwPressN, SwReactEst
+	lat := SwFrameT - SwClickAt
+	if (SwPressN and lat < 0.10)
+		lat := SwFrameT - SwPress0At
+	SwReactEst := Max(lat, 0.8 * SwReactEst)
+}
+
 SwPreEnd(why) {
-	global SwPreK, RobloxHwnd, SwParkX, SwParkY
+	global SwPreK, RobloxHwnd, SwParkX, SwParkY, SwDwell, SwPressK
+	if (SwPressK)
+		SwPressEnd()
 	if (!SwPreK)
 		return
 	SwPreK := 0
+	SwDwell := false
 	if (RobloxHwnd)
 		{
 		SwParkSet()
@@ -18591,11 +19990,54 @@ SwTplOk(k, z) {
 	s1 := SwTplScore(m, kn, Mod(z + 11, 12))
 	s2 := SwTplScore(m, kn, Mod(z + 1, 12))
 	SwLog("shape slot " . k . " " . SwZodiac(z) . " " . Round(s0, 3) . " prev " . Round(s1, 3) . " next " . Round(s2, 3))
+	if (z < 11 and s2 >= 0.5 and s2 >= s0 + 0.15)
+		return 0
 	if (s0 < 0.05)
 		return 3
-	if ((s1 >= 0.5 and s1 >= s0 + 0.15) or (s2 >= 0.5 and s2 >= s0 + 0.15))
-		return 0
 	return 1
+}
+
+SwRecover(i, z) {
+	global SwSlotSt, SwOrder, SwRecZ
+	if (!SwTplSumFn() or z = SwRecZ)
+		return false
+	SwRecZ := z
+	n := 0
+	fk := 0
+	fs := 0
+	fo := 0
+	Loop 12
+		{
+		kk := A_Index
+		if (SwSlotSt[kk] >= 2 or SwSlotWhite(kk))
+			continue
+		SwTplMask(kk, m, kn)
+		if (!IsObject(m))
+			continue
+		sc := SwTplScore(m, kn, z)
+		ot := -9
+		zz := z + 1
+		while (zz < 12)
+			{
+			s := SwTplScore(m, kn, zz)
+			if (s > ot)
+				ot := s
+			zz++
+			}
+		if (sc >= 0.35 and sc >= ot + 0.10)
+			{
+			n++
+			fk := kk
+			fs := sc
+			fo := ot
+			}
+		}
+	if (n != 1)
+		return false
+	SwSlotSt[fk] := 2
+	SwOrder.InsertAt(i, fk)
+	SwLog("recover slot " . fk . " for " . SwZodiac(z) . " (" . Round(fs, 3) . " vs " . Round(fo, 3) . ")")
+	return true
 }
 
 SwTplBest2(k, z, ByRef tdZ, ByRef tdS) {
@@ -18605,15 +20047,16 @@ SwTplBest2(k, z, ByRef tdZ, ByRef tdS) {
 	if (!IsObject(m))
 		return -9
 	sc := -9
-	Loop 12
+	Loop % 12 - z
 		{
-		s := SwTplScore(m, kn, A_Index - 1)
-		if (A_Index - 1 = z)
+		zz := z + A_Index - 1
+		s := SwTplScore(m, kn, zz)
+		if (zz = z)
 			sc := s
 		if (s > tdS)
 			{
 			tdS := s
-			tdZ := A_Index - 1
+			tdZ := zz
 			}
 		}
 	return sc
@@ -20445,11 +21888,11 @@ FindColorCenter(targetBGR, tol) {
 GetFishPos() {
 	global FishBarColorTolerance, LastFishX, CaptureW, CaptureH, FishBarLeft, FishColor, BarScanRow
 	global RelLock, SpecialRod, PinFishX, ControlMode, LineFishX, NoiseFishX, CastFishX, RemTargetX, MiguFishX, HaliFishX
-	global TryFishX, SwFishX
+	global TryFishX, SwFishX, SwFishHeld
 	if (SpecialRod = "Stellarwave Melody")
 		{
 		SwScan()
-		return SwFishX
+		return SwFishHeld ? -1 : SwFishX
 		}
 	if (SpecialRod = "Castbound")
 		{
@@ -21212,9 +22655,9 @@ Gui, Margin, 0, 0
 ;---- Header ----------------------------------------------------------------------------------
 
 Gui, Font, s14 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x20 y13 w320 h28, 🐟 DeepFish BETA
+Gui, Add, Text, x20 y13 w320 h28, 🐟 DeepFish ULTIMATE
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x22 y42 w320 h16 HwndhSubtitle, Version 1.1.6  •  Made by Yato
+Gui, Add, Text, x22 y42 w320 h16 HwndhSubtitle, Version 1.1.7  •  Made by Yato
 SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
 
 Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
@@ -21520,7 +22963,7 @@ hC := AddPanel(CARDX, 120, CARDW, 152)
 GeneralCtrls.Push(hC)
 hC := AddPanel(CARDX, 282, CARDW, 168)
 GeneralCtrls.Push(hC)
-hC := AddPanel(CARDX, 460, CARDW, 256)
+hC := AddPanel(CARDX, 460, CARDW, 308)
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -21679,7 +23122,38 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
 IconTips[hQ] := "ON - while the macro runs (any rod, any mode), the`ninfo text and the bar overlay are invisible. The`nmacro still works exactly the same.`n`nStop the macro to see them again."
 Y += RH
+Gui, Font, s9 c%ColorText%, Segoe UI
+PaChk := PassiveAll ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vPassiveAll %PaChk% gPassiveAllChanged HwndhC, Passive mode (every rod)
+GeneralCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+GeneralCtrls.Push(hQ)
+IconTips[hQ] := "ON - the macro does NOT cast or shake, for ANY rod.`nAfter you press Start it just watches your screen`nand plays the minigame whenever it shows up, then`ngoes back to watching. You cast and shake yourself.`n`nKeeperbound recharge, totems and aquarium still run`nbetween fish.`n`nOFF - normal: the macro casts and shakes too."
+Y += RH
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Passive scan every (ms):
+GeneralCtrls.Push(hL)
+Gui, Add, Edit, x%IX% y%Y% w%IW% h20 vPassiveMs gPassiveAllChanged HwndhC +Number, %PassiveMs%
+GeneralCtrls.Push(hC)
+ThemedCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+GeneralCtrls.Push(hQ)
+IconTips[hQ] := "How often passive mode looks for the minigame.`nLower = it starts playing sooner, but uses a bit`nmore CPU. 500 is a good default; 100-200 if you`nwant it to grab the minigame faster."
+Y += RH
 
+return
+
+PassiveAllChanged:
+GuiControlGet, PaV, 1:, PassiveAll
+if (!ErrorLevel)
+	PassiveAll := PaV ? true : false
+GuiControlGet, PaMsV, 1:, PassiveMs
+if (!ErrorLevel and PaMsV != "")
+	PassiveMs := PaMsV + 0
+gosub, QueueAutoSave
 return
 
 AutoUpdateChanged:
@@ -21729,9 +23203,9 @@ IconTips[hQ] := "How the rod is cast.`n`nNORMAL - holds the mouse for a fixed ti
 CastGroupTop := 202
 
 ; ---- Normal group ----
-hC := AddPanel(CARDX, 192, CARDW, 78)
+hC := AddPanel(CARDX, 192, CARDW, 104)
 NormalCastCtrls.Push(hC)
-hC := AddPanel(CARDX, 280, CARDW, 108)
+hC := AddPanel(CARDX, 306, CARDW, 108)
 NormalCastCtrls.Push(hC)
 
 Y := CastGroupTop
@@ -21757,16 +23231,25 @@ for i, d in NormalCastDefs
 	IconTips[hQ] := hint
 	Y += RH
 	}
+SmartCastChk := SmartCast ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSmartCast %SmartCastChk% gSmartCastChanged HwndhC, Smart cast (recast if it did not go through)
+NormalCastCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+NormalCastCtrls.Push(hQ)
+IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nOFF - plain timed cast."
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y290 w%TXW% h16 HwndhNCTipHdr, QUICK RULES — NORMAL
+Gui, Add, Text, x%CX% y316 w%TXW% h16 HwndhNCTipHdr, QUICK RULES — NORMAL
 NormalCastCtrls.Push(hNCTipHdr)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
 NormalCastTips := "• Casts a fixed distance every time.`n"
 NormalCastTips .= "• Raise the hold duration to cast further out.`n"
 NormalCastTips .= "• Raise the bobber delay on laggy servers.`n"
 NormalCastTips .= "• No colors to calibrate — this always works."
-Gui, Add, Text, x%CX% y312 w%TXW% h68 cFFFFFF HwndhNCTips, %NormalCastTips%
+Gui, Add, Text, x%CX% y338 w%TXW% h68 cFFFFFF HwndhNCTips, %NormalCastTips%
 NormalCastCtrls.Push(hNCTips)
 SpecialBrushes[hNCTips] := {brush: hBrushCard, text: 0xFFFFFF}
 
@@ -21850,6 +23333,15 @@ SpecialBrushes[hPCTips] := {brush: hBrushCard, text: 0xFFFFFF}
 return
 
 ;====================================================================================================;
+
+SmartCastChanged:
+GuiControlGet, SmartCastV, 1:, SmartCast
+if (!ErrorLevel)
+	SmartCast := SmartCastV ? true : false
+CastSeenN := 0
+CastMissN := 0
+gosub, QueueAutoSave
+return
 
 CastModeChanged:
 GuiControlGet, CastMode, , CastMode
@@ -22242,15 +23734,15 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
 IconTips[hQ] := "ON - clicks each sign as soon as it appears,`nwith a shorter click, so the signs go faster.`n`nOFF - waits until each sign is fully drawn`nbefore clicking. Slower, the careful way.`n`nTurn it off if signs get missed or the wrong`nsign gets clicked."
 Y += RH
-SwInstChk := SwInstantClicks ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwInstantClicks %SwInstChk% gSwInstantChanged HwndhC, Instant sign clicks
+SwAllChk := SwAllSigns ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwAllSigns %SwAllChk% gSwAllSignsChanged HwndhC, Wait for all signs, then click
 MgAdd("stellar", hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - clicks each sign the moment it is seen,`nwithout waiting for the next signs to appear`nor for the sign to finish drawing. Includes`neverything Fast sign clicks does.`n`nFastest, but the most likely to click the wrong`nsign. Turn it off if casts keep failing."
+IconTips[hQ] := "ON - waits until EVERY sign for this round is on`nthe bar, then clicks them in order with the normal`n(1.1.7) clicks. With Max sign speed on, they go out`nin one burst instead.`n`nOFF - clicks each sign as it comes in."
 Y += RH
 SwFirstChk := SwSignsFirst ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwSignsFirst %SwFirstChk% gSwSignsFirstChanged HwndhC, Signs before bar
@@ -22280,7 +23772,7 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - pushes sign detection and clicking to the`nlimit: the stars are trusted almost the moment`nthey change, the start of the signs is locked in`nsooner, and each click is held and hovered for`nabout half as long. Turns on Instant sign clicks.`n`nExtreme: star changes are read every frame and`ntrusted instantly, every sign already showing is`nclicked in ONE burst without waiting for each star,`nclicks are 10ms hover / 20ms hold, and failed`nclicks are spotted and retried twice as fast.`n`nThe fastest setting, but the most likely to misread`na star or have a click not register. Pair it with`nRetry failed clicks."
+IconTips[hQ] := "ON - pushes sign detection and clicking to the`nlimit: the stars are trusted almost the moment`nthey change, the start of the signs is locked in`nsooner, and each click is held and hovered for`nabout half as long.`n`nExtreme: star changes are read every frame and`ntrusted instantly, every sign already showing is`nclicked in ONE burst without waiting for each star,`nclicks are 10ms hover / 20ms hold, and failed`nclicks are spotted and retried twice as fast.`n`nThe fastest setting, but the most likely to misread`na star or have a click not register. Pair it with`nRetry failed clicks."
 Y += RH
 SwPasChk := SwPassive ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwPassive %SwPasChk% gSwPassiveChanged HwndhC, Passive mode
@@ -23229,7 +24721,7 @@ KeeperCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: 0x4BC2FF}
 Gui, Font, s9 Norm c%ColorText%, Segoe UI
 
-hC := AddPanel(CARDX, 260, CARDW, 434)
+hC := AddPanel(CARDX, 260, CARDW, 512)
 KeeperCtrls.Push(hC)
 KeeperBodyCtrls.Push(hC)
 
@@ -23250,7 +24742,7 @@ KbFieldDefs := [ ["Wait before recharge (ms)","KeeperPreDelay","num"
 	, ["Menu delay (ms)","KeeperOpenDelay","num"
 	, "Pause after opening or closing the inventory."]
 	, ["Check every (catches)","KeeperOcrEvery","num"
-	, "Only used when Recharge when the power bar drops`nis on.`n`nHow many catches between checks of the power`nline. A check is instant, so 1 is fine."]
+	, "How many catches between checks of the power`nbar (auto % or power line). A check is instant,`nso 1 is fine."]
 	, ["Color tolerance","KeeperLineTol","num"
 	, "How far a pixel on the line may be from the bar`ncolor you picked and still count as the bar.`n`nRaise it (60-80) if Test says pixels are off`nwhile the bar is full. Lower it (20-30) if it`nnever notices the bar dropping."] ]
 
@@ -23335,8 +24827,43 @@ KeeperBodyCtrls.Push(hKC)
 SpecialBrushes[hKC] := {brush: hBrushCard, text: ColorMutedBGR}
 Gui, Font, s9 Norm c%ColorText%, Segoe UI
 KbY := KbSecY + 18
+KbAbChk := KeeperAutoBar ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%KbY% w280 h20 c%ColorText% vKeeperAutoBar %KbAbChk% gKeeperAutoBarChanged HwndhKC, Auto-read the power bar `% (no setup)
+KeeperCtrls.Push(hKC)
+KeeperBodyCtrls.Push(hKC)
+SpecialBrushes[hKC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x490 y%KbY% w16 h20 Center +0x100 +0x200 HwndhKQ, ?
+KeeperCtrls.Push(hKQ)
+KeeperBodyCtrls.Push(hKQ)
+SpecialBrushes[hKQ] := {brush: hBrushCard, text: ColorAccentBGR}
+IconTips[hKQ] := "EASIEST - nothing to set up.`n`nThe macro finds the purple power bar above your`nhotbar by itself (the one that says 68.3`% Power)`nand reads how full it is. When it drops below the`n`% you set, it recharges.`n`nJust hold your Keeperbound rod so the bar shows,`nthen press Test to check it can see it.`n`nIf the bar is not found it falls back to the power`nline below (if set), or to counting catches."
+KbBtnY := KbY - 2
+Gui, Add, Text, x562 y%KbBtnY% w166 h24 Center +0x100 +0x200 gKeeperTestAuto HwndhKC, Test
+KeeperCtrls.Push(hKC)
+KeeperBodyCtrls.Push(hKC)
+SpecialBrushes[hKC] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(hKC, 166, 24, 6)
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+KbY += 26
+Gui, Add, Text, x%CX% y%KbY% w%LW% h20 HwndhKC, Recharge below (`%):
+KeeperCtrls.Push(hKC)
+KeeperBodyCtrls.Push(hKC)
+SpecialBrushes[hKC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Add, Edit, x%IX% y%KbY% w%IW% h20 vKeeperAutoPct gQueueAutoSave HwndhKC, %KeeperAutoPct%
+KeeperCtrls.Push(hKC)
+KeeperBodyCtrls.Push(hKC)
+ThemedCtrls.Push(hKC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%KbY% w16 h20 Center +0x100 +0x200 HwndhKQ, ?
+KeeperCtrls.Push(hKQ)
+KeeperBodyCtrls.Push(hKQ)
+SpecialBrushes[hKQ] := {brush: hBrushCard, text: ColorAccentBGR}
+IconTips[hKQ] := "Recharges when the power bar reads lower than this.`n`n15 = recharge once it falls under 15`%.`nEach recharge adds about 5`%, so raise Recharges`nper trip if you set this low."
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+KbY += 26
 KbOcrChk := KeeperOcrOn ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%KbY% w280 h20 c%ColorText% vKeeperOcrOn %KbOcrChk% gKeeperOcrChanged HwndhKC, Recharge when the power bar drops
+Gui, Add, CheckBox, x%CX% y%KbY% w280 h20 c%ColorText% vKeeperOcrOn %KbOcrChk% gKeeperOcrChanged HwndhKC, Or use a power line (manual)
 KeeperCtrls.Push(hKC)
 KeeperBodyCtrls.Push(hKC)
 SpecialBrushes[hKC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -23555,6 +25082,44 @@ Gui, Show
 TargetSection := "Keeper"
 gosub, ShowSection
 gosub, KeeperRefreshSpots
+return
+
+KeeperAutoBarChanged:
+GuiControlGet, KbAbV, 1:, KeeperAutoBar
+if (!ErrorLevel)
+	KeeperAutoBar := KbAbV ? true : false
+gosub, QueueAutoSave
+return
+
+KeeperTestAuto:
+gosub, KeeperFindRoblox
+if (!RobloxHwnd)
+	{
+	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	return
+	}
+GuiControlGet, KbPctV, 1:, KeeperAutoPct
+if (!ErrorLevel and KbPctV != "")
+	KeeperAutoPct := KbPctV
+Gui, Hide
+WinActivate, ahk_id %RobloxHwnd%
+WinWaitActive, ahk_id %RobloxHwnd%, , 2
+Sleep 300
+KbBarY := -1
+KbTok := KbAutoRead(KbTp)
+Gui, Show
+TargetSection := "Keeper"
+gosub, ShowSection
+if (!KbTok)
+	msgbox, 4144, DeepFish, Could not find the power bar.`n`nHold your Keeperbound rod so the purple power bar (the one that says `% Power) is showing above your hotbar, close any menus, then press Test again.
+else
+	{
+	KbTat := KeeperAutoPct
+	if KbTat is not number
+		KbTat := 15
+	KbTres := (KbTp < KbTat) ? "This WOULD start a recharge." : "This would NOT start a recharge yet."
+	msgbox, 4160, DeepFish, % "Found the power bar - it reads about " . Round(KbTp, 1) . "`%.`nIt recharges below " . KbTat . "`%.`n`n" . KbTres
+	}
 return
 
 KeeperOcrChanged:
@@ -23838,6 +25403,12 @@ else if (KeeperRelicKey = "")
 	KbLine := "Set a relic hotbar key to enable."
 else if (!MacroRunning)
 	KbLine := "Waiting for the macro to start."
+else if (KeeperAutoBar)
+	{
+	KbLine := "Recharges when the power bar reads under " . KeeperAutoPct . "`%."
+	if (KbOcrLast != "")
+		KbLine .= "   Last check: " . KbOcrLast
+	}
 else if (KeeperOcrOn)
 	{
 	KbLine := "Recharges when the power bar drops below the line."
@@ -24596,6 +26167,7 @@ FaqT .= "Verdant Oath: only the green part of the bar counts. The macro keeps th
 FaqT .= "--------------------------------------------------------`n"
 FaqT .= "7.  DARKHEART, LULLABY, DREAMBREAKER AND BELLONAS WARAXE`n`n"
 FaqT .= "These only allow the detection modes that work with them. Use Lines, or Precision where it is offered, and tune Kp, Kd and Stopping Distance as usual.`n`n"
+FaqT .= "Dreambreaker: a few seconds into the minigame the controls flip - the bar starts drifting right and clicking moves it left. The macro switches over by itself about 1.5 s after the bar starts moving. No right clicks are needed.`n`n"
 FaqT .= "--------------------------------------------------------`n"
 FaqT .= "8.  MIGUROD`n`n"
 FaqT .= "MiguRod finds its bar on its own, so the bar colors do not matter for it. If the bar on the overlay looks wrong, that is worth reporting. The pale fish line is still matched by color, so pick that again in the Color Manager if the macro loses track of it.`n`n"
@@ -24614,6 +26186,7 @@ FaqT .= "Finds its bar and fish on its own. While the zodiac signs are on the ba
 FaqT .= "Keep the mouse cursor free during fights: no shift lock, no first person, camera mode off. If the cursor cannot reach a sign the macro stops clicking for that cast and just reels.`n`n"
 FaqT .= "Click the signs (on by default) can be turned off on its Setup page if the clicks make your fights worse.`n`n"
 FaqT .= "Fast sign clicks (off by default) clicks each sign as soon as it appears, with a shorter click, so the signs go faster. Turn it off again if signs get missed or the wrong sign gets clicked.`n`n"
+FaqT .= "Retry failed clicks (off by default) keeps trying a sign whose click did not go through, up to 3 more times a moment apart, and clicks a sign that does not look like the one it expects instead of stopping (not when several signs appeared at once). With it off there are fewer retries, and a sign that does not look right stops the sign clicks until the next signs appear. Turn it off if it starts clicking wrong signs.`n`n"
 FaqT .= "Its bar and fish colors are under Stellarwave colors on its Setup page, filled in with the rod's own colors. Change them only if the bar or fish is not picked up on your screen: open the Color Manager, Pick from screen, and click that part in game. Empty a box to go back to the normal color.`n`n"
 FaqT .= "--------------------------------------------------------`n"
 FaqTexts.Push(FaqT)
@@ -24733,7 +26306,7 @@ Gui, Add, Text, x%CX% y132 w%TXW% h28 HwndhAbtHdr, 🐟 DeepFish BETA
 AboutCtrls.Push(hAbtHdr)
 SpecialBrushes[hAbtHdr] := {brush: hBrushCard, text: ColorAccentBGR}
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Text, x%CX% y162 w%TXW% h18 HwndhAbtVer, Version 1.1.6  •  Made by Yato
+Gui, Add, Text, x%CX% y162 w%TXW% h18 HwndhAbtVer, Version 1.1.7  •  Made by Yato
 AboutCtrls.Push(hAbtVer)
 SpecialBrushes[hAbtVer] := {brush: hBrushCard, text: 0xFFFFFF}
 
@@ -24903,6 +26476,10 @@ return
 BuildVersionsSection:
 
 VersionNotes := []
+VersionNotes.Push(["Version 1.1.7 (mod build 18)", ["Merged the official 1.1.7 (Dreambreaker fix, faster Stellarwave engine) into this build"
+	, "Stellarwave: Wait for all signs, then click them in one fast burst"]])
+VersionNotes.Push(["Version 1.1.7", ["Fixed Dreambreaker"
+	, "Made Stellarwave Melody WAY faster"]])
 VersionNotes.Push(["Version 1.1.6", ["Made Stellarwave Melody a lot lot lot lot lot faster"]])
 VersionNotes.Push(["Version 1.1.5", ["Fixed Stellarwave Melody"
 	, "Made Stellarwave Melody click signs faster"]])
@@ -25503,11 +27080,6 @@ SwMaxSignsChanged:
 GuiControlGet, SwMaxV, 1:, SwMaxSigns
 if (!ErrorLevel)
 	SwMaxSigns := SwMaxV ? true : false
-if (SwMaxSigns and !SwInstantClicks)
-	{
-	SwInstantClicks := true
-	GuiControl, 1:, SwInstantClicks, 1
-	}
 gosub, QueueAutoSave
 return
 
@@ -25518,10 +27090,10 @@ if (!ErrorLevel)
 gosub, QueueAutoSave
 return
 
-SwInstantChanged:
-GuiControlGet, SwInstV, 1:, SwInstantClicks
+SwAllSignsChanged:
+GuiControlGet, SwAllV, 1:, SwAllSigns
 if (!ErrorLevel)
-	SwInstantClicks := SwInstV ? true : false
+	SwAllSigns := SwAllV ? true : false
 gosub, QueueAutoSave
 return
 
@@ -25529,6 +27101,13 @@ SwFastChanged:
 GuiControlGet, SwFastV, 1:, SwFastClicks
 if (!ErrorLevel)
 	SwFastClicks := SwFastV ? true : false
+gosub, QueueAutoSave
+return
+
+SwRetryChanged:
+GuiControlGet, SwRetryV, 1:, SwRetryClicks
+if (!ErrorLevel)
+	SwRetryClicks := SwRetryV ? true : false
 gosub, QueueAutoSave
 return
 
