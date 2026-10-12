@@ -56,7 +56,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 46
+DFModBuild := 47
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallHook := "https://discord.com/api/webhooks/1559177033320235070/lwApqkQylZKb41cWYMwHoMeeWyLuaFe8IrWdwwCabKRh3q8HUD3ya1uCibvO5lKEKSnI"
@@ -3548,12 +3548,11 @@ SetTimer, DFAccessCheck, 180000
 gosub, DFInstallPing
 return
 
-; install log: once per start (and when a key is added) this copy posts its Install ID, whether it is keyed,
-; its version and the PC name to the owner's Discord channel. Users are told once, nothing else is sent.
+; install log: on start (and when a key is added) posts the Install ID, keyed or not, and the version to the owner's channel
 DFInstallPing:
 if (DFInstallHook = "" or !InStr(DFInstallHook, "/api/webhooks/"))
 	return
-DFPingF := WhField("Install ID", DFInstallID) . "," . WhField("PC", A_ComputerName) . "," . WhField("Version", "v" . DFVersion . "  (build " . DFModBuild . ")")
+DFPingF := WhField("Install ID", DFInstallID) . "," . WhField("Version", "v" . DFVersion . "  (build " . DFModBuild . ")")
 DFPingF .= "," . WhField("Blocked", DFBlockedNow ? "yes" : "no")
 DFPingJ := "{""username"":""DeepFish installs"",""embeds"":[{""title"":""" . (DFTrusted ? "Keyed install" : "NOT keyed install") . """,""color"":" . (DFTrusted ? 3066993 : 15158332) . ",""fields"":[" . DFPingF . "],""timestamp"":""" . WhStamp() . """}]}"
 try
@@ -28871,7 +28870,7 @@ VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any mon
 	, "Keeperbound: no longer puts the rod away after a failed recharge"
 	, "Smart cast can cast N times in a row (each cast waits Cast hold + 50 ms before the next)"
 	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
-	, "Installs check in with the owner when they start (Install ID, keyed or not, version, PC name)"
+	, "Installs check in with the owner when they start (Install ID, keyed or not, version)"
 	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
