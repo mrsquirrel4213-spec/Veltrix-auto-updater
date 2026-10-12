@@ -56,10 +56,10 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 44
+DFModBuild := 45
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
-DFInstallHook := ""
+DFInstallHook := "https://discord.com/api/webhooks/1559177033320235070/lwApqkQylZKb41cWYMwHoMeeWyLuaFe8IrWdwwCabKRh3q8HUD3ya1uCibvO5lKEKSnI"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
 setkeydelay, -1
