@@ -56,7 +56,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 49
+DFModBuild := 50
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -3547,7 +3547,20 @@ IniRead, DFReqKeyCache, %SettingsFile%, Access, ReqKeyCache, 0
 gosub, DFAccessCheck
 SetTimer, DFAccessCheck, 180000
 gosub, DFInstallPing
+DFAccessReady := true
+if (DFKill or DFBlockedNow)
+	gosub, DFBlockedExit
 return
+
+; blocked or turned off by the owner: the window does not stay open
+DFBlockedExit:
+SetTimer, DFAccessCheck, Off
+if (MacroRunning)
+	gosub, DFForceStop
+try DFFormReq.WaitForResponse(5)
+try DFPingReq.WaitForResponse(5)
+MsgBox, 0x41030, DeepFish, %DFLockReason%
+ExitApp
 
 ; install log: on start (and when a key is added) posts the Install ID, keyed or not, and the version to the owner's channel
 DFInstallPing:
@@ -3653,6 +3666,8 @@ else if (DFReqKey = 1 and !DFTrusted)
 	DFLocked := true
 	DFLockReason := "This macro needs a key.`n`nClick ""Add key"" (bottom left) and enter the key the owner gave you.`n`nYour Install ID:  " . DFInstallID
 	}
+if ((DFKill or DFBlockedNow) and DFAccessReady)
+	gosub, DFBlockedExit
 if (DFLocked and MacroRunning)
 	gosub, DFForceStop
 return
