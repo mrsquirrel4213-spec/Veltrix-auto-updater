@@ -1,2 +1,2 @@
 kill=0
-requirekey=0
+requirekey=1
