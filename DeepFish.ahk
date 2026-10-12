@@ -56,7 +56,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 50
+DFModBuild := 51
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -3533,11 +3533,16 @@ IniRead, DFInstallID, %SettingsFile%, Access, InstallID, %A_Space%
 if (DFInstallID = "" or StrLen(DFInstallID) < 8)
 	{
 	Random,, % A_TickCount
+	; always has a letter, so it is never read as a number
 	DFInstallID := ""
-	Loop 16
+	while !RegExMatch(DFInstallID, "[a-f]")
 		{
-		Random, rr, 0, 15
-		DFInstallID .= SubStr("0123456789abcdef", rr + 1, 1)
+		DFInstallID := ""
+		Loop 16
+			{
+			Random, rr, 0, 15
+			DFInstallID .= SubStr("0123456789abcdef", rr + 1, 1)
+			}
 		}
 	IniWrite, %DFInstallID%, %SettingsFile%, Access, InstallID
 	}
