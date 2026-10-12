@@ -37,9 +37,27 @@
 #MaxThreadsPerHotkey 2
 
 DFBetaVersion := "1.1.7"
+FsExtraCount := 0
+KbPostponeN := 0
+KbUiClear := true
+KbPreState := 0
+KbPreFailN := 0
+KbPreSkip := 0
+SwStarGoneAt := 0
 CastSeenN := 0
 CastMissN := 0
-DFModBuild := 33
+KbMissN := 0
+FsCount := 0
+FsTotal := 0
+FsLastName := ""
+FsLastKg := ""
+FsLastVal := ""
+FsSeen := {}
+FsPending := false
+FsReqT := 0
+FsWorkerPid := 0
+DFModBuild := 43
+DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -81,6 +99,7 @@ ProfileFields.Push( ["General","AutoLowerGraphics","true","bool"]
                   , ["General","PassiveAll","false","bool"]
                   , ["General","PassiveMs","500","num"]
                   , ["General","InfoPanelOn","false","bool"]
+                  , ["General","FishScanOn","false","bool"]
                   , ["General","InfoPanelX","0.02","num"]
                   , ["General","InfoPanelY","0.35","num"]
                   , ["Update","AutoUpdate","false","bool"]
@@ -99,7 +118,10 @@ ProfileFields.Push( ["Cast","CastMode","Normal","castmode"]
                   , ["Cast","PerfectFailTimeout","20","num"]
                   , ["Cast","PerfectReleaseTiming","0","num"]
                   , ["Cast","PerfectWaitCycles","1","num"]
-                  , ["Cast","SmartCast","true","bool"] )
+                  , ["Cast","SmartCast","true","bool"]
+                  , ["Cast","SmartCastN","1","num"]
+                  , ["Cast","AdaptiveCast","false","bool"]
+                  , ["Cast","AdaptiveCastMs","150","num"] )
 ProfileFields.Push( ["Shake","ShakeMode","Navigation","shakemode"]
                   , ["Shake","FishBarColorTolerance","3","num"]
                   , ["Shake","ShakeAreaLeftPct","21","num"]
@@ -154,6 +176,7 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","SwRetryFails","false","bool"]
 				  , ["Rods","SwMaxSigns","false","bool"]
 				  , ["Rods","SwAllSigns","false","bool"]
+				  , ["Rods","SwWaitN","12","num"]
 				  , ["Rods","SwSignsFirst","false","bool"]
 				  , ["Rods","SwPassive","false","bool"]
 				  , ["Rods","SwPassiveMs","500","num"]
@@ -935,6 +958,15 @@ TotemCool := {}
 TotemLastPop := ""
 WhStartTick := A_TickCount
 WhCatches := 0
+FsExtraCount := 0
+FsGroups := []
+FsDone := []
+FsCount := 0
+FsTotal := 0
+FsLastName := ""
+FsLastKg := ""
+FsLastVal := ""
+FsSeen := {}
 WhLastCatchTick := 0
 WhLastSummary := A_TickCount
 WhStalled := false
@@ -1069,7 +1101,14 @@ if (KeeperAuto and !KbBusy)
 	{
 	KbHandled := false
 	KbDue := false
-	if (KeeperAutoBar or KeeperOcrOn)
+	if (KeeperAutoBar and KbPreState)
+		{
+		; already read while the bobber was out - nothing to wait for here
+		KbHandled := true
+		KbDue := (KbPreState = 2)
+		KbPreState := 0
+		}
+	else if (KeeperAutoBar or KeeperOcrOn)
 		{
 		if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
 			{
@@ -1080,19 +1119,42 @@ if (KeeperAuto and !KbBusy)
 				KbAutoAt := KeeperAutoPct
 				if KbAutoAt is not number
 					KbAutoAt := 15
-				if (KbAutoRead(KbPct))
+				gosub, KbWaitUiClear
+				KbFound := false
+				Loop 8
 					{
-					KbHandled := true
+					if (KbAutoRead(KbPct))
+						{
+						KbFound := true
+						break
+						}
+					Sleep, 120
+					}
+				KbHandled := true
+				if (KbFound)
+					{
+					KbMissN := 0
 					if (KbPct < KbAutoAt + 4)
 						{
 						if (KbAutoReadStable(KbPct2, 3))
 							KbPct := KbPct2
-						KbDue := (KbPct < KbAutoAt)
+						if (KbPct < KbAutoAt)
+							{
+							; a moment later it must still read low - one odd frame never starts a recharge
+							Sleep, 300
+							KbDue := (KbAutoReadStable(KbPct3, 3) and KbPct3 < KbAutoAt)
+							}
 						}
 					KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
 					}
 				else
-					KbOcrLast := "power bar not found on screen"
+					{
+					; not seen this time (UI fading, popup, menu) - skip, do NOT fall back to counting catches
+					KbMissN := KbMissN + 1
+					KbOcrLast := "power bar not found (" . KbMissN . "x in a row)"
+					if (KbMissN >= 10 and !KeeperOcrOn)
+						KbDue := (KbCatches >= Round(KeeperEveryCatches))
+					}
 				}
 			if (!KbHandled and !KeeperOcrOn)
 				KbDue := (KbCatches >= Round(KeeperEveryCatches))
@@ -1103,11 +1165,17 @@ if (KeeperAuto and !KbBusy)
 		if (KeeperAutoBar or KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
 			{
 			KbOcrCatches := 0
+			gosub, KbWaitUiClear
 			KbLr := KbLineCheck(KbLm, KbLt)
 			if (KbLr = 1)
 				{
-				sleep 150
+				sleep 300
 				KbDue := (KbLineCheck(KbLm2, KbLt2) = 1)
+				if (KbDue)
+					{
+					sleep 250
+					KbDue := (KbLineCheck(KbLm3, KbLt3) = 1)
+					}
 				}
 			if (KbLr < 0)
 				KbOcrLast := "line or bar color not set"
@@ -1118,7 +1186,17 @@ if (KeeperAuto and !KbBusy)
 	else if (!KeeperAutoBar and !KeeperOcrOn and KbCatches >= Round(KeeperEveryCatches))
 		KbDue := true
 	if (KbDue)
-		gosub, KeeperRun
+		{
+		gosub, KbGuardClear
+		if (KbUiClear and !MgInPlay)
+			gosub, KeeperRun
+		else
+			{
+			KbPostponeN := KbPostponeN + 1
+			KbOcrCatches := 9999
+			KbOcrLast := "recharge postponed - minigame on screen (" . KbPostponeN . "x)"
+			}
+		}
 	}
 
 if (!MacroRunning)
@@ -1210,6 +1288,25 @@ if (CastMode = "Perfect")
 	}
 else
 	{
+	; Smart cast: N casts back to back (hold, release, hold, ...) - the last one is the normal watched cast
+	ScN := SmartCastN
+	if ScN is not number
+		ScN := 1
+	ScN := Round(ScN)
+	if (ScN > 10)
+		ScN := 10
+	if (SmartCast and ScN > 1)
+		{
+		Loop % ScN - 1
+			{
+			tooltip, Action: Cast %A_Index%/%ScN% (%HoldRodCastDuration%ms), %TooltipX%, %Tooltip8%, 8
+			send {lbutton down}
+			Sleep, %HoldRodCastDuration%
+			send {lbutton up}
+			; wait the cast hold time plus 50 ms before the next cast
+			Sleep, % HoldRodCastDuration + TA("castgap", 50)
+			}
+		}
 	send {lbutton down}
 	tooltip, Action: Casting For %HoldRodCastDuration%ms, %TooltipX%, %Tooltip8%, 8
 	CastSeen := false
@@ -1258,7 +1355,19 @@ CastHolding := false
 if (!MacroRunning)
 	goto Idle
 tooltip, Action: Waiting For Bobber (%WaitForBobberDelay%ms), %TooltipX%, %Tooltip8%, 8
-Sleep, % Tm(WaitForBobberDelay)
+KbPreT0 := A_TickCount
+KbPreWait := Tm(WaitForBobberDelay)
+; read the Keeperbound power bar now, while the bobber flies - so the end of the fight never waits on it
+if (KeeperAuto and KeeperAutoBar and !KbBusy)
+	{
+	if (KbPreSkip > 0)
+		KbPreSkip := KbPreSkip - 1
+	else if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
+		gosub, KbPreRead
+	}
+KbPreLeft := KbPreWait - (A_TickCount - KbPreT0)
+if (KbPreLeft > 0)
+	Sleep, %KbPreLeft%
 if (!MacroRunning)
 	goto Idle
 
@@ -2003,7 +2112,32 @@ if (!FoundBar and !LineSeen)
 		gosub, HideHud
 		HudLossHidden := true
 		}
-	if (BarLostAt and ((BarLostNow - BarLostAt) * 1000.0 / QpcFreq) > TA("barlost", 450))
+	BarLostMs := BarLostAt ? (BarLostNow - BarLostAt) * 1000.0 / QpcFreq : 0
+	BarLostLimNow := BarLostLim()
+	if (SpecialRod = "Stellarwave Melody" and SwStarOkT)
+		{
+		; the star row goes away together with the bar when the fight is over - then it is over at once.
+		; While the stars still show, the bar is only hidden behind the signs: never end it early then
+		if (!SwStarsValid)
+			{
+			if (!SwStarGoneAt)
+				SwStarGoneAt := BarLostNow
+			if (BarLostMs >= TA("swendfast", 120) and (BarLostNow - SwStarGoneAt) * 1000.0 / QpcFreq >= 80)
+				{
+				MgOverWhy := "swend"
+				goto BarMinigameOver
+				}
+			}
+		else
+			{
+			SwStarGoneAt := 0
+			if (BarLostLimNow < TA("barlost", 450))
+				BarLostLimNow := TA("barlost", 450)
+			}
+		}
+	else if (UiState = 2 and !UiGoneT and BarLostLimNow < TA("barlost", 450))
+		BarLostLimNow := TA("barlost", 450)
+	if (BarLostAt and BarLostMs > BarLostLimNow)
 		{
 		MgOverWhy := "barlost"
 		goto BarMinigameOver
@@ -2015,6 +2149,7 @@ if (MinigameLost and HudBuilt and HudLossHidden)
 HudLossHidden := false
 MinigameLost := 0
 BarLostAt := 0
+SwStarGoneAt := 0
 NoiseFoundStreak := NoiseFoundStreak + 1
 
 if (FoundBar and RunWidth > 0)
@@ -2829,7 +2964,35 @@ tooltip, , , , 12
 tooltip, , , , 13
 tooltip, , , , 15
 gosub, HideHud
-Sleep, % Tm(RestartDelay)
+if (AdaptiveCast)
+	{
+	AcMs := AdaptiveCastMs
+	if AcMs is not number
+		AcMs := 150
+	; negative = cast sooner: one clear frame is enough and there is no extra wait
+	; (the fight was already ended earlier - see BarLostLim)
+	AcNeed := (AcMs < 0) ? 1 : 2
+	AcT0 := A_TickCount
+	AcClear := 0
+	while (MacroRunning and A_TickCount - AcT0 < 4000)
+		{
+		gosub, CaptureFishBar
+		AcVis := (SpecialRod = "Tranquility") ? ManiaVisible() : (BarPresent() or FishLineVisible())
+		AcClear := AcVis ? 0 : AcClear + 1
+		if (AcClear >= AcNeed)
+			break
+		Sleep, 15
+		}
+	if (AcMs < 0)
+		tooltip, Action: Casting right away (%AcMs%ms - early), %TooltipX%, %Tooltip8%, 8
+	else
+		{
+		tooltip, Action: Casting %AcMs%ms after the minigame closed, %TooltipX%, %Tooltip8%, 8
+		Sleep, % Tm(AcMs)
+		}
+	}
+else
+	Sleep, % Tm(RestartDelay)
 goto RestartMacro
 
 ;====================================================================================================;
@@ -2842,6 +3005,7 @@ KbLastResult := ""
 KbStatus := "opening"
 KbRecharged := 0
 KbOpenCol := -1
+KbRelicOn := false
 MouseGetPos, KbSaveX, KbSaveY
 send {lbutton up}
 send {rbutton up}
@@ -2855,6 +3019,19 @@ if KbPreV is number
 		Sleep, % Tm(KbPreV)
 		}
 	}
+
+gosub, MgOnScreenChk
+if (MgOnScreen or MgInPlay)
+	{
+	KbPostponeN := KbPostponeN + 1
+	KbOcrCatches := 9999
+	KbLastResult := "postponed - a minigame was on screen"
+	KbStatus := "postponed"
+	tooltip, , , , 8
+	KbBusy := false
+	return
+	}
+KbPostponeN := 0
 
 if (KeeperRelicKey = "")
 	{
@@ -2887,6 +3064,7 @@ if (KbManual)
 
 	tooltip, Action: Equip Relic, %TooltipX%, %Tooltip8%, 8
 	KbKey(KeeperRelicKey)
+	KbRelicOn := true
 	Sleep, % Tm(KeeperStepDelay)
 	KbOpenCol := -1
 	PixelGetColor, KbOpenCol, %KbEx%, %KbEy%, RGB
@@ -2929,6 +3107,7 @@ if (!KbWaitFor("enchant", KbEx, KbEy, TA("kbinv1", 700)))
 
 tooltip, Action: Equip Relic, %TooltipX%, %Tooltip8%, 8
 KbKey(KeeperRelicKey)
+KbRelicOn := true
 Sleep, % Tm(KeeperStepDelay)
 
 KbGuard := 0
@@ -2980,14 +3159,23 @@ while (KbGuard < 4)
 if (!KbClosed and !KbGone("enchant", 150))
 	KbLastResult .= " (inventory still open)"
 
-tooltip, Action: Select Rod, %TooltipX%, %Tooltip8%, 8
-if (RodSlotKey != "")
+; pressing the rod key while the rod is still in hand would put it away (and the next cast would do
+; nothing), so only switch back when the relic was taken out
+if (KbRelicOn)
 	{
-	send {%RodSlotKey%}
-	Sleep, % Tm(TA("kbselect", 120))
+	tooltip, Action: Select Rod, %TooltipX%, %Tooltip8%, 8
+	if (RodSlotKey != "")
+		{
+		send {%RodSlotKey%}
+		; give the rod time to come out before the next cast
+		Sleep, % Tm(TA("kbselect", 450))
+		}
+	else
+		{
+		ForceReEquip := true
+		KbLastResult .= " - set the Rod slot key so it can switch back to the rod"
+		}
 	}
-else
-	ForceReEquip := true
 MouseMove, KbSaveX, KbSaveY
 tooltip, , , , 8
 KbStatus := (KbRecharged > 0) ? "done" : "failed"
@@ -6858,6 +7046,26 @@ PreciseSleep(ms) {
 		}
 }
 
+; how long the bar must be gone before the fight counts as over - a negative Adaptive Cast ms shortens it
+BarLostLim() {
+	global AdaptiveCast, AdaptiveCastMs
+	lim := TA("barlost", 450)
+	ac := AdaptiveCastMs
+	if ac is not number
+		return lim
+	if (AdaptiveCast and ac < 0)
+		lim := (lim + ac < 200) ? 200 : lim + ac
+	return lim
+}
+
+; the version shown everywhere comes from the build number: 43 = 2.0, 44 = 2.01, 45 = 2.02 ...
+DFVerName(b) {
+	b := Round(b)
+	if (b <= 43)
+		return "2.0"
+	return "2." . Format("{:02}", b - 43)
+}
+
 Tm(ms) {
 	global TimeOffset, TmDebt, TmDebtT
 	if ms is not number
@@ -6925,6 +7133,7 @@ AdvRegistry() {
 	r.Push(["Casting", "V", "HoldRodCastDuration", 0, "ms|Cast hold (how long the click is held)"])
 	r.Push(["Casting", "L", "castpost", 120, "ms|Smart cast: keep looking for the power bar after letting go"])
 	r.Push(["Casting", "L", "castretry", 150, "ms|Smart cast: pause before recasting"])
+	r.Push(["Casting", "L", "castgap", 50, "ms|Smart cast: extra wait between casts (on top of cast hold)"])
 	r.Push(["Casting", "L", "passivelost", 3000, "ms|Passive: go back to watching if the minigame is gone for"])
 	r.Push(["Casting", "V", "WaitForBobberDelay", 0, "ms|Wait for the bobber after casting"])
 	r.Push(["Casting", "L", "chg", 40, "ms|Charged-cast check: pause before the second look"])
@@ -6946,7 +7155,8 @@ AdvRegistry() {
 	r.Push(["Minigame", "L", "twig2", 40, "ms|Splitbranch Twig: click hold"])
 	r.Push(["Minigame", "L", "twig3", 260, "ms|Splitbranch Twig: pause after clicking"])
 	r.Push(["Stellarwave Melody", "L", "swallwait", 700, "ms|All signs: start anyway if no new sign for"])
-	r.Push(["Stellarwave Melody", "L", "swretry", 500, "ms|Retry: wait before re-clicking"])
+	r.Push(["Stellarwave Melody", "L", "swretry", 250, "ms|Retry: wait before re-clicking"])
+	r.Push(["Stellarwave Melody", "L", "swendfast", 120, "ms|Fight over once the bar and stars are gone for"])
 	r.Push(["Stellarwave Melody", "L", "swretrymax", 150, "ms|...same, with Max sign speed"])
 	r.Push(["Stellarwave Melody", "L", "swrcneutral", 40, "ms|Retry click: pause at the neutral spot"])
 	r.Push(["Stellarwave Melody", "L", "swrchover", 10, "ms|Retry click: hover before the nudge"])
@@ -10547,12 +10757,13 @@ WhRuntimeText() {
 
 WhCommonFields() {
 	global WhCatches, WhStartTick, ActiveProfile
+	caught := CaughtTotal()
 	global TotemAuto, TotemTime, TotemWeather
 	ms := WhStartTick ? (A_TickCount - WhStartTick) : 0
 	hrs := (ms > 0) ? (ms / 3600000.0) : 0
-	rate := (hrs > 0.01) ? Round(WhCatches / hrs) : 0
+	rate := (hrs > 0.01) ? Round(caught / hrs) : 0
 	f := WhField("Runtime", WhRuntimeText(), true)
-	f .= "," . WhField("Fish", WhCatches . "", true)
+	f .= "," . WhField("Fish", caught . "", true)
 	f .= "," . WhField("Per hour", rate . "", true)
 	f .= "," . WhField("Profile", ActiveProfile, true)
 	if (TotemAuto)
@@ -12227,6 +12438,114 @@ KbAutoReadStable(ByRef pct, n := 3) {
 	pct := MedianOf(vals)
 	return true
 }
+
+; is any minigame on screen? (bar, fish line, the minigame frame, Tranquility notes, Stellarwave signs)
+; the full check - only used when a recharge is actually about to start
+MgOnScreenChk:
+gosub, CaptureFishBar
+MgOnScreen := (BarPresent() or FishLineVisible())
+; after a few postponements in a row only trust the two strongest signals, so a look-alike cannot block recharging
+if (!MgOnScreen and KbPostponeN < 3)
+	{
+	MgOnScreen := MinigameVisible(6)
+	if (!MgOnScreen and SpecialRod = "Tranquility")
+		MgOnScreen := ManiaVisible()
+	if (!MgOnScreen and SpecialRod = "Stellarwave Melody")
+		MgOnScreen := (SwFrameTop() >= 0)
+	}
+return
+
+; reads the power bar while the bobber is out (casting). KbPreState: 0 = no reading (the restart reads it
+; the old way), 1 = read and fine, 2 = read low twice - recharge at the next restart
+KbPreRead:
+KbPreOld := KbOcrCatches
+KbOcrCatches := 0
+KbPreState := 0
+KbAutoAt := KeeperAutoPct
+if KbAutoAt is not number
+	KbAutoAt := 15
+KbPreOk := false
+Loop 2
+	{
+	if (KbAutoRead(KbPct))
+		{
+		KbPreOk := true
+		break
+		}
+	if (A_Index < 2)
+		Sleep, 60
+	}
+if (!KbPreOk)
+	{
+	; not on screen right now - the restart reads it instead; after 3 misses in a row stop trying here for a while
+	KbOcrCatches := KbPreOld
+	KbPreFailN := KbPreFailN + 1
+	if (KbPreFailN >= 3)
+		{
+		KbPreFailN := 0
+		KbPreSkip := 10
+		}
+	return
+	}
+KbPreFailN := 0
+KbMissN := 0
+KbPreState := 1
+if (KbPct < KbAutoAt + 4)
+	{
+	if (KbAutoReadStable(KbPct2, 3))
+		KbPct := KbPct2
+	if (KbPct < KbAutoAt)
+		{
+		; a moment later it must still read low - one odd frame never starts a recharge
+		Sleep, 300
+		if (KbAutoReadStable(KbPct3, 3) and KbPct3 < KbAutoAt)
+			KbPreState := 2
+		}
+	}
+KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
+return
+
+; before reading the power bar (every catch): one cheap frame, goes on at once when the bar is gone
+KbWaitUiClear:
+KbUiClear := false
+KbWcT := A_TickCount
+Loop
+	{
+	gosub, CaptureFishBar
+	if (SpecialRod = "Tranquility")
+		KbWcVis := ManiaVisible()
+	else
+		KbWcVis := (BarPresent() or FishLineVisible())
+	if (!KbWcVis and !MgInPlay)
+		{
+		KbUiClear := true
+		break
+		}
+	if (A_TickCount - KbWcT >= 600)
+		break
+	Sleep, 20
+	}
+return
+
+; right before a recharge: full check, 2 clear frames in a row, at most 1 s - otherwise it is postponed
+KbGuardClear:
+KbUiClear := false
+KbWcT := A_TickCount
+KbWcN := 0
+Loop
+	{
+	gosub, MgOnScreenChk
+	KbWcN := (MgOnScreen or MgInPlay) ? 0 : KbWcN + 1
+	if (KbWcN >= 2)
+		{
+		KbUiClear := true
+		break
+		}
+	if (A_TickCount - KbWcT >= 1000)
+		break
+	Sleep, 25
+	}
+return
 
 KbLineNeed(tot) {
 	return 3
@@ -16844,7 +17163,7 @@ SwFightReset() {
 	global SwPreK, SwParkAt, SwFrStillRef, SwFrStillT, SwFrameT, SwReactEst, SwFoundT, SwBarHold, SwGlowX, SwGlowT, SwZL, SwZH, SwFishHeld
 	global SwPressK, SwPressQ, SwPressMs, SwPressDecT, SwPressNom, SwPressCx, SwPressCy, SwPressPre, SwPressSx, SwPressSy, SwWantK, SwWantT, SwWantNom, SwWantPre, SwWantSx, SwWantSy, SwWantCx, SwWantCy
 	global SwLitFastT, SwLitFastV, SwHov1, SwHov2, SwMoveOn, SwHyb, SwWantStrk, SwPressLit, SwLitRawN
-	global SwMaxSigns
+	global SwMaxSigns, SwLockStrk, SwLockT
 	static tp := false
 	if (!tp)
 		{
@@ -16928,7 +17247,10 @@ SwFightReset() {
 	SwPianoDis := 0
 	SwTipT := 0
 	SwScanned := false
-	SwLockFail := (SwLockN >= 3)
+	; every fight gets a fresh try - a locked cursor in an earlier fight does not switch sign clicking off for good
+	SwLockFail := false
+	SwLockStrk := 0
+	SwLockT := 0
 	SwFrameT := 0
 	SwReactEst := 0.12
 	SwFoundT := 0
@@ -18287,13 +18609,24 @@ SwAssign(k, now) {
 			break
 		i--
 		}
-	if (pos <= SwClicks and !SwStop)
+	; counted late (it was half hidden): the signs before it already lit their stars, so it goes after
+	; them, marked as a tie so its shape decides
+	late := false
+	if (pos <= SwClicks)
 		{
-		SwStop := true
-		SwStopWhy := "late onset"
-		SwLog("stop: late onset slot " . k)
+		pos := SwClicks + 1
+		if (pos > SwOrder.Length() + 1)
+			pos := SwOrder.Length() + 1
+		late := true
+		SwLog("late onset slot " . k . " moved to " . pos)
 		}
 	SwOrder.InsertAt(pos, k)
+	if (late)
+		{
+		SwTie[k] := 1
+		if (pos < SwOrder.Length())
+			SwTie[SwOrder[pos + 1]] := 1
+		}
 	if (pos > 1 and Abs(SwSlotFirst[SwOrder[pos - 1]] - SwSlotFirst[k]) < 0.15)
 		{
 		SwTie[k] := 1
@@ -18337,6 +18670,19 @@ SwAssign(k, now) {
 	SwLog("onset slot " . k . " rank " . pos . " t+" . Round((now - SwPhaseT) * 1000) . " lvl " . SwSlotLvl[k] . (SwTie[k] ? " tie" : ""))
 }
 
+; how many signs "Wait for signs" waits for: the number set (12 = all), never more than are left this round
+SwWaitNeed() {
+	global SwWaitN, SwK0
+	n := SwWaitN
+	if n is not number
+		n := 12
+	n := Round(n)
+	if (n < 1)
+		n := 1
+	rem := 12 - ((SwK0 < 0) ? 0 : SwK0)
+	return (n < rem) ? n : rem
+}
+
 SwZodiac(i) {
 	global SwZ
 	return SwZ[Mod(i, 12) + 1]
@@ -18348,13 +18694,105 @@ SwSoftFail(why, now) {
 		return false
 	ti := SwLit - SwK0 + 1
 	SwRetryK := (SwK0 >= 0 and ti >= 1 and ti <= SwOrder.Length()) ? SwOrder[ti] : SwClickSlot
+	; the sign went white but no star lit - it was probably the wrong sign, so look for the right one first
+	if (why = "white" and SwK0 >= 0 and ti >= 1)
+		{
+		fk := SwFindSign(ti, Mod(SwK0 + ti - 1, 12), SwClickSlot, true)
+		if (fk)
+			SwRetryK := fk
+		}
 	SwFailN := SwFailN + 1
 	SwClickAt := 0
 	SwRetry := 0
 	SwPurpleN := 0
-	SwFailAt := now + (SwMaxSigns ? TA("swretrymax", 150) : TA("swretry", 500)) / 1000.0
+	SwFailAt := now + (SwMaxSigns ? TA("swretrymax", 150) : TA("swretry", 250)) / 1000.0
 	SwLog("retry after " . why . " slot " . SwClickSlot . " (" . SwFailN . "/3)")
 	return true
+}
+
+; the sign for zodiac z among the signs on the bar that were not clicked yet - for when the onset
+; order is wrong (signs that showed up together). Moves it to place i in the click order.
+SwFindSign(i, z, excl := 0, force := false) {
+	global SwSlotSt, SwOrder, SwTie, SwFindT
+	if (!SwTplSumFn() or i < 1 or i > SwOrder.Length() + 1)
+		return 0
+	now := SwNow()
+	; reading every sign's shape is slow - at most every 120 ms
+	if (!force and SwFindT and now - SwFindT < 0.12)
+		return 0
+	SwFindT := now
+	best := 0
+	bestS := -9
+	secondS := -9
+	Loop 12
+		{
+		kk := A_Index
+		st := SwSlotSt[kk]
+		if (kk = excl or (st != 1 and st != 2))
+			continue
+		pos := 0
+		Loop % SwOrder.Length()
+			{
+			if (SwOrder[A_Index] = kk)
+				{
+				pos := A_Index
+				break
+				}
+			}
+		if (pos and pos < i)
+			continue
+		if (SwSlotWhite(kk))
+			continue
+		tdZ := -1
+		tdS := -9
+		sc := SwTplBest2(kk, z, tdZ, tdS)
+		if (sc < 0.4 or tdZ != z)
+			continue
+		if (sc > bestS)
+			{
+			secondS := bestS
+			bestS := sc
+			best := kk
+			}
+		else if (sc > secondS)
+			secondS := sc
+		}
+	if (!best or bestS - secondS < 0.08)
+		return 0
+	Loop % SwOrder.Length()
+		{
+		if (SwOrder[A_Index] = best)
+			{
+			SwOrder.RemoveAt(A_Index)
+			break
+			}
+		}
+	SwOrder.InsertAt(i, best)
+	SwSlotSt[best] := 2
+	SwTie[best] := 0
+	SwLog("found slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . " vs " . Round(secondS, 3) . ")")
+	return best
+}
+
+; Retry failed clicks: a sign that looks like a different zodiac is never clicked blindly - find the
+; right sign, give the shape a moment to read clean (the fish or bar can cover it), otherwise stop
+SwVetoWait(i, k, z, now) {
+	global SwOverK, SwOverT, SwOverL, SwStop, SwStopWhy
+	if (SwRecover(i, z))
+		return
+	if (SwFindSign(i, z, k))
+		return
+	if (SwOverK != k * 16 + z or now - SwOverL > 0.15)
+		{
+		SwOverK := k * 16 + z
+		SwOverT := now
+		}
+	SwOverL := now
+	if (now - SwOverT < 0.6)
+		return
+	SwStop := true
+	SwStopWhy := "shape veto " . SwZodiac(z) . " slot " . k . " (right sign not found)"
+	SwLog("stop: " . SwStopWhy)
 }
 
 SwRetryClick(k) {
@@ -18872,6 +19310,9 @@ SwClickStepMax() {
 			}
 		if (SwLit != SwClickLit)
 			{
+			; the count dropped - nearly always a one-frame misread, so wait for it to come back
+			if (now - SwLitRawT < 0.4)
+				return
 			SwStop := true
 			SwStopWhy := "lit " . SwClickLit . "->" . SwLit
 			SwLog("stop: " . SwStopWhy)
@@ -18894,7 +19335,7 @@ SwClickStepMax() {
 			SwPurpleN := SwPurpleN + 1
 		else
 			SwPurpleN := 0
-		if (SwPurpleN >= 2 and SwRetry < 1 and !(SwFrMoveT and now - SwFrMoveT < (SwMaxSigns ? 0.05 : 0.4)) and now - SwLitRawT >= (SwMaxSigns ? 0.1 : 0.3))
+		if (SwPurpleN >= 2 and SwRetry < (SwRetryFails ? 3 : 1) and !(SwFrMoveT and now - SwFrMoveT < (SwMaxSigns ? 0.05 : 0.4)) and now - SwLitRawT >= (SwMaxSigns ? 0.1 : 0.3))
 			{
 			SwRetry := SwRetry + 1
 			SwPurpleN := 0
@@ -18926,6 +19367,8 @@ SwClickStepMax() {
 		return
 	if (SwLit < SwK0)
 		{
+		if (now - SwLitRawT < 0.4)
+			return
 		SwStop := true
 		SwStopWhy := "lit below k0"
 		SwLog("stop: " . SwStopWhy)
@@ -18937,15 +19380,24 @@ SwClickStepMax() {
 	k := SwOrder[i]
 	if (SwSlotSt[k] = 3)
 		{
-		SwStop := true
-		SwStopWhy := "target already clicked"
-		SwLog("stop: " . SwStopWhy . " slot " . k)
-		return
+		; its star went out again (misread, or the click did not hold) and the sign is still there - click it again
+		if (SwSlotStrokes(k) >= 2 and !SwSlotWhite(k))
+			{
+			SwSlotSt[k] := 2
+			SwLog("sign back slot " . k)
+			}
+		else
+			{
+			SwStop := true
+			SwStopWhy := "target already clicked"
+			SwLog("stop: " . SwStopWhy . " slot " . k)
+			return
+			}
 		}
 	fast := (1 or (SwFastClicks and !SwTie[k] and !SwTieWas[k]))
 	if (now - SwSlotFirst[k] < SwSec(1 ? 0 : (fast ? 0.1 : 0.35)) or (!SwFailN and SwSlotWhite(k)))
 		return
-	if (SwAllSigns and SwOrder.Length() < 12 - SwK0 and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
+	if (SwAllSigns and SwOrder.Length() < SwWaitNeed() and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
 		return
 	settled := 1 or (SwOrder.Length() >= 12 - SwK0) or (SwOrder.Length() > i) or (now - SwLastOnset >= SwSec(fast ? 0.15 : 0.35))
 	if (!settled)
@@ -18960,7 +19412,7 @@ SwClickStepMax() {
 		}
 	if (SwFrMiss or (SwFrMoveT and now - SwFrMoveT < SwSec(SwMaxSigns ? 0.05 : 0.4)))
 		return
-	if (!SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB))
+	if (!SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB) and !(!PrecisionDown and SwFishX < SwBarL - 10 * SwSB))
 		return
 	z := Mod(SwK0 + i - 1, 12)
 	if (SwTie[k])
@@ -19007,8 +19459,13 @@ SwClickStepMax() {
 				best := firstLeft
 				SwLog("tie by order slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . " vs " . Round(secondS, 3) . ")")
 				}
-			if (nleft = 0 and !SwRetryFails)
+			if (nleft = 0)
 				{
+				if (SwRetryFails)
+					{
+					SwVetoWait(i, k, z, now)
+					return
+					}
 				if (now - SwLastOnset > 1.0)
 					{
 					SwStop := true
@@ -19042,8 +19499,13 @@ SwClickStepMax() {
 			if ((qn - PrecisionDownAt) * 1000.0 / QpcFreq < SwMs(250))
 				return
 			}
-		if (!SwRetryFails and SwTplOk(k, z) = 0)
+		if (SwTplOk(k, z) = 0)
 			{
+			if (SwRetryFails)
+				{
+				SwVetoWait(i, k, z, now)
+				return
+				}
 			SwStop := true
 			SwStopWhy := "shape veto " . SwZodiac(z) . " slot " . k
 			SwLog("stop: " . SwStopWhy)
@@ -19065,8 +19527,7 @@ SwClickStepMax() {
 		return
 	if (SwRetryFails)
 		{
-		SwLog("shape veto overridden " . SwZodiac(z) . " slot " . k)
-		SwDoClickMax(k, now, SwFailN > 0)
+		SwVetoWait(i, k, z, now)
 		return
 		}
 	SwStop := true
@@ -19094,7 +19555,7 @@ SwBurstMax(i, k, now) {
 			break
 		if (!SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB))
 			break
-		if (!SwRetryFails and SwTplOk(kk, Mod(SwK0 + j - 1, 12)) = 0)
+		if (SwTplOk(kk, Mod(SwK0 + j - 1, 12)) = 0)
 			break
 		SwNextI := j + 1
 		if (!SwDoClickMax(kk, SwNow(), false))
@@ -19113,7 +19574,11 @@ SwDoClickMax(k, now, slow := false) {
 	global SwMaxSigns, SwBurstN, SwNextI
 	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY, SwClickAt, SwClickLit, SwClickSlot, SwClicks, SwLastClick, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwClickTook, SwFastClicks
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwK0, SwOrder, SwSlotSt, ControlMode, MacroRunning
+	global SwLockStrk, SwLockT
 	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	; the cursor was just pulled away - give it a moment before trying again
+	if (SwLockStrk and SwNow() - SwLockT < 0.15)
 		return false
 	if (PrecisionDown or GetKeyState("LButton"))
 		{
@@ -19184,6 +19649,12 @@ SwDoClickMax(k, now, slow := false) {
 	if (Abs(mx - sx) > 8 or Abs(my - sy) > 8)
 		{
 		CoordMode, Mouse, Client
+		; something else moved the cursor (your mouse, remote desktop) - skip this try, give up only after 3 in a row
+		SwLockStrk := SwLockStrk + 1
+		SwLockT := SwNow()
+		SwLog("cursor moved away (" . SwLockStrk . "/3)")
+		if (SwLockStrk < 3)
+			return false
 		SwLockN++
 		SwLockFail := true
 		SwStop := true
@@ -19191,6 +19662,7 @@ SwDoClickMax(k, now, slow := false) {
 		SwLog("stop: cursor locked (" . mx . "," . my . " vs " . sx . "," . sy . ")")
 		return false
 		}
+	SwLockStrk := 0
 	send {lbutton down}
 	if (slow)
 		PreciseSleep(80)
@@ -19392,6 +19864,37 @@ SwClickStep() {
 		{
 		if (SwLit != SwClickLit)
 			{
+			; Retry failed clicks: an earlier click went through late, so two stars lit - count them both and go on
+			if (SwRetryClicks and SwLit > SwClickLit + 1 and SwK0 >= 0)
+				{
+				bi := SwClickLit - SwK0 + 1
+				Loop % SwLit - SwClickLit
+					{
+					bj := bi + A_Index - 1
+					if (bj >= 1 and bj <= SwOrder.Length())
+						{
+						SwSlotSt[SwOrder[bj]] := 3
+						SwMemMark(SwOrder[bj])
+						}
+					}
+				SwSlotSt[SwClickSlot] := 3
+				SwMemMark(SwClickSlot)
+				if (SwLit >= 12)
+					SwMemReset()
+				SwLog("resync lit " . SwClickLit . "->" . SwLit)
+				SwClickAt := 0
+				SwFailN := 0
+				SwRetry := 0
+				SwPurpleN := 0
+				SwPressN := 0
+				SwTryAt := 0
+				SwOverS := 0
+				if (SwDwell)
+					SwDwellEnd()
+				return
+				}
+			if (SwLit < SwClickLit and now - SwLitRawT < 0.4)
+				return
 			SwStop := true
 			SwStopWhy := "lit " . SwClickLit . "->" . SwLit
 			SwLog("stop: " . SwStopWhy)
@@ -19424,11 +19927,12 @@ SwClickStep() {
 					}
 				}
 			}
-		if (now - ta < 1.0 + SwClickTook)
+		swW := SwRetryClicks ? Min(0.7, Max(0.4, 2.0 * SwReactEst)) : 1.0
+		if (now - ta < swW + SwClickTook)
 			return
 		if (SwSlotWhite(SwClickSlot))
 			{
-			if (now - SwClickAt < 1.0 or (SwLitRaw != SwClickLit and now - SwClickAt < 1.5))
+			if (now - SwClickAt < (SwRetryClicks ? swW + 0.2 : 1.0) or (SwLitRaw != SwClickLit and now - SwClickAt < (SwRetryClicks ? 1.1 : 1.5)))
 				return
 			if (SwSoftFail("white", now))
 				return
@@ -19450,7 +19954,7 @@ SwClickStep() {
 			SwRetryClick(SwClickSlot)
 			return
 			}
-		if (now - ta < 1.5 or (left and fout))
+		if (now - ta < (SwRetryClicks ? swW + 0.5 : 1.5) or (left and fout))
 			return
 		if (SwSoftFail("click failed", now))
 			return
@@ -19474,6 +19978,8 @@ SwClickStep() {
 		return
 	if (SwLit < SwK0)
 		{
+		if (now - SwLitRawT < 0.4)
+			return
 		SwStop := true
 		SwStopWhy := "lit below k0"
 		SwLog("stop: " . SwStopWhy)
@@ -19485,17 +19991,26 @@ SwClickStep() {
 	k := SwOrder[i]
 	if (SwSlotSt[k] = 3)
 		{
-		SwStop := true
-		SwStopWhy := "target already clicked"
-		SwLog("stop: " . SwStopWhy . " slot " . k)
-		return
+		; its star went out again (misread, or the click did not hold) and the sign is still there - click it again
+		if (SwSlotStrokes(k) >= 2 and !SwSlotWhite(k))
+			{
+			SwSlotSt[k] := 2
+			SwLog("sign back slot " . k)
+			}
+		else
+			{
+			SwStop := true
+			SwStopWhy := "target already clicked"
+			SwLog("stop: " . SwStopWhy . " slot " . k)
+			return
+			}
 		}
 	if (!SwFound and (SwTie[k] or SwTieWas[k]))
 		return
 	fast := (SwFastClicks and !SwTie[k] and !SwTieWas[k])
 	if (now - SwSlotFirst[k] < (SwFastClicks ? (SwTie[k] ? 0.2 : 0.1) : 0.35) or SwSlotWhite(k))
 		return
-	if (SwAllSigns and SwOrder.Length() < 12 - SwK0 and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
+	if (SwAllSigns and SwOrder.Length() < SwWaitNeed() and now - SwLastOnset < TA("swallwait", 700) / 1000.0)
 		return
 	settled := (SwOrder.Length() >= 12 - SwK0) or (SwOrder.Length() > i) or (now - SwLastOnset >= (SwFastClicks ? 0.15 : 0.35))
 	if (!settled)
@@ -19559,8 +20074,13 @@ SwClickStep() {
 				best := firstLeft
 				SwLog("tie by order slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . " vs " . Round(secondS, 3) . ")")
 				}
-			if (nleft = 0 and !SwRetryFails)
+			if (nleft = 0)
 				{
+				if (SwRetryFails)
+					{
+					SwVetoWait(i, k, z, now)
+					return
+					}
 				if (SwRecover(i, z))
 					return
 				if (now - SwLastOnset > 1.0)
@@ -19602,7 +20122,7 @@ SwClickStep() {
 				return
 			if (SwRetryClicks)
 				{
-				SwOverride(i, k, z, now)
+				SwVetoWait(i, k, z, now)
 				return
 				}
 			SwStop := true
@@ -19636,6 +20156,8 @@ SwClickStep() {
 			SwLog("unsure retie slot " . k . " for " . SwZodiac(z))
 			return
 			}
+		if (SwRetryClicks and SwFindSign(i, z, k, true))
+			return
 		SwLog("unsure click slot " . k . " for " . SwZodiac(z))
 		SwDoClick(k, now)
 		return
@@ -19656,7 +20178,7 @@ SwClickStep() {
 		}
 	if (SwRetryClicks)
 		{
-		SwOverride(i, k, z, now)
+		SwVetoWait(i, k, z, now)
 		return
 		}
 	SwStop := true
@@ -19795,10 +20317,12 @@ SwDoClick(k, now) {
 	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, SwClickLit, SwClickSlot, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwFastClicks
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, ControlMode, MacroRunning
 	global SwDwell, SwPressN, SwWantK, SwWantT, SwWantNom, SwWantPre, SwWantSx, SwWantSy, SwWantCx, SwWantCy, SwPressK, SwPressQ, SwPressMs, SwPressDecT, SwPressNom, SwPressCx, SwPressCy, SwPressPre, SwPressSx, SwPressSy, SwHov1, SwHov2, SwHyb
-	global SwWantStrk, SwPressLit, SwMaxSigns
+	global SwWantStrk, SwPressLit, SwMaxSigns, SwLockStrk, SwLockT
 	if (SwPressK)
 		return false
 	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	if (SwLockStrk and SwNow() - SwLockT < 0.15)
 		return false
 	wasWant := SwWantK
 	atomic := (ControlMode = "Manual" or !MacroRunning)
@@ -19942,6 +20466,11 @@ SwDoClick(k, now) {
 	if (Abs(mx - sx) > 8 or Abs(my - sy) > 8)
 		{
 		SwWantK := 0
+		SwLockStrk := SwLockStrk + 1
+		SwLockT := SwNow()
+		SwLog("cursor moved away (" . SwLockStrk . "/3)")
+		if (SwLockStrk < 3)
+			return false
 		SwLockN++
 		SwLockFail := true
 		SwStop := true
@@ -19949,6 +20478,7 @@ SwDoClick(k, now) {
 		SwLog("stop: cursor locked (" . mx . "," . my . " vs " . sx . "," . sy . ")")
 		return false
 		}
+	SwLockStrk := 0
 	pr := SwPressN ? 120 : 90
 	SwPressNom := (wasWant ? SwWantNom : nomA) + pr
 	SwPressDecT := wasWant ? SwWantT : now
@@ -20490,20 +21020,56 @@ SwTplSumFn() {
 
 SwTip(now) {
 	global SwTipT, SwPhase, SwLit, SwK0, SwOrder, SwClicks, SwStop, SwStopWhy, SwStarsValid, SwStarFound, SwFound, TooltipX, Tooltip13, MgInPlay
+	global SwPanelTxt, SwPanelLast
 	if (now - SwTipT < 0.25)
 		return
 	SwTipT := now
 	if (!MgInPlay)
 		return
 	if (!SwStarFound)
+		{
 		txt := "Stellarwave: stars not found"
+		SwPanelTxt := "stars not found"
+		}
 	else if (!SwPhase)
+		{
 		txt := "Stellarwave: tracking"
+		SwPanelTxt := (SwPanelLast != "") ? SwPanelLast : "waiting for signs"
+		}
 	else if (SwStop)
+		{
 		txt := "Stellarwave: stopped (" . SwStopWhy . ")"
+		SwPanelLast := "stopped - " . SwStopShort(SwStopWhy)
+		SwPanelTxt := SwPanelLast
+		}
 	else
+		{
 		txt := "Stellarwave: " . SwLit . "/12 lit, " . SwOrder.Length() . " signs seen, " . SwClicks . " clicked" . ((SwLit < 12) ? ", next " . SwZodiac(SwLit) : "")
+		SwPanelLast := SwLit . "/12 lit, " . SwClicks . " clicked"
+		SwPanelTxt := SwPanelLast
+		}
 	tooltip, %txt%, %TooltipX%, %Tooltip13%, 13
+}
+
+; short, plain reason for the info panel
+SwStopShort(why) {
+	if (InStr(why, "cursor"))
+		return "cursor moved"
+	if (InStr(why, "shape veto"))
+		return "sign looked wrong"
+	if (InStr(why, "tie unresolved"))
+		return "signs too close"
+	if (InStr(why, "click failed") or InStr(why, "white"))
+		return "click missed"
+	if (InStr(why, "already clicked"))
+		return "order mixed up"
+	if (InStr(why, "lit") or InStr(why, "k0"))
+		return "stars misread"
+	if (InStr(why, "gap"))
+		return "macro lagged"
+	if (InStr(why, "auto retry"))
+		return "auto retry out of signs"
+	return why
 }
 
 RodTol(v) {
@@ -22828,14 +23394,14 @@ RoundCtrl(h, w, ht, r) {
 BuildGui:
 
 IniRead, GuiTheme, %SettingsFile%, GUI, Theme, Mono
-IniRead, GuiCorners, %SettingsFile%, GUI, Corners, Rounded
+IniRead, GuiCorners, %SettingsFile%, GUI, Corners, Square
 IniRead, GuiInputs, %SettingsFile%, GUI, Inputs, Filled
 IniRead, GuiHelp, %SettingsFile%, GUI, HelpIcons, Show
 GuiRoundMul := {"Square": 0, "Subtle": 0.55, "Rounded": 1, "Extra round": 1.7}[GuiCorners]
 if (GuiRoundMul = "")
 	{
-	GuiCorners := "Rounded"
-	GuiRoundMul := 1
+	GuiCorners := "Square"
+	GuiRoundMul := 0
 	}
 GuiThemes := {"Mono": ["0B0B0D", "101012", "17171A", "0D0D0F", "E6E6E8", "EDEDEF", "85858C", "26262B", "8E8E95"]
 	, "Midnight": ["0D1117", "121722", "171D2A", "0A0E15", "6E9BFF", "E3E8F2", "8590A6", "242C3D", "AEB8CC"]
@@ -22961,7 +23527,7 @@ TitleX := SIDEW + 16
 Gui, Add, Text, x%TitleX% y9 w220 h20 HwndhTitleText, DeepFish
 SpecialBrushes[hTitleText] := {brush: hBrushBG, text: ColorTextBGR}
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%TitleX% y28 w260 h14 HwndhSubtitle, ULTIMATE  ·  v1.1.7  ·  Made by Yato
+Gui, Add, Text, x%TitleX% y28 w260 h14 HwndhSubtitle, ULTIMATE  ·  v%DFVersion%  ·  Made by Yato
 SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
 
 CloseX := WINW - 44
@@ -23150,6 +23716,7 @@ SetTimer, HeaderStatsTick, 1000
 HideHelpIcons()
 RoundExtras()
 SetTimer, InfoPanelTick, 500
+SetTimer, FishScanTick, 450
 SetTimer, DFCheckForUpdate, -1200
 SetTimer, OverlayHideTick, 250
 gosub, RepaintGui
@@ -23286,9 +23853,9 @@ else
 	{
 	HsMs := A_TickCount - WhStartTick
 	HsHr := HsMs / 3600000.0
-	HsRate := (HsHr > 0.01) ? Round(WhCatches / HsHr) : 0
+	HsRate := (HsHr > 0.01) ? Round(CaughtTotal() / HsHr) : 0
 	HsMin := HsMs // 60000
-	HsTxt := "🐟 " . Round(WhCatches) . "  ·  " . HsRate . "/hr  ·  " . (HsMin // 60) . "h " . Mod(HsMin, 60) . "m"
+	HsTxt := "🐟 " . CaughtTotal() . "  ·  " . HsRate . "/hr  ·  " . (HsMin // 60) . "h " . Mod(HsMin, 60) . "m"
 	}
 if (HsTxt != HsLast)
 	{
@@ -23381,6 +23948,8 @@ HmCfg := [ ["🎯   Casting Mode", "DashCast", "Normal|Perfect", "How the rod is
 	, ["🔁   Smart Cast", "DashSmart", "Off|On", "Recast straight away when a cast did not go through."]
 	, ["👁   Passive Mode", "DashPassive", "Off|On", "Do not cast or shake - just play the minigame`nwhenever it shows up (every rod)."]
 	, ["🫥   Hide Overlay", "DashHide", "Off|On", "Hide the info text and bar overlay while running."]
+	, ["⏱   Adaptive Cast", "DashAdapt", "Off|On", "Cast a set number of ms after the minigame closes,`ninstead of a fixed restart delay. Set the ms in the`nbox next to it (150 is a good start, lower = faster).`n`nNegative values (like -150) cast even sooner: the`nmacro decides the fish is caught faster. Down to -250.`nWhile the fight's UI is still on screen it never ends`nthe fight early, so a flickering bar is safe.`n`nStellarwave: the fight already ends the moment its`nbar and stars are gone, so 0 is fast there."]
+	, ["🐟   Fish Scanner", "DashScan", "Off|On", "Reads every ""You just caught a ... at ... kg!"" message`n(Extra! catches too) and works out each fish's value with`nthe Fischipedia Fish Value Calculator formula. Extra!`nfish are added to Caught. Shows on the info panel.`n`nNot 100`% accurate - values are estimates."]
 	, ["🪟   Info Panel", "DashInfo", "Off|On", "A small always-on-top panel with your rod, phase,`ncatches, rate, session time and rod power.`nWhile it is on, it replaces the old text info`nin the corner.`n`nPlace it by dragging the box in the screen below."] ]
 hC := AddPanel(HmX, 382, HmW, HmCfg.Length() * HmRowH + 4, 10)
 HomeCtrls.Push(hC)
@@ -23406,17 +23975,27 @@ for ri, r in HmCfg
 	dy := ry + 6
 	dv := r[2]
 	Gui, Font, s9 Norm c%ColorText%, Segoe UI
-	Gui, Add, DropDownList, x%dx% y%dy% w180 h120 v%dv% gDashChanged HwndhC, % r[3]
+	if (dv = "DashAdapt")
+		{
+		Gui, Add, Edit, x%dx% y%dy% w76 h24 vDashAcMs gDashAcMsChanged Limit6 HwndhC, %AdaptiveCastMs%
+		HomeCtrls.Push(hC)
+		ThemedCtrls.Push(hC)
+		IconTips[hC] := "ms to wait after the minigame closes before casting (negative like -150 = cast sooner, down to -250)"
+		dx2 := dx + 84
+		Gui, Add, DropDownList, x%dx2% y%dy% w96 h120 v%dv% gDashChanged HwndhC, % r[3]
+		}
+	else
+		Gui, Add, DropDownList, x%dx% y%dy% w180 h120 v%dv% gDashChanged HwndhC, % r[3]
 	HomeCtrls.Push(hC)
 	ThemedCtrls.Push(hC)
 	ry += HmRowH
 	}
 ; ---- Info panel position: drag the box across the screen shape
 Gui, Font, s9 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%HmX% y582 w300 h18 HwndhC, Info panel position
+Gui, Add, Text, x%HmX% y654 w300 h18 HwndhC, Info panel position
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
-hC := AddPanel(HmX, 604, HmW, 138, 10)
+hC := AddPanel(HmX, 676, HmW, 138, 10)
 HomeCtrls.Push(hC)
 InfoMonGet(ImL, ImT, ImW, ImH)
 IpMonH := 110
@@ -23427,7 +24006,7 @@ if (IpMonW > 220)
 	IpMonH := Round(IpMonW * ImH / ImW)
 	}
 IpMonBX := HmX + 16
-IpMonBY := 604 + (138 - IpMonH) // 2
+IpMonBY := 676 + (138 - IpMonH) // 2
 IpBezX := IpMonBX - 3
 IpBezY := IpMonBY - 3
 IpBezW := IpMonW + 6
@@ -23458,22 +24037,22 @@ IconTips[hIpBox] := "Drag me to where the info panel should sit on your screen."
 IpTxX := IpMonBX + IpMonW + 24
 IpTxW := HmX + HmW - IpTxX - 14
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%IpTxX% y622 w%IpTxW% h100 HwndhC, Drag the bright box around the screen shape - the info panel moves with it, live.`n`nIt shows on the screen Roblox is on. Turn it on with Info Panel above.
+Gui, Add, Text, x%IpTxX% y694 w%IpTxW% h100 HwndhC, Drag the bright box around the screen shape - the info panel moves with it, live.`n`nIt shows on the screen Roblox is on. Turn it on with Info Panel above.
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
 
 ; ---- Appearance
 Gui, Font, s9 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%HmX% y760 w300 h18 HwndhC, Appearance
+Gui, Add, Text, x%HmX% y832 w300 h18 HwndhC, Appearance
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorTextBGR}
 ApOpts := [ ["🎨   Theme", "ApTheme", "Mono|Midnight|Violet|Emerald|Crimson|Classic", GuiTheme]
 	, ["◻   Corners", "ApCorners", "Square|Subtle|Rounded|Extra round", GuiCorners]
 	, ["▭   Inputs", "ApInputs", "Filled|Outlined", GuiInputs]
 	, ["❔   Help icons", "ApHelp", "Show|Hide", GuiHelp] ]
-hC := AddPanel(HmX, 782, HmW, ApOpts.Length() * HmRowH + 4, 10)
+hC := AddPanel(HmX, 854, HmW, ApOpts.Length() * HmRowH + 4, 10)
 HomeCtrls.Push(hC)
-ry := 784
+ry := 856
 for ri, r in ApOpts
 	{
 	if (ri > 1)
@@ -23506,7 +24085,7 @@ for ri, r in ApOpts
 	ry += HmRowH
 	}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%HmX% y934 w%HmW% h18 HwndhC, Changing these restarts the window (your settings are saved first).
+Gui, Add, Text, x%HmX% y1006 w%HmW% h18 HwndhC, Changing these restarts the window (your settings are saved first).
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 return
@@ -23571,6 +24150,15 @@ if (!InfoPanelOn or OverlayHidden)
 		}
 	return
 	}
+; the Signs row only exists for Stellarwave - rebuild when the rod changes
+if (hInfoP and IpHasSw != (SpecialRod = "Stellarwave Melody"))
+	{
+	Gui, InfoP:Destroy
+	hInfoP := 0
+	IpShown := false
+	Loop 12
+		IpLast%A_Index% := ""
+	}
 if (!hInfoP)
 	{
 	Gui, InfoP:New, +AlwaysOnTop -Caption +ToolWindow +E0x20 +HwndhInfoP
@@ -23579,19 +24167,25 @@ if (!hInfoP)
 	Gui, InfoP:Font, s10 Bold c%ColorText%, Segoe UI
 	Gui, InfoP:Add, Text, x14 y10 w200 h20 HwndhIpT, DeepFish
 	SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
+	IpHasSw := (SpecialRod = "Stellarwave Melody")
 	IpRows := ["Rod", "Phase", "Caught", "Per hour", "Session", "Rod power"]
+	if (IpHasSw)
+		IpRows.Push("Signs")
+	if (FishScanOn)
+		IpRows.Push("Fish seen", "Last fish", "Last value", "Session value")
+	IpW := IpHasSw ? 320 : (FishScanOn ? 300 : 246)
+	IpVw := IpW - 106
 	IpY := 36
 	for i, nm in IpRows
 		{
 		Gui, InfoP:Font, s9 Norm c%ColorMuted%, Segoe UI
-		Gui, InfoP:Add, Text, x14 y%IpY% w80 h18 HwndhIpT, %nm%
+		Gui, InfoP:Add, Text, x14 y%IpY% w86 h18 HwndhIpT, %nm%
 		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorMutedBGR}
 		Gui, InfoP:Font, s9 Norm c%ColorText%, Segoe UI
-		Gui, InfoP:Add, Text, x92 y%IpY% w140 h18 Right vIpVal%i% HwndhIpT, ---
+		Gui, InfoP:Add, Text, x92 y%IpY% w%IpVw% h18 Right vIpVal%i% HwndhIpT, ---
 		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
 		IpY += 20
 		}
-	IpW := 246
 	IpH := IpY + 8
 	Gui, InfoP:Show, Hide w%IpW% h%IpH%, DeepFish Info
 	DetectHiddenWindows, On
@@ -23604,6 +24198,15 @@ if (!hInfoP)
 	}
 gosub, HomeCompute
 IpNew := [HmV4, HmV1, HmV5, HmV6, HmV7, HmV8]
+if (IpHasSw)
+	IpNew.Push((SwPanelTxt = "") ? "waiting for signs" : SwPanelTxt)
+if (FishScanOn)
+	{
+	IpNew.Push(FsCount . "")
+	IpNew.Push((FsLastName = "") ? "---" : FsLastName . "  " . FsLastKg . "kg")
+	IpNew.Push((FsLastName = "") ? "---" : ((FsLastVal < 0) ? "unknown fish" : FsMoney(FsLastVal) . " C$"))
+	IpNew.Push(FsMoney(FsTotal) . " C$")
+	}
 for i, v in IpNew
 	{
 	if (IpLast%i% != v)
@@ -23630,6 +24233,838 @@ if (!IpShown or IpSx != IpLastX or IpSy != IpLastY)
 	}
 return
 
+
+;---- Fish scanner: reads "You just caught a ... at ... kg!" and values each fish --------------------------
+
+FishScanTick:
+if (!FishScanOn or !MacroRunning or !RobloxHwnd)
+	return
+if (!FsReady or A_TickCount - FsDataChkT > 600000)
+	{
+	FsReady := true
+	FsDataChkT := A_TickCount
+	if (FsLoadData() and FsWorkerPid)
+		{
+		; new list downloaded - restart the reader so it uses it
+		Process, Close, %FsWorkerPid%
+		FsWorkerPid := 0
+		}
+	}
+FsEnsureWorker()
+FsOutF := A_Temp . "\deepfish_ocr_out.txt"
+FsReqF := A_Temp . "\deepfish_ocr_req.txt"
+if FileExist(FsOutF)
+	{
+	FileRead, FsTxt, *P65001 %FsOutF%
+	FileDelete, %FsOutF%
+	FsPending := false
+	Loop, Parse, FsTxt, `n, `r
+		{
+		FsP := StrSplit(A_LoopField, "|")
+		if (FsP[1] = "L" and FsP.Length() >= 6)
+			FsObserve(FsP[3], FsP[4], FsP[5], FsP[6], FsP[7] = "E")
+		}
+	}
+FsCommitDue()
+if (FsPending and A_TickCount - FsReqT > 5000)
+	FsPending := false
+; the catch message shows after the fight - do not spend CPU on OCR while reeling
+if (!FsPending and !MgInPlay)
+	{
+	RobloxClientRect(RobloxHwnd, FsX, FsY, FsW, FsH)
+	if (FsW > 200 and FsH > 200)
+		{
+		FsRx := FsX + Round(FsW * 0.02)
+		FsRy := FsY + Round(FsH * 0.10)
+		FsRw := Round(FsW * 0.96)
+		FsRh := Round(FsH * 0.80)
+		FileDelete, %FsReqF%
+		FileAppend, % FsRx . " " . FsRy . " " . FsRw . " " . FsRh . " " . A_TickCount, %FsReqF%
+		FsPending := true
+		FsReqT := A_TickCount
+		}
+	}
+return
+
+; one reading of a catch line from the OCR helper (it already voted between its 3 zoom levels)
+FsObserve(fk, canon, kg, val, ex := false) {
+	global FsGroups, FsDone
+	if (!IsObject(FsGroups))
+		FsGroups := []
+	if (!IsObject(FsDone))
+		FsDone := []
+	now := A_TickCount
+	dg := RegExReplace(kg, "[^0-9]")
+	if (dg = "")
+		return
+	for i, d in FsDone
+		{
+		if (d.k = fk and FsDigNear(d.dg, dg) and now - d.t < 4000)
+			{
+			d.t := now
+			return
+			}
+		}
+	g := ""
+	for i, e in FsGroups
+		{
+		if (e.k = fk and FsDigNear(e.dg, dg) and now - e.t < 2500)
+			{
+			g := e
+			break
+			}
+		}
+	if (!IsObject(g))
+		{
+		g := {k: fk, dg: dg, t: now, t0: now, n: 0, ex: 0, votes: {}, vals: {}}
+		FsGroups.Push(g)
+		}
+	key := canon . "|" . kg
+	g.votes[key] := (g.votes.HasKey(key) ? g.votes[key] : 0) + 1
+	g.vals[key] := val
+	g.n := g.n + 1
+	if (ex)
+		g.ex := g.ex + 1
+	g.t := now
+}
+
+; count a fish once its readings agree (3 the same), or once its message is gone
+FsCommitDue() {
+	global FsGroups, FsDone, FsCount, FsTotal, FsLastName, FsLastKg, FsLastVal, FsExtraCount
+	if (!IsObject(FsGroups))
+		return
+	now := A_TickCount
+	i := FsGroups.Length()
+	while (i >= 1)
+		{
+		g := FsGroups[i]
+		bestK := ""
+		bestN := -1
+		for k, n in g.votes
+			{
+			if (n > bestN or (n = bestN and InStr(StrSplit(k, "|")[2], ".")))
+				{
+				bestN := n
+				bestK := k
+				}
+			}
+		if (g.n < 2 and now - g.t > 1500)
+			{
+			; seen in only one frame - a stray misread, not a fish
+			FsGroups.RemoveAt(i)
+			i--
+			continue
+			}
+		if ((bestN >= 3 and bestN * 10 >= g.n * 6) or (g.n >= 2 and now - g.t > 1500) or now - g.t0 > 6000)
+			{
+			kp := StrSplit(bestK, "|")
+			val := g.vals[bestK] + 0
+			FsCount := FsCount + 1
+			; most of its readings said "Extra!" -> a bonus fish on top of the fight
+			if (g.ex * 2 >= g.n)
+				FsExtraCount := FsExtraCount + 1
+			FsLastName := (g.k = "?") ? "unknown fish" : kp[1]
+			FsLastKg := kp[2]
+			FsLastVal := val
+			if (val > 0)
+				FsTotal := FsTotal + val
+			FsDone.Push({k: g.k, dg: g.dg, t: g.t})
+			FsGroups.RemoveAt(i)
+			}
+		i--
+		}
+	if (IsObject(FsDone))
+		{
+		i := FsDone.Length()
+		while (i >= 1)
+			{
+			if (now - FsDone[i].t > 10000)
+				FsDone.RemoveAt(i)
+			i--
+			}
+		}
+}
+
+; every fight is one fish; the scanner adds the "Extra!" bonus fish on top
+CaughtTotal() {
+	global WhCatches, FishScanOn, FsExtraCount
+	return Round(WhCatches) + (FishScanOn ? Round(FsExtraCount) : 0)
+}
+
+FsDigNear(a, b) {
+	if (a = b)
+		return true
+	if (Abs(StrLen(a) - StrLen(b)) > 1)
+		return false
+	return (FsLev(a, b) <= 1)
+}
+
+; value = ceil( ceil(base_value / base_weight * kg) * mutation * attributes )   (Fischipedia Fish Value Calculator)
+FsValue(name, kg, ByRef canon := "") {
+	global FsFish, FsFishName
+	canon := ""
+	if (!IsObject(FsFish) or !FsFish.Count())
+		return -1
+	w := StrSplit(name, " ")
+	n := w.Length()
+	pick := 0
+	pickMult := 1
+	pickFish := ""
+	pickPre := ""
+	firstFish := 0
+	; exact fish name at the end, words in front = mutations (fuzzy)
+	Loop % n
+		{
+		k := A_Index
+		cand := FsJoin(w, k, n)
+		if (!FsFish.HasKey(Format("{:L}", cand)))
+			continue
+		if (!firstFish)
+			firstFish := k
+		mult := FsMutMult(w, k - 1, ok, pre)
+		if (ok)
+			{
+			pick := k
+			pickMult := mult
+			pickFish := Format("{:L}", cand)
+			pickPre := pre
+			break
+			}
+		}
+	if (!pick and firstFish)
+		{
+		pick := firstFish
+		pickFish := Format("{:L}", FsJoin(w, firstFish, n))
+		pickMult := FsMutMult(w, firstFish - 1, ok, pickPre)
+		}
+	; no exact fish: closest fish name (OCR typo), longest suffix first
+	if (!pick)
+		{
+		Loop % (n < 3) ? n : 3
+			{
+			k := n - ((n < 3) ? n : 3) + A_Index
+			cand := Format("{:L}", FsJoin(w, k, n))
+			best := FsClosest(cand, FsFish)
+			if (best != "")
+				{
+				pick := k
+				pickFish := best
+				pickMult := FsMutMult(w, k - 1, ok, pickPre)
+				break
+				}
+			}
+		}
+	if (!pick)
+		return -1
+	f := FsFish[pickFish]
+	canon := Trim(pickPre . " " . (FsFishName.HasKey(pickFish) ? FsFishName[pickFish] : pickFish))
+	if (f[2] <= 0)
+		return -1
+	wp := Ceil(f[1] / f[2] * kg)
+	return Ceil(wp * pickMult)
+}
+
+FsJoin(w, a, b) {
+	s := ""
+	Loop % b - a + 1
+		s .= ((A_Index > 1) ? " " : "") . w[a + A_Index - 1]
+	return s
+}
+
+; closest key in obj within a small typo distance, or ""
+FsClosest(word, obj) {
+	len := StrLen(word)
+	tol := (len >= 9) ? 2 : ((len >= 4) ? 1 : 0)
+	if (!tol)
+		return ""
+	best := ""
+	bd := 99
+	for k, v in obj
+		{
+		if (Abs(StrLen(k) - len) > tol)
+			continue
+		d := FsLev(word, k)
+		if (d < bd)
+			{
+			bd := d
+			best := k
+			}
+		}
+	return (bd <= tol) ? best : ""
+}
+
+FsLev(a, b) {
+	la := StrLen(a)
+	lb := StrLen(b)
+	prev := []
+	Loop % lb + 1
+		prev.Push(A_Index - 1)
+	Loop % la
+		{
+		i := A_Index
+		ca := SubStr(a, i, 1)
+		cur := [i]
+		Loop % lb
+			{
+			j := A_Index
+			cost := (ca == SubStr(b, j, 1)) ? 0 : 1
+			cur.Push(Min(prev[j + 1] + 1, cur[j] + 1, prev[j] + cost))
+			}
+		prev := cur
+		}
+	return prev[lb + 1]
+}
+
+; multiplies the mutation / Shiny / Sparkling words in front of the fish name (longest names first, typos allowed)
+FsMutMult(w, cnt, ByRef ok, ByRef names := "") {
+	global FsMut, FsMutName
+	ok := true
+	mult := 1
+	names := ""
+	i := 1
+	while (i <= cnt)
+		{
+		hit := ""
+		L := (cnt - i + 1 < 3) ? cnt - i + 1 : 3
+		while (L >= 1)
+			{
+			ph := Format("{:L}", FsJoin(w, i, i + L - 1))
+			if (IsObject(FsMut) and FsMut.HasKey(ph))
+				hit := ph
+			else if (IsObject(FsMut))
+				hit := FsClosest(ph, FsMut)
+			if (hit != "")
+				break
+			L--
+			}
+		if (hit != "")
+			{
+			mult := mult * FsMut[hit]
+			names .= ((names = "") ? "" : " ") . (FsMutName.HasKey(hit) ? FsMutName[hit] : hit)
+			i += L
+			}
+		else
+			{
+			ok := false
+			i++
+			}
+		}
+	return mult
+}
+
+FsLoadData() {
+	global FsFish, FsMut, FsFishName, FsMutName
+	FsFish := {}
+	FsMut := {}
+	FsFishName := {}
+	FsMutName := {}
+	f := A_ScriptDir . "\FischFishData.txt"
+	got := false
+	; the list is kept for good and only replaced once a week - after Monday 6 PM US Eastern
+	if (FsDataStale(f))
+		{
+		fj := FsFetch("bucket('fish').select('name','base_weight','base_value').limit(5000).run()")
+		mj := FsFetch("bucket('mutations').select('name','value').limit(5000).run()")
+		if (fj != "" and mj != "")
+			{
+			out := ""
+			pos := 1
+			while (pos := RegExMatch(fj, "O)\{[^{}]*\}", mo, pos))
+				{
+				obj := mo.Value(0)
+				pos += mo.Len(0)
+				if (RegExMatch(obj, """name""\s*:\s*""([^""]*)""", nm) and RegExMatch(obj, """base_value""\s*:\s*([0-9.]+)", bv) and RegExMatch(obj, """base_weight""\s*:\s*([0-9.]+)", bw))
+					out .= "F|" . nm1 . "|" . bv1 . "|" . bw1 . "`n"
+				}
+			pos := 1
+			while (pos := RegExMatch(mj, "O)\{[^{}]*\}", mo, pos))
+				{
+				obj := mo.Value(0)
+				pos += mo.Len(0)
+				if (RegExMatch(obj, """name""\s*:\s*""([^""]*)""", nm) and RegExMatch(obj, """value""\s*:\s*\[?\s*([0-9.]+)", mv))
+					out .= "M|" . nm1 . "|" . mv1 . "`n"
+				}
+			if (StrLen(out) > 1000)
+				{
+				FileDelete, %f%
+				FileAppend, %out%, %f%, UTF-8
+				got := true
+				}
+			}
+		}
+	return got
+	FileRead, txt, *P65001 %f%
+	Loop, Parse, txt, `n, `r
+		{
+		p := StrSplit(A_LoopField, "|")
+		if (p[1] = "F" and p.Length() >= 4)
+			{
+			FsFish[Format("{:L}", p[2])] := [p[3] + 0, p[4] + 0]
+			FsFishName[Format("{:L}", p[2])] := p[2]
+			}
+		else if (p[1] = "M" and p.Length() >= 3)
+			{
+			FsMut[Format("{:L}", p[2])] := p[3] + 0
+			FsMutName[Format("{:L}", p[2])] := p[2]
+			}
+		}
+}
+
+; true when there is no list yet, or the newest Monday 6 PM US Eastern is after the list was downloaded
+FsDataStale(f) {
+	if !FileExist(f)
+		return true
+	; the file's time in UTC
+	FileGetTime, ft, %f%, M
+	off := A_Now
+	EnvSub, off, %A_NowUTC%, Seconds
+	EnvAdd, ft, % -off, Seconds
+	; now in US Eastern (EDT from the 2nd Sunday of March to the 1st Sunday of November)
+	et := A_NowUTC
+	eo := FsEasternOffset(A_NowUTC)
+	EnvAdd, et, %eo%, Hours
+	FormatTime, wd, %et%, WDay
+	back := Mod(wd - 2 + 7, 7)
+	bnd := SubStr(et, 1, 8) . "180000"
+	EnvAdd, bnd, % -back, Days
+	if (bnd > et)
+		EnvAdd, bnd, -7, Days
+	; back to UTC
+	EnvAdd, bnd, % -eo, Hours
+	return (ft < bnd)
+}
+
+FsEasternOffset(utc) {
+	y := SubStr(utc, 1, 4)
+	FormatTime, w1, %y%0301, WDay
+	mar := 1 + Mod(8 - w1, 7) + 7
+	FormatTime, w2, %y%1101, WDay
+	nov := 1 + Mod(8 - w2, 7)
+	dstOn := y . "03" . Format("{:02}", mar) . "070000"
+	dstOff := y . "11" . Format("{:02}", nov) . "060000"
+	return (utc >= dstOn and utc < dstOff) ? -4 : -5
+}
+
+FsFetch(q) {
+	enc := ""
+	Loop, Parse, q
+		{
+		c := A_LoopField
+		if c is alnum
+			enc .= c
+		else if (InStr("-_.~", c))
+			enc .= c
+		else
+			enc .= "%" . Format("{:02X}", Asc(c))
+		}
+	try
+		{
+		whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+		whr.SetTimeouts(5000, 5000, 8000, 15000)
+		whr.Open("GET", "https://fischipedia.org/w/api.php?action=bucket&format=json&query=" . enc, false)
+		whr.SetRequestHeader("User-Agent", "DeepFish-macro")
+		whr.Send()
+		if (whr.Status != 200)
+			return ""
+		return whr.ResponseText
+		}
+	catch e
+		return ""
+}
+
+FsMoney(n) {
+	if n is not number
+		return n
+	return RegExReplace(Round(n), "\G\d+?(?=(\d{3})+(?:\D|$))", "$0,")
+}
+
+FsEnsureWorker() {
+	global FsWorkerPid
+	if (FsWorkerPid)
+		{
+		Process, Exist, %FsWorkerPid%
+		if (ErrorLevel)
+			return
+		}
+	ps := A_Temp . "\deepfish_ocr_worker.ps1"
+	FileDelete, %ps%
+	FileAppend, % FsWorkerScript(), %ps%, UTF-8
+	me := DllCall("GetCurrentProcessId")
+	data := A_ScriptDir . "\FischFishData.txt"
+	Run, powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%ps%" -ParentPid %me% -Dir "%A_Temp%" -Data "%data%", , Hide, FsWorkerPid
+}
+
+FsWorkerScript() {
+ws1 =
+(% Join`r`n
+param([int]$ParentPid, [string]$Dir, [string]$Data = '', [string]$ImgFile = '', [switch]$Once)
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+Add-Type -Name D -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+[W.D]::SetProcessDPIAware() | Out-Null
+$cs = @'
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+public static class FR {
+    public class FishInfo { public string Name; public double BV; public double BW; }
+    public static Dictionary<string, FishInfo> Fish = new Dictionary<string, FishInfo>();
+    public static Dictionary<string, double> Mut = new Dictionary<string, double>();
+    public static Dictionary<string, string> MutName = new Dictionary<string, string>();
+    static List<string> FishKeys = new List<string>();
+    static List<string> FishFlat = new List<string>();
+    static List<string> MutKeys = new List<string>();
+    static Regex LineRx = new Regex(@"c\S{2,6}t\s+an?\s+(.+?)\s+(?:a\S{0,2}\s+)?(\d[\d.,]*(?:\s\d{1,2}(?=\s*k))?)\s*k\s*g", RegexOptions.IgnoreCase);
+
+    public static void Load(string path) {
+        Fish.Clear(); Mut.Clear(); MutName.Clear(); FishKeys.Clear(); FishFlat.Clear(); MutKeys.Clear();
+        if (!File.Exists(path)) return;
+        foreach (string line in File.ReadAllLines(path, Encoding.UTF8)) {
+            string[] p = line.Split('|');
+            double a, b;
+            if (p.Length >= 4 && p[0] == "F" && double.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out a) && double.TryParse(p[3], NumberStyles.Float, CultureInfo.InvariantCulture, out b)) {
+                string k = N(p[1]);
+                if (k.Length > 0 && !Fish.ContainsKey(k)) { Fish[k] = new FishInfo { Name = p[1], BV = a, BW = b }; FishKeys.Add(k); FishFlat.Add(k.Replace(" ", "")); }
+            } else if (p.Length >= 3 && p[0] == "M" && double.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out a)) {
+                string k = N(p[1]);
+                if (k.Length > 0 && !Mut.ContainsKey(k)) { Mut[k] = a; MutName[k] = p[1]; MutKeys.Add(k); }
+            }
+        }
+    }
+    public static string N(string s) {
+        s = s.ToLowerInvariant().Replace("'", "").Replace("\u2019", "").Replace("-", " ");
+        s = Regex.Replace(s, "[^a-z0-9 ]", "");
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+    public static int Lev(string a, string b) {
+        int[] prev = new int[b.Length + 1], cur = new int[b.Length + 1];
+        for (int j = 0; j <= b.Length; j++) prev[j] = j;
+        for (int i = 1; i <= a.Length; i++) {
+            cur[0] = i;
+            for (int j = 1; j <= b.Length; j++) {
+                int c = a[i - 1] == b[j - 1] ? 0 : 1;
+                cur[j] = Math.Min(Math.Min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + c);
+            }
+            int[] t = prev; prev = cur; cur = t;
+        }
+        return prev[b.Length];
+    }
+    static int Tol(int len) { return len >= 16 ? 3 : (len >= 9 ? 2 : (len >= 4 ? 1 : 0)); }
+    // closest fish to a phrase (spaces optional, so glued/split words still match); cost = letters wrong
+    static string FishMatch(string ph, out int cost) {
+        cost = 99;
+        if (ph.Length == 0) return null;
+        if (Fish.ContainsKey(ph)) { cost = 0; return ph; }
+        string flat = ph.Replace(" ", "");
+        int tol = Tol(flat.Length);
+        string best = null;
+        for (int i = 0; i < FishFlat.Count; i++) {
+            string k = FishFlat[i];
+            if (k == flat) { cost = 0; return FishKeys[i]; }
+            if (tol == 0 || Math.Abs(k.Length - flat.Length) > tol) continue;
+            int d = Lev(flat, k);
+            if (d < cost) { cost = d; best = FishKeys[i]; }
+        }
+        if (cost > tol) { cost = 99; return null; }
+        return best;
+    }
+    static string MutMatch(string ph, out int cost) {
+        cost = 99;
+        if (Mut.ContainsKey(ph)) { cost = 0; return ph; }
+        string flat = ph.Replace(" ", "");
+        int tol = flat.Length >= 12 ? 3 : (flat.Length >= 7 ? 2 : (flat.Length >= 4 ? 1 : 0));
+        if (tol == 0) return null;
+        string best = null;
+        foreach (string k in MutKeys) {
+            string kf = k.Replace(" ", "");
+            if (Math.Abs(kf.Length - flat.Length) > tol) continue;
+            int d = Lev(flat, kf);
+            if (d < cost) { cost = d; best = k; }
+        }
+        if (cost > tol) { cost = 99; return null; }
+        return best;
+    }
+    // explain the words in front of the fish as mutations; unexplained words cost 4 each
+    static int Prefix(List<string> p, out double mult, out string names) {
+        int n = p.Count;
+        int[] bc = new int[n + 1]; double[] bm = new double[n + 1]; string[] bn = new string[n + 1];
+        for (int i = 1; i <= n; i++) bc[i] = 9999;
+        bc[0] = 0; bm[0] = 1; bn[0] = "";
+        for (int i = 0; i < n; i++) {
+            if (bc[i] >= 9999) continue;
+            for (int L = 1; L <= 3 && i + L <= n; L++) {
+                int c; string hit = MutMatch(string.Join(" ", p.GetRange(i, L)), out c);
+                if (hit != null && bc[i] + c < bc[i + L]) { bc[i + L] = bc[i] + c; bm[i + L] = bm[i] * Mut[hit]; bn[i + L] = (bn[i] + " " + MutName[hit]).Trim(); }
+            }
+            // two mutations glued into one word ("FrightfulMagmatic")
+            string wd = p[i];
+            if (wd.Length >= 8) {
+                for (int s = 3; s <= wd.Length - 3; s++) {
+                    int c1, c2; string m1 = MutMatch(wd.Substring(0, s), out c1); if (m1 == null) continue;
+                    string m2 = MutMatch(wd.Substring(s), out c2); if (m2 == null) continue;
+                    int c = c1 + c2 + 1;
+                    if (bc[i] + c < bc[i + 1]) { bc[i + 1] = bc[i] + c; bm[i + 1] = bm[i] * Mut[m1] * Mut[m2]; bn[i + 1] = (bn[i] + " " + MutName[m1] + " " + MutName[m2]).Trim(); }
+                }
+            }
+            if (bc[i] + 4 < bc[i + 1]) { bc[i + 1] = bc[i] + 4; bm[i + 1] = bm[i]; bn[i + 1] = bn[i]; }
+        }
+        mult = bm[n]; names = bn[n];
+        return bc[n];
+    }
+    static void Try(List<string> pre, string fishPh, ref int bestCost, ref string bFish, ref string bCanon, ref double bMult, int extra) {
+        int fc; string f = FishMatch(fishPh, out fc);
+        if (f == null) return;
+        double m; string mn; int pc = Prefix(pre, out m, out mn);
+        int cost = fc * 2 + pc + extra;
+        // tie: the longer fish name explains more of the text
+        if (cost < bestCost || (cost == bestCost && bFish != null && f.Length > bFish.Length)) {
+            bestCost = cost; bFish = f; bMult = m; bCanon = (mn + " " + Fish[f].Name).Trim();
+        }
+    }
+    public static int Resolve(string raw, out string fishKey, out string canon, out double mult) {
+        fishKey = null; canon = ""; mult = 1;
+        int bestCost = 9999;
+        if (Fish.Count == 0) return bestCost;
+        string c = Regex.Replace(raw, "[,.\u2019'\"]", "").Replace("-", " ");
+        var variants = new List<string> { c };
+        string camel = Regex.Replace(c, "([a-z])([A-Z])", "$1 $2");
+        if (camel != c) variants.Add(camel);
+        string swap = c.Replace("rn", "m").Replace("vv", "w").Replace("cl", "d").Replace("1", "l").Replace("0", "o");
+        if (swap != c) variants.Add(swap);
+        for (int v = 0; v < variants.Count; v++) {
+            string[] w = N(variants[v]).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int n = w.Length; if (n == 0) continue;
+            int extra = v * 1;
+            for (int k = 0; k < n; k++) {
+                var pre = new List<string>(); for (int i = 0; i < k; i++) pre.Add(w[i]);
+                Try(pre, string.Join(" ", w, k, n - k), ref bestCost, ref fishKey, ref canon, ref mult, extra);
+            }
+            // last word holds mutation + fish glued together ("Parpdiserrout")
+            string last = w[n - 1];
+            if (last.Length >= 7) {
+                for (int s = 3; s <= last.Length - 3; s++) {
+                    var pre = new List<string>(); for (int i = 0; i < n - 1; i++) pre.Add(w[i]); pre.Add(last.Substring(0, s));
+                    Try(pre, last.Substring(s), ref bestCost, ref fishKey, ref canon, ref mult, extra + 1);
+                }
+            }
+        }
+        return bestCost;
+    }
+    static double ParseKg(string t) {
+        t = t.Trim().TrimEnd('.');
+        if (t.Contains(" ") && !t.Contains(".")) t = t.Replace(" ", ".");
+        t = t.Replace(" ", "");
+        if (t.Contains(",") && t.Contains(".")) t = t.Replace(",", "");
+        else if (t.Contains(",")) t = Regex.IsMatch(t, @"^\d{1,3}(,\d{3})+$") ? t.Replace(",", "") : t.Replace(",", ".");
+        double v; return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out v) ? v : -1;
+    }
+    public static long Value(string fishKey, double kg, double mult) {
+        FishInfo f = Fish[fishKey];
+        if (f.BW <= 0) return -1;
+        double wp = Math.Ceiling(f.BV / f.BW * kg);
+        return (long)Math.Ceiling(wp * mult);
+    }
+    // one OCR line -> "fishKey|canon|kg|mult|cost" ("?|name|kg|1|99" when the fish is unknown), null if not a catch line
+    public static string Read(string text) {
+        text = Regex.Replace(text, @"(?<=\d)\s*([.,])\s*(?=[\dOo])", "$1");
+        text = Regex.Replace(text, @"(?<=\d[.,]?)[Oo](?=[\dOo]*\s*k)", "0");
+        text = Regex.Replace(text, @"(?<=\d[.,]?)[Oo](?=[\dOo]*\s*k)", "0");
+        text = Regex.Replace(text, @"(?<=\d[.,]?)[lI](?=[\d]*\s*k)", "1");
+        Match m = LineRx.Match(text);
+        if (!m.Success) return null;
+        string kgTxt = m.Groups[2].Value;
+        double kg = ParseKg(kgTxt);
+        if (kg <= 0) return null;
+        string fk, canon; double mult;
+        int cost = Resolve(m.Groups[1].Value, out fk, out canon, out mult);
+        if (fk != null && cost < 12) {
+            FishInfo f = Fish[fk];
+            if (!kgTxt.Contains(".") && !kgTxt.Contains(",") && !kgTxt.Contains(" ") && f.BW > 0 && kg / f.BW > 25) {
+                foreach (double d in new double[] { 10, 100 }) { if (kg / d / f.BW <= 25 && kg / d / f.BW >= 0.02) { kg = kg / d; break; } }
+            }
+            return fk + "|" + canon + "|" + kg.ToString(CultureInfo.InvariantCulture) + "|" + mult.ToString(CultureInfo.InvariantCulture) + "|" + cost;
+        }
+        return "?|" + N(m.Groups[1].Value) + "|" + kg.ToString(CultureInfo.InvariantCulture) + "|1|99";
+    }
+    // all readings of one line (weight: 1 = enlarged pass, 0.5 = rough pass) -> "fishKey|canon|kg|value"
+    public static string Best(List<string> reads, List<double> weights) {
+        var nameScore = new Dictionary<string, double>();
+)
+ws2 =
+(% Join`r`n
+        var kgScore = new Dictionary<string, double>();
+        var multOf = new Dictionary<string, double>();
+        string unknown = null;
+        for (int i = 0; i < reads.Count; i++) {
+            string r = reads[i]; if (string.IsNullOrEmpty(r) || r.Split('|').Length < 5) continue;
+            string[] q = r.Split('|');
+            double wgt = weights[i];
+            int cost = int.Parse(q[4]);
+            double kq = wgt * (cost >= 99 ? 0.5 : 1.0);
+            double ks; kgScore.TryGetValue(q[2], out ks); kgScore[q[2]] = ks + kq + (q[2].Contains(".") ? 0.01 : 0);
+            if (q[0] == "?") { if (unknown == null) unknown = q[1]; continue; }
+            string key = q[0] + "|" + q[1];
+            double s; nameScore.TryGetValue(key, out s); nameScore[key] = s + wgt * 12.0 / (1 + cost);
+            multOf[key] = double.Parse(q[3], CultureInfo.InvariantCulture);
+        }
+        string bestKg = null; double bk = -1;
+        foreach (var kv in kgScore) if (kv.Value > bk) { bk = kv.Value; bestKg = kv.Key; }
+        if (bestKg == null) return null;
+        var adj = new Dictionary<string, double>(nameScore);
+        foreach (var A in nameScore) {
+            if (A.Value < 4) continue;
+            string ca = " " + A.Key.Split('|')[1].ToLowerInvariant();
+            foreach (var B in nameScore) {
+                if (B.Key == A.Key) continue;
+                string cb = " " + B.Key.Split('|')[1].ToLowerInvariant();
+                if (ca.Length > cb.Length && ca.EndsWith(cb)) adj[A.Key] += B.Value;
+            }
+        }
+        string bestName = null; double bn = -1;
+        foreach (var kv in adj) if (kv.Value > bn) { bn = kv.Value; bestName = kv.Key; }
+        double kg = double.Parse(bestKg, CultureInfo.InvariantCulture);
+        if (bestName == null) return "?|" + unknown + "|" + bestKg + "|-1";
+        string fk = bestName.Split('|')[0];
+        return bestName + "|" + bestKg + "|" + Value(fk, kg, multOf[bestName]);
+    }
+}
+'@
+Add-Type -TypeDefinition $cs -Language CSharp
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrResult, Windows.Foundation, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics, ContentType = WindowsRuntime]
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -like 'IAsyncOperation*' })[0]
+function Await($op, [Type]$t) { $m = $asTask.MakeGenericMethod($t); $task = $m.Invoke($null, @($op)); $task.Wait(-1) | Out-Null; $task.Result }
+$engine = $null
+try { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new('en-US')) } catch { }
+if (-not $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
+$maxDim = [Windows.Media.Ocr.OcrEngine]::MaxImageDimension - 10
+$req = Join-Path $Dir 'deepfish_ocr_req.txt'
+$out = Join-Path $Dir 'deepfish_ocr_out.txt'
+$nl = [Environment]::NewLine
+$dataStamp = $null
+function LoadData() {
+  if ($Data -and (Test-Path $Data)) {
+    $st = (Get-Item $Data).LastWriteTimeUtc
+    if ($st -ne $script:dataStamp) { [FR]::Load($Data); $script:dataStamp = $st }
+  }
+}
+function Recognize($bmp) {
+  $ms = New-Object System.IO.MemoryStream
+  $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Bmp)
+  $ms.Position = 0
+  $ras = [System.IO.WindowsRuntimeStreamExtensions]::AsRandomAccessStream($ms)
+  $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($ras)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $sb = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $res = Await ($engine.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
+  $ms.Dispose()
+  $res
+}
+function Rows($res) {
+  $words = @()
+  foreach ($l in $res.Lines) { foreach ($wd in $l.Words) { $r = $wd.BoundingRect; $words += [pscustomobject]@{ T = $wd.Text; X = $r.X; R = $r.X + $r.Width; Top = $r.Y; Bot = $r.Y + $r.Height; Y = $r.Y + $r.Height / 2; H = $r.Height } } }
+  $rows = @()
+  foreach ($wd in ($words | Sort-Object Y)) {
+    $hit = $null
+    foreach ($r in $rows) { if ([math]::Abs($r.Y - $wd.Y) -lt [math]::Max(6, $wd.H * 0.6)) { $hit = $r; break } }
+    if ($hit) { [void]$hit.W.Add($wd) } else { $rows += [pscustomobject]@{ Y = $wd.Y; W = [System.Collections.ArrayList]@($wd) } }
+  }
+  foreach ($r in $rows) {
+    $ws = $r.W | Sort-Object X
+    [pscustomobject]@{ Text = ($ws | ForEach-Object { $_.T }) -join ' '; X = ($ws | Measure-Object X -Minimum).Minimum; R = ($ws | Measure-Object R -Maximum).Maximum; Top = ($ws | Measure-Object Top -Minimum).Minimum; Bot = ($ws | Measure-Object Bot -Maximum).Maximum; Y = $r.Y }
+  }
+}
+function Plain([string]$t) {
+  $d = $t.Normalize([Text.NormalizationForm]::FormD)
+  $sb = New-Object Text.StringBuilder
+  foreach ($c in $d.ToCharArray()) { if ([Globalization.CharUnicodeInfo]::GetUnicodeCategory($c) -ne [Globalization.UnicodeCategory]::NonSpacingMark) { [void]$sb.Append($c) } }
+  $sb.ToString()
+}
+function Resized($src, [int]$sx, [int]$sy, [int]$sw, [int]$sh, [double]$f) {
+  $b = New-Object System.Drawing.Bitmap ([int][math]::Max(1, $sw * $f)), ([int][math]::Max(1, $sh * $f))
+  $g = [System.Drawing.Graphics]::FromImage($b)
+  $g.InterpolationMode = 'HighQualityBicubic'
+  $g.DrawImage($src, (New-Object System.Drawing.Rectangle 0, 0, $b.Width, $b.Height), (New-Object System.Drawing.Rectangle $sx, $sy, $sw, $sh), [System.Drawing.GraphicsUnit]::Pixel)
+  $g.Dispose()
+  $b
+}
+# "Extra! You just caught ..." = a bonus fish on top of the normal catch
+function IsExtra([string]$t) {
+  $pre = ($t -split '(?i)c\S{2,6}t\s+an?\s')[0]
+  return ($pre -match '(?i)e\s?x\s?t\s?r|xtra')
+}
+function Scan($full) {
+  $W = $full.Width; $H = $full.Height
+  $f1 = [math]::Min(1.0, $maxDim / [math]::Max($W, $H))
+  $s1 = if ($f1 -lt 1.0) { Resized $full 0 0 $W $H $f1 } else { $full }
+  $rows1 = Rows (Recognize $s1)
+  if ($f1 -lt 1.0) { $s1.Dispose() }
+  $outl = @()
+  foreach ($r in $rows1) {
+    if ($r.Text -notmatch '(?i)c\S{2,6}t\s+an?\b|kg|\d%\)') { continue }
+    $x0 = $r.X / $f1; $x1 = $r.R / $f1; $y0 = $r.Top / $f1; $y1 = $r.Bot / $f1
+    $rh = [math]::Max(4, $y1 - $y0)
+    $padX = $rh * 1.5; $padY = $rh * 0.45
+    $cx = [int][math]::Max(0, $x0 - $padX); $cy = [int][math]::Max(0, $y0 - $padY)
+    $cw = [int]([math]::Min($W, $x1 + $padX) - $cx); $ch = [int]([math]::Min($H, $y1 + $padY) - $cy)
+    if ($cw -lt 8 -or $ch -lt 4) { continue }
+    $reads = New-Object 'System.Collections.Generic.List[string]'
+    $wts = New-Object 'System.Collections.Generic.List[double]'
+    $reads.Add([FR]::Read((Plain $r.Text))); $wts.Add(0.5)
+    $isEx = (IsExtra $r.Text)
+    foreach ($th in @(36.0, 52.0, 76.0)) {
+      $f2 = [math]::Min(3.5, [math]::Max(0.5, $th / $rh))
+      $f2 = [math]::Min($f2, [math]::Min($maxDim / $cw, $maxDim / $ch))
+      $crop = Resized $full $cx $cy $cw $ch $f2
+      $rows2 = @(Rows (Recognize $crop))
+      $crop.Dispose()
+      foreach ($q in $rows2) { if ($q.Text -match '(?i)kg') { $reads.Add([FR]::Read((Plain $q.Text))); $wts.Add(1.0); if (IsExtra $q.Text) { $isEx = $true }; if ($ImgFile) { $outl += ('D|' + [int]($r.Y / $f1) + '|' + (Plain $q.Text)) } } }
+    }
+    if ($ImgFile) { $outl += ('D|' + [int]($r.Y / $f1) + '|' + (Plain $r.Text)) }
+    $b = [FR]::Best($reads, $wts)
+    if ($b) { $outl += ('L|' + [int]($r.Y / $f1) + '|' + $b + '|' + $(if ($isEx) { 'E' } else { 'N' })) }
+  }
+  $outl
+}
+
+LoadData
+while ($true) {
+  if (-not $ImgFile -and -not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { break }
+  if ($ImgFile -or (Test-Path $req)) {
+    try {
+      LoadData
+      if ($ImgFile) {
+        $full = [System.Drawing.Bitmap]::FromFile($ImgFile); $id = 'file'
+      } else {
+        $a = ((Get-Content $req -Raw).Trim()) -split ' '
+        Remove-Item $req -Force
+        $x = [int]$a[0]; $y = [int]$a[1]; $w = [int]$a[2]; $h = [int]$a[3]; $id = $a[4]
+        $full = New-Object System.Drawing.Bitmap $w, $h
+        $g = [System.Drawing.Graphics]::FromImage($full)
+        $g.CopyFromScreen($x, $y, 0, 0, $full.Size)
+        $g.Dispose()
+      }
+      $lines = @($id) + @(Scan $full)
+      $full.Dispose()
+      [IO.File]::WriteAllText($out + '.tmp', ($lines -join $nl), [Text.Encoding]::UTF8)
+      Move-Item ($out + '.tmp') $out -Force
+    } catch {
+      [IO.File]::WriteAllText($out, 'ERR ' + $_.Exception.Message)
+    }
+    if ($Once) { break }
+  }
+  Start-Sleep -Milliseconds 25
+}
+
+)
+return ws1 . "`r`n" . ws2
+}
+
 InfoMonGet(ByRef l, ByRef t, ByRef w, ByRef h) {
 	global RobloxHwnd, GuiHwnd
 	hw := (RobloxHwnd and WinExist("ahk_id " . RobloxHwnd)) ? RobloxHwnd : GuiHwnd
@@ -23651,13 +25086,13 @@ InfoMonGet(ByRef l, ByRef t, ByRef w, ByRef h) {
 }
 
 InfoPanelPxW() {
-	global DpiF
-	return Round(246 * (DpiF ? DpiF : 1))
+	global DpiF, FishScanOn
+	return Round((FishScanOn ? 300 : 246) * (DpiF ? DpiF : 1))
 }
 
 InfoPanelPxH() {
-	global DpiF
-	return Round(164 * (DpiF ? DpiF : 1))
+	global DpiF, FishScanOn
+	return Round((FishScanOn ? 244 : 164) * (DpiF ? DpiF : 1))
 }
 
 InfoCursorGui(ByRef gx, ByRef gy) {
@@ -23678,6 +25113,23 @@ GuiControl, 1:Choose, DashSmart, % SmartCast ? 2 : 1
 GuiControl, 1:Choose, DashPassive, % PassiveAll ? 2 : 1
 GuiControl, 1:Choose, DashHide, % HideOverlay ? 2 : 1
 GuiControl, 1:Choose, DashInfo, % InfoPanelOn ? 2 : 1
+GuiControl, 1:Choose, DashAdapt, % AdaptiveCast ? 2 : 1
+GuiControl, 1:Choose, DashScan, % FishScanOn ? 2 : 1
+GuiControl, 1:, DashAcMs, %AdaptiveCastMs%
+return
+
+DashAcMsChanged:
+GuiControlGet, DashAcV, 1:, DashAcMs
+; "-" alone (still typing) or other text is ignored until it is a whole number
+if (!ErrorLevel and RegExMatch(DashAcV, "^\s*-?\d+\s*$"))
+	{
+	AdaptiveCastMs := Round(DashAcV + 0)
+	if (AdaptiveCastMs < -250)
+		AdaptiveCastMs := -250
+	if (AdaptiveCastMs > 5000)
+		AdaptiveCastMs := 5000
+	}
+gosub, QueueAutoSave
 return
 
 DashChanged:
@@ -23713,6 +25165,39 @@ else if (A_GuiControl = "DashInfo")
 	InfoPanelOn := DashOn
 	gosub, InfoPanelTick
 	}
+else if (A_GuiControl = "DashAdapt")
+	AdaptiveCast := DashOn
+else if (A_GuiControl = "DashScan")
+	{
+	if (DashOn and !FishScanOn)
+		{
+		MsgBox, 0x40034, DeepFish - Fish Scanner, The fish scanner and value calculator are NOT 100`% accurate.`n`nThey read the "You just caught a ..." message with text recognition, so now and then a name or weight can be misread or a message missed. Fish values, the session total and the extra-fish count are estimates.`n`nTurn the fish scanner on anyway?
+		IfMsgBox, No
+			{
+			GuiControl, 1:Choose, DashScan, 1
+			return
+			}
+		}
+	FishScanOn := DashOn
+	if (FishScanOn and !FileExist(A_ScriptDir . "\FischFishData.txt"))
+		{
+		ToolTip, Downloading the fish value list ...
+		FsLoadData()
+		ToolTip
+		if (!FileExist(A_ScriptDir . "\FischFishData.txt"))
+			MsgBox, 0x40030, DeepFish - Fish Scanner, Could not download the fish value list from Fischipedia right now. It will try again by itself while the macro runs.
+		}
+	; rebuild the info panel with (or without) the fish rows
+	if (hInfoP)
+		{
+		Gui, InfoP:Destroy
+		hInfoP := 0
+		IpShown := false
+		Loop 12
+			IpLast%A_Index% := ""
+		}
+	gosub, InfoPanelTick
+	}
 gosub, QueueAutoSave
 return
 
@@ -23734,12 +25219,12 @@ else
 HmV2 := (MacroRunning and MgInPlay and WhiteBarSize != "") ? "Bar " . Round(WhiteBarSize) . " px" : "---"
 HmV3 := !MacroRunning ? "---" : (GetKeyState("LButton") ? "Holding" : "Released")
 HmV4 := (SpecialRod = "" or SpecialRod = "None") ? "Normal rod" : SpecialRod
-HmV5 := Round(WhCatches) . ""
+HmV5 := CaughtTotal() . ((FishScanOn and FsExtraCount > 0) ? "  (+" . FsExtraCount . " extra)" : "")
 if (WhStartTick and MacroRunning)
 	{
 	HmMs := A_TickCount - WhStartTick
 	HmHr := HmMs / 3600000.0
-	HmV6 := ((HmHr > 0.01) ? Round(WhCatches / HmHr) : 0) . " / hr"
+	HmV6 := ((HmHr > 0.01) ? Round(CaughtTotal() / HmHr) : 0) . " / hr"
 	HmMin := HmMs // 60000
 	HmV7 := (HmMin // 60) . "h " . Mod(HmMin, 60) . "m"
 	}
@@ -23909,7 +25394,7 @@ IconTips[hQ] := "Shifts EVERY wait in the macro by this many ms.`n0 is normal.`n
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 AuChk := AutoUpdate ? "Checked" : ""
-AuLbl := "Auto update" . ((DFModBuild > 0) ? "   (build " . DFModBuild . ")" : "")
+AuLbl := "Auto update" . ((DFModBuild > 0) ? "   (v" . DFVersion . ")" : "")
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vAutoUpdate %AuChk% gAutoUpdateChanged HwndhC, %AuLbl%
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
@@ -24067,14 +25552,22 @@ for i, d in NormalCastDefs
 	Y += RH
 	}
 SmartCastChk := SmartCast ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSmartCast %SmartCastChk% gSmartCastChanged HwndhC, Smart cast (recast if it did not go through)
+Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSmartCast %SmartCastChk% gSmartCastChanged HwndhC, Smart cast, casts:
 NormalCastCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+ScnX := CX + 152
+Gui, Add, Edit, x%ScnX% y%Y% w40 h20 vSmartCastN gQueueAutoSave Number Limit2 HwndhC, %SmartCastN%
+NormalCastCtrls.Push(hC)
+IconTips[hC] := "How many casts in a row (1-10).`nEach cast holds for the Cast hold time, then it`nwaits Cast hold + 50 ms before the next one."
+ScnX := CX + 198
+Gui, Add, Text, x%ScnX% y%Y% w100 h20 +0x200 HwndhC, in a row
+NormalCastCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 NormalCastCtrls.Push(hQ)
-IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nOFF - plain timed cast."
+IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nThe box: casts that many times in a row - each`ncast holds for Cast hold, then waits Cast hold +`n50 ms before the next. 2 is a double cast.`n`nOFF - plain timed cast."
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y316 w%TXW% h16 HwndhNCTipHdr, QUICK RULES — NORMAL
@@ -24570,14 +26063,22 @@ MgAdd("stellar", hQ)
 IconTips[hQ] := "ON - clicks each sign as soon as it appears,`nwith a shorter click, so the signs go faster.`n`nOFF - waits until each sign is fully drawn`nbefore clicking. Slower, the careful way.`n`nTurn it off if signs get missed or the wrong`nsign gets clicked."
 Y += RH
 SwAllChk := SwAllSigns ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwAllSigns %SwAllChk% gSwAllSignsChanged HwndhC, Wait for all signs, then click
+Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSwAllSigns %SwAllChk% gSwAllSignsChanged HwndhC, Wait for signs:
 MgAdd("stellar", hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+SwWnX := CX + 152
+Gui, Add, Edit, x%SwWnX% y%Y% w40 h20 vSwWaitN gQueueAutoSave Number Limit2 HwndhC, %SwWaitN%
+MgAdd("stellar", hC)
+IconTips[hC] := "How many signs to wait for before clicking (1-12).`n12 = all of the signs for this round."
+SwWnX := CX + 198
+Gui, Add, Text, x%SwWnX% y%Y% w100 h20 +0x200 HwndhC, then click
+MgAdd("stellar", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - waits until EVERY sign for this round is on`nthe bar, then clicks them in order with the normal`n(1.1.7) clicks. With Max sign speed on, they go out`nin one burst instead.`n`nOFF - clicks each sign as it comes in."
+IconTips[hQ] := "ON - waits until the number of signs in the box`n(12 = every sign for this round) is on the bar,`nthen clicks them in order with the normal`n(1.1.7) clicks. With Max sign speed on, they go out`nin one burst instead.`n`nOFF - clicks each sign as it comes in."
 Y += RH
 SwFirstChk := SwSignsFirst ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwSignsFirst %SwFirstChk% gSwSignsFirstChanged HwndhC, Signs before bar
@@ -24597,7 +26098,7 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - if a sign click does not register, the macro`nwaits a moment and clicks that same sign again`n(up to 3 times per sign) instead of giving up`non the signs for this cast.`n`nOFF - a failed click stops sign clicking for`nthe rest of the cast.`n`nRetries are spaced out, never spam clicked.`n`nAlso overrides shape vetoes: if a sign does not`nlook like the expected one, it clicks it anyway`ninstead of giving up."
+IconTips[hQ] := "ON - if a sign click does not register, the macro`nclicks that sign again (up to 3 times per sign)`ninstead of giving up on the signs for this cast.`nFailed clicks are spotted sooner than with it off,`nand retries are spaced out, never spam clicked.`n`nIt never clicks a sign that looks like a different`nzodiac: it looks for the right sign on the bar and`nclicks that one, and only gives up if it is not there.`n`nOFF - a failed click stops sign clicking for`nthe rest of the cast."
 Y += RH
 SwMaxChk := SwMaxSigns ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwMaxSigns %SwMaxChk% gSwMaxSignsChanged HwndhC, Max sign speed
@@ -27046,7 +28547,7 @@ FaqT .= "Finds its bar and fish on its own. While the zodiac signs are on the ba
 FaqT .= "Keep the mouse cursor free during fights: no shift lock, no first person, camera mode off. If the cursor cannot reach a sign the macro stops clicking for that cast and just reels.`n`n"
 FaqT .= "Click the signs (on by default) can be turned off on its Setup page if the clicks make your fights worse.`n`n"
 FaqT .= "Fast sign clicks (off by default) clicks each sign as soon as it appears, with a shorter click, so the signs go faster. Turn it off again if signs get missed or the wrong sign gets clicked.`n`n"
-FaqT .= "Retry failed clicks (off by default) keeps trying a sign whose click did not go through, up to 3 more times a moment apart, and clicks a sign that does not look like the one it expects instead of stopping (not when several signs appeared at once). With it off there are fewer retries, and a sign that does not look right stops the sign clicks until the next signs appear. Turn it off if it starts clicking wrong signs.`n`n"
+FaqT .= "Retry failed clicks (off by default) clicks a sign again when its click did not go through, up to 3 times a moment apart, and spots a failed click sooner. When the next sign does not look like the one it expects, it looks for the right sign among the signs on the bar and clicks that one instead - it never clicks a sign that looks wrong. With it off there are fewer retries, and a sign that does not look right stops the sign clicks until the next signs appear.`n`n"
 FaqT .= "Its bar and fish colors are under Stellarwave colors on its Setup page, filled in with the rod's own colors. Change them only if the bar or fish is not picked up on your screen: open the Color Manager, Pick from screen, and click that part in game. Empty a box to go back to the normal color.`n`n"
 FaqT .= "--------------------------------------------------------`n"
 FaqTexts.Push(FaqT)
@@ -27166,7 +28667,7 @@ Gui, Add, Text, x%CX% y132 w%TXW% h28 HwndhAbtHdr, 🐟 DeepFish BETA
 AboutCtrls.Push(hAbtHdr)
 SpecialBrushes[hAbtHdr] := {brush: hBrushCard, text: ColorAccentBGR}
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Text, x%CX% y162 w%TXW% h18 HwndhAbtVer, Version 1.1.7  •  Made by Yato
+Gui, Add, Text, x%CX% y162 w%TXW% h18 HwndhAbtVer, Version %DFVersion%  •  Made by Yato
 AboutCtrls.Push(hAbtVer)
 SpecialBrushes[hAbtVer] := {brush: hBrushCard, text: 0xFFFFFF}
 
@@ -27336,6 +28837,18 @@ return
 BuildVersionsSection:
 
 VersionNotes := []
+VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any monitor (replaces the old tooltips), with a Signs row for Stellarwave"
+	, "Fish scanner + Fischipedia value calculator, counts Extra! fish too"
+	, "Adaptive casting (cast X ms after the minigame closes, negative = sooner)"
+	, "Stellarwave ends the fight the moment its bar and stars are gone (no more 450 ms wait)"
+	, "Stellarwave: Wait for N signs (1-12) before clicking"
+	, "Stellarwave: Retry failed clicks reworked - never clicks a wrong-looking sign, retries sooner"
+	, "Stellarwave Max sign speed: a stray mouse move or star misread no longer stops sign clicking"
+	, "Keeperbound: auto power bar reading, read while the bobber flies, never recharges during a minigame"
+	, "Keeperbound: no longer puts the rod away after a failed recharge"
+	, "Smart cast can cast N times in a row (each cast waits Cast hold + 50 ms before the next)"
+	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
+	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
 	, "New look: Fishing dashboard, themes (Mono default), live stats"]])
