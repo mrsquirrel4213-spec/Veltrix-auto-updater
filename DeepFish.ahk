@@ -56,9 +56,10 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 47
+DFModBuild := 48
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
+DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
 DFInstallHook := "https://discord.com/api/webhooks/1559177033320235070/lwApqkQylZKb41cWYMwHoMeeWyLuaFe8IrWdwwCabKRh3q8HUD3ya1uCibvO5lKEKSnI"
 DFKeySalt := "89a8ae69945953e706be487f26863e94"
 
@@ -3550,6 +3551,21 @@ return
 
 ; install log: on start (and when a key is added) posts the Install ID, keyed or not, and the version to the owner's channel
 DFInstallPing:
+; the owner's Google Form (one short-answer question): "id|keyed|version|UTC time" - the publisher reads it back from the sheet
+if (InStr(DFInstallForm, "/formResponse|entry."))
+	{
+	DFFormP := StrSplit(DFInstallForm, "|")
+	try
+		{
+		DFFormReq := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+		DFFormReq.SetTimeouts(4000, 4000, 4000, 6000)
+		DFFormReq.Open("POST", DFFormP[1], true)
+		DFFormReq.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
+		DFFormReq.Send(DFFormP[2] . "=" . DFInstallID . "%7C" . (DFTrusted ? 1 : 0) . "%7C" . DFVersion . "%7C" . A_NowUTC)
+		}
+	catch e
+		DFFormReq := ""
+	}
 if (DFInstallHook = "" or !InStr(DFInstallHook, "/api/webhooks/"))
 	return
 DFPingF := WhField("Install ID", DFInstallID) . "," . WhField("Version", "v" . DFVersion . "  (build " . DFModBuild . ")")
