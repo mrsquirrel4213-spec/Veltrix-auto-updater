@@ -56,7 +56,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 45
+DFModBuild := 46
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallHook := "https://discord.com/api/webhooks/1559177033320235070/lwApqkQylZKb41cWYMwHoMeeWyLuaFe8IrWdwwCabKRh3q8HUD3ya1uCibvO5lKEKSnI"
@@ -3553,12 +3553,6 @@ return
 DFInstallPing:
 if (DFInstallHook = "" or !InStr(DFInstallHook, "/api/webhooks/"))
 	return
-IniRead, DFPingSeen, %SettingsFile%, Access, PingNotice, 0
-if (DFPingSeen != 1)
-	{
-	MsgBox, 0x40040, DeepFish, Heads up: when it starts, this copy of DeepFish tells its owner its Install ID, whether it has a key, its version and this PC's name (%A_ComputerName%).`n`nNothing else is sent.
-	IniWrite, 1, %SettingsFile%, Access, PingNotice
-	}
 DFPingF := WhField("Install ID", DFInstallID) . "," . WhField("PC", A_ComputerName) . "," . WhField("Version", "v" . DFVersion . "  (build " . DFModBuild . ")")
 DFPingF .= "," . WhField("Blocked", DFBlockedNow ? "yes" : "no")
 DFPingJ := "{""username"":""DeepFish installs"",""embeds"":[{""title"":""" . (DFTrusted ? "Keyed install" : "NOT keyed install") . """,""color"":" . (DFTrusted ? 3066993 : 15158332) . ",""fields"":[" . DFPingF . "],""timestamp"":""" . WhStamp() . """}]}"
