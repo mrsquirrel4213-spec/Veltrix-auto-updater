@@ -41,6 +41,8 @@ FsExtraCount := 0
 KbPostponeN := 0
 KbUiClear := true
 KbPreState := 0
+KbGoodPct := ""
+KbSuspect := false
 KbPreFailN := 0
 KbPreSkip := 0
 SwStarGoneAt := 0
@@ -56,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 51
+DFModBuild := 52
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -1105,9 +1107,8 @@ if (KeeperAuto and !KbBusy)
 	KbDue := false
 	if (KeeperAutoBar and KbPreState)
 		{
-		; already read while the bobber was out - nothing to wait for here
+		; read fine while the bobber was out - nothing to wait for here
 		KbHandled := true
-		KbDue := (KbPreState = 2)
 		KbPreState := 0
 		}
 	else if (KeeperAutoBar or KeeperOcrOn)
@@ -1148,6 +1149,19 @@ if (KeeperAuto and !KbBusy)
 							}
 						}
 					KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
+					if (!KbDue and KbPct >= KbAutoAt)
+						{
+						KbGoodPct := KbPct
+						KbSuspect := false
+						}
+					else if (KbDue and KbGoodPct != "" and KbGoodPct - KbPct > 30 and !KbSuspect)
+						{
+						; the bar cannot drop that far in one catch - almost always a misread, so confirm next catch
+						KbSuspect := true
+						KbDue := false
+						KbOcrCatches := 9999
+						KbOcrLast .= " - big drop from " . Round(KbGoodPct) . "%, checking again next catch"
+						}
 					}
 				else
 					{
@@ -3184,6 +3198,8 @@ KbStatus := (KbRecharged > 0) ? "done" : "failed"
 WhEvent("keeper", ((KbStatus = "done") ? "Done: " : "Failed: ") . KbLastResult)
 KbCatches := 0
 KbOcrCatches := 0
+KbGoodPct := ""
+KbSuspect := false
 KbBusy := false
 SetBatchLines, -1
 return
@@ -12194,8 +12210,12 @@ KbAutoFind() {
 	pBits := KbGrab(wx, wy + y0, w, h, hdcM, hbm, old)
 	if (!pBits)
 		return false
-	gap := Round(w * 0.07)
+	; the bar is about 960 px wide at every window size, so the limits are in pixels - a gap measured as a share
+	; of the window let the bar run on into dark water past its end on a 4K screen (99.8% read as 70%)
+	gap := 30
 	minRun := Round(w * 0.18)
+	if (minRun > 450)
+		minRun := 450
 	rows := []
 	Loop % h
 		{
@@ -12218,15 +12238,18 @@ KbAutoFind() {
 		L := hx
 		R := hx
 		good := 1
+		fills := KbPixFill(NumGet(base + 0, hx * 4, "UInt")) ? 1 : 0
 		miss := 0
 		x := hx - 1
 		while (x >= 0)
 			{
 			px := NumGet(base + 0, x * 4, "UInt")
-			if (KbPixFill(px) or KbPixNavy(px))
+			f := KbPixFill(px)
+			if (f or KbPixNavy(px))
 				{
 				L := x
 				good++
+				fills += f
 				miss := 0
 				}
 			else if (++miss > gap)
@@ -12238,39 +12261,51 @@ KbAutoFind() {
 		while (x < w)
 			{
 			px := NumGet(base + 0, x * 4, "UInt")
-			if (KbPixFill(px) or KbPixNavy(px))
+			f := KbPixFill(px)
+			if (f or KbPixNavy(px))
 				{
 				R := x
 				good++
+				fills += f
 				miss := 0
 				}
 			else if (++miss > gap)
 				break
 			x++
 			}
-		if (R - L + 1 >= minRun and good >= 0.6 * (R - L + 1))
-			rows.Push([y, L, R])
+		; 45%: a fish or effect drifting over part of the bar must not hide it
+		if (R - L + 1 >= minRun and good >= 0.45 * (R - L + 1))
+			rows.Push([y, L, R, fills])
 		}
 	KbGrabEnd(hdcM, hbm, old)
 	if (rows.Length() < 3)
 		return false
-	; the bar is the longest run of consecutive rows
-	bs := 1
-	bn := 1
+	; candidates are runs of 3+ rows in a row. Dark water looks just like the empty (navy) track, so the bar is
+	; the run with the most purple fill - not the tallest one. No purple anywhere (empty bar): the lowest run.
+	bs := 0
+	bn := 0
+	bScore := -1
 	cs := 1
-	Loop % rows.Length() - 1
+	n := rows.Length()
+	Loop % n
 		{
-		i := A_Index + 1
-		if (rows[i][1] = rows[i - 1][1] + 1)
+		i := A_Index
+		if (i < n and rows[i + 1][1] = rows[i][1] + 1)
+			continue
+		len := i - cs + 1
+		if (len >= 3)
 			{
-			if (i - cs + 1 > bn)
+			sc := 0
+			Loop % len
+				sc += rows[cs + A_Index - 1][4]
+			if (sc > bScore or (sc = 0 and bScore = 0))
 				{
-				bn := i - cs + 1
+				bScore := sc
 				bs := cs
+				bn := len
 				}
 			}
-		else
-			cs := i
+		cs := i + 1
 		}
 	if (bn < 3)
 		return false
@@ -12306,10 +12341,12 @@ KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
 	Loop 2
 		{
 		RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+		fresh := false
 		if (KbBarY = "" or KbBarY < 0 or KbBarTop = "" or ww != KbBarWW or wh != KbBarWH)
 			{
 			if (!KbAutoFind())
 				return false
+			fresh := true
 			}
 		w := Round(KbBarR - KbBarL + 1)
 		nr := KbBarBot - KbBarTop + 1
@@ -12449,6 +12486,12 @@ KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
 			KbBarY := -1
 			continue
 			}
+		if (totF = 0 and !fresh)
+			{
+			; no purple at all where the bar was seen before - it may have locked onto dark water; look again
+			KbBarY := -1
+			continue
+			}
 		costL := 0
 		costR := totF
 		best := 0x7FFFFFFF
@@ -12513,8 +12556,8 @@ if (!MgOnScreen and KbPostponeN < 3)
 	}
 return
 
-; reads the power bar while the bobber is out (casting). KbPreState: 0 = no reading (the restart reads it
-; the old way), 1 = read and fine, 2 = read low twice - recharge at the next restart
+; reads the power bar while the bobber is out (casting). KbPreState: 0 = no reading or it looked low (the
+; restart after the catch reads it the old way and decides), 1 = read and fine - no read needed after the catch
 KbPreRead:
 KbPreOld := KbOcrCatches
 KbOcrCatches := 0
@@ -12546,20 +12589,18 @@ if (!KbPreOk)
 	return
 	}
 KbPreFailN := 0
-KbMissN := 0
-KbPreState := 1
 if (KbPct < KbAutoAt + 4)
 	{
-	if (KbAutoReadStable(KbPct2, 3))
-		KbPct := KbPct2
-	if (KbPct < KbAutoAt)
-		{
-		; a moment later it must still read low - one odd frame never starts a recharge
-		Sleep, 300
-		if (KbAutoReadStable(KbPct3, 3) and KbPct3 < KbAutoAt)
-			KbPreState := 2
-		}
+	; the hotbar can be dimmed while the bobber flies, which reads far too low (0% on a full bar) - a low
+	; reading here never starts a recharge, the bar is read again after the catch when the UI is steady
+	KbOcrCatches := KbPreOld
+	KbOcrLast := "power bar " . Round(KbPct, 1) . "% while casting - checking again after the catch"
+	return
 	}
+KbMissN := 0
+KbPreState := 1
+KbGoodPct := KbPct
+KbSuspect := false
 KbOcrLast := "power bar " . Round(KbPct, 1) . "%"
 return
 
