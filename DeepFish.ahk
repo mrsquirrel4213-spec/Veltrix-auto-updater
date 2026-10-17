@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 52
+DFModBuild := 53
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -3133,6 +3133,10 @@ Loop
 	if (KbGuard > 24 or !MacroRunning or KbRecharged >= KbWant)
 		break
 	tooltip, Action: Enchant Rod, %TooltipX%, %Tooltip8%, 8
+	; remember how the Enchant button looks once the inventory has settled - closing is then checked with
+	; one pixel instead of screen searches
+	if (KbOpenCol < 0)
+		KbOpenCol := KbSteadyCol(KbEx, KbEy)
 	KbTap(KbEx, KbEy)
 	if (!KbWaitFor("confirm", KbCx, KbCy, TA("kbconfto", 3500)))
 		{
@@ -3158,22 +3162,53 @@ else
 KeeperBail:
 tooltip, Action: Close Inventory, %TooltipX%, %Tooltip8%, 8
 KbClosed := false
-if (KbOpenCol >= 0 and KbSpot("enchant", KbFx, KbFy))
-	KbClosed := KbFastClose(KbFx, KbFy, KbOpenCol)
-if (!KbClosed)
-	gosub, KeeperClearDialog
-KbGuard := KbClosed ? 4 : 0
-while (KbGuard < 4)
+KbFcOk := KbSpot("enchant", KbFx, KbFy)
+if (!KbFcOk and KbEx != "" and KbEx >= 0)
 	{
-	KbGuard++
-	if (KbGone("enchant", 150))
-		break
-	KbKey(KeeperInvKey)
-	if (KbGone("enchant", TA("kbclose", 1200)))
-		break
+	; no saved position: the Enchant button found on screen this time
+	KbFx := KbEx
+	KbFy := KbEy
+	KbFcOk := true
 	}
-if (!KbClosed and !KbGone("enchant", 150))
-	KbLastResult .= " (inventory still open)"
+KbFcR := 0
+if (KbOpenCol >= 0 and KbFcOk)
+	KbFcR := KbFastClose(KbFx, KbFy, KbOpenCol)
+KbClosed := (KbFcR = 1)
+if (!KbClosed)
+	{
+	; only the Enchant button in the spot it was in counts - something else on screen can look like one,
+	; and pressing the key on that reopened the inventory that had just closed
+	KbNx := (KbEx != "" and KbEx >= 0) ? KbEx : -1
+	KbNy := (KbNx >= 0) ? KbEy : -1
+	KbShut := false
+	; the key was already pressed - the inventory may just be slow to go, so wait for that first
+	if (KbFcR = 2 and KbGone("enchant", TA("kbclose", 1200), KbNx, KbNy))
+		KbShut := true
+	if (!KbShut)
+		gosub, KeeperClearDialog
+	KbGuard := 0
+	while (!KbShut and KbGuard < 3)
+		{
+		KbGuard++
+		; press the key only when the button is seen in its place twice in a row
+		KbOpenNow := KbFind("enchant", KbGx, KbGy, "", KbNx, KbNy)
+		if (KbOpenNow)
+			{
+			Sleep, 120
+			KbOpenNow := KbFind("enchant", KbGx, KbGy, "", KbNx, KbNy)
+			}
+		if (!KbOpenNow)
+			{
+			KbShut := true
+			break
+			}
+		KbKey(KeeperInvKey)
+		if (KbGone("enchant", TA("kbclose", 1200), KbNx, KbNy))
+			KbShut := true
+		}
+	if (!KbShut)
+		KbLastResult .= " (inventory still open)"
+	}
 
 ; pressing the rod key while the rod is still in hand would put it away (and the next cast would do
 ; nothing), so only switch back when the relic was taken out
@@ -3182,9 +3217,24 @@ if (KbRelicOn)
 	tooltip, Action: Select Rod, %TooltipX%, %Tooltip8%, 8
 	if (RodSlotKey != "")
 		{
+		KbBarWas := KbBarShown()
 		send {%RodSlotKey%}
-		; give the rod time to come out before the next cast
-		Sleep, % Tm(TA("kbselect", 450))
+		if (KbBarWas = 0)
+			{
+			; the power bar shows as soon as the rod is back in hand - go on then, not after a fixed wait
+			KbSelT := A_TickCount
+			while (A_TickCount - KbSelT < Tm(TA("kbselect", 450)))
+				{
+				Sleep, 15
+				if (KbBarShown() = 1)
+					{
+					Sleep, % Tm(TA("kbrodsettle", 100))
+					break
+					}
+				}
+			}
+		else
+			Sleep, % Tm(TA("kbselect", 450))
 		}
 	else
 		{
@@ -3210,12 +3260,15 @@ KeeperClearDialog:
 KbClr := 0
 while (KbClr < 4 and KbFind("confirm", KbCx, KbCy))
 	{
+	; a confirm box that is just closing goes away by itself - only press its red button if it stays
+	if (KbClr = 0 and KbGone("confirm", TA("kbclearwait", 250)))
+		break
 	KbClr++
 	if (KbFind("confirm", KbRx, KbRy, "red"))
 		KbTap(KbRx, KbRy)
 	else
 		break
-	Sleep, % Tm(TA("kbclear", 900))
+	KbGone("confirm", TA("kbclear", 900))
 	}
 return
 
@@ -7257,7 +7310,10 @@ AdvRegistry() {
 	r.Push(["Keeperbound recharge", "L", "kbgone", 3000, "ms|Wait for the Confirm box to close"])
 	r.Push(["Keeperbound recharge", "L", "kbclose", 1200, "ms|Wait for the inventory to close"])
 	r.Push(["Keeperbound recharge", "L", "kbclear", 900, "ms|Pause after closing a leftover dialog"])
-	r.Push(["Keeperbound recharge", "L", "kbselect", 120, "ms|Pause before re-selecting the rod"])
+	r.Push(["Keeperbound recharge", "L", "kbselect", 450, "ms|Most to wait for the rod to come back out"])
+	r.Push(["Keeperbound recharge", "L", "kbrodsettle", 100, "ms|Wait after the power bar shows again"])
+	r.Push(["Keeperbound recharge", "L", "kbfastwait", 400, "ms|Fast close: wait for the confirm box to fade"])
+	r.Push(["Keeperbound recharge", "L", "kbclearwait", 250, "ms|Let a closing confirm box go by itself"])
 	r.Push(["Keeperbound recharge", "L", "kbpoll", 40, "ms|Button search: check every"])
 	r.Push(["Keeperbound recharge", "L", "kbgonepoll", 35, "ms|Close check: check every"])
 	r.Push(["Keeperbound recharge", "L", "kbkey", 20, "ms|Pause after a key press"])
@@ -12540,6 +12596,33 @@ KbAutoReadStable(ByRef pct, n := 3) {
 	return true
 }
 
+; is the power bar showing where it was last found? 1 = yes (the rod is in hand), 0 = no purple there,
+; -1 = not known (never found yet, or the window changed) - one row of pixels, so it is cheap to poll
+KbBarShown() {
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH, KbBarTop, KbBarBot
+	if (!RobloxHwnd or KbBarY = "" or KbBarY < 0 or KbBarTop = "")
+		return -1
+	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	if (ww != KbBarWW or wh != KbBarWH)
+		return -1
+	w := Round(KbBarR - KbBarL + 1)
+	if (w < 20)
+		return -1
+	pBits := KbGrab(wx + Round(KbBarL), wy + KbBarTop + (KbBarBot - KbBarTop) // 2, w, 1, hdcM, hbm, old)
+	if (!pBits)
+		return -1
+	f := 0
+	x := 0
+	while (x < w)
+		{
+		if (KbPixFill(NumGet(pBits + 0, x * 4, "UInt")))
+			f++
+		x += 2
+		}
+	KbGrabEnd(hdcM, hbm, old)
+	return (f * 2 >= 0.3 * w) ? 1 : 0
+}
+
 ; is any minigame on screen? (bar, fish line, the minigame frame, Tranquility notes, Stellarwave signs)
 ; the full check - only used when a recharge is actually about to start
 MgOnScreenChk:
@@ -12768,7 +12851,7 @@ KbRuns(ry, kind, minW, ByRef starts, ByRef ends) {
 	return starts.MaxIndex() ? starts.MaxIndex() : 0
 }
 
-KbBoxes(kind, ByRef bL, ByRef bR, ByRef bT, ByRef bB) {
+KbBoxes(kind, ByRef bL, ByRef bR, ByRef bT, ByRef bB, yFrom := 0, yTo := -1) {
 	global pAqBits, AqW, AqH
 	bL := []
 	bR := []
@@ -12782,18 +12865,46 @@ KbBoxes(kind, ByRef bL, ByRef bR, ByRef bT, ByRef bB) {
 	minH := 16
 	maxH := 70
 	cand := []
-	y := 0
-	while (y < AqH)
+	y := (yFrom > 0) ? yFrom : 0
+	yEnd := (yTo >= 0 and yTo < AqH) ? yTo + 1 : AqH
+	ostep := kstep * 4
+	oEnd := AqW * 4
+	; the edge colour test is written out per kind and a row stops at 5 hits - calling KbIsEdge for every
+	; pixel took over a second per search on a 4K screen
+	while (y < yEnd)
 		{
 		hits := 0
-		roff := y * AqW * 4
-		x := 0
-		while (x < AqW)
+		p := pAqBits + y * AqW * 4
+		o := 0
+		if (kind = "enchant")
 			{
-			pv := NumGet(pAqBits + 0, roff + (x*4), "UInt")
-			if (KbIsEdge(pv & 0xFF, (pv >> 8) & 0xFF, (pv >> 16) & 0xFF, kind))
-				hits++
-			x += kstep
+			while (o < oEnd)
+				{
+				pv := NumGet(p + 0, o, "UInt"), vb := pv & 0xFF, vg := (pv >> 8) & 0xFF, vr := (pv >> 16) & 0xFF
+				if (vb - vg >= 35 and vr - vg >= 5 and vb > vr and vb >= 90 and ++hits >= 5)
+					break
+				o += ostep
+				}
+			}
+		else if (kind = "confirm")
+			{
+			while (o < oEnd)
+				{
+				pv := NumGet(p + 0, o, "UInt"), vb := pv & 0xFF, vg := (pv >> 8) & 0xFF, vr := (pv >> 16) & 0xFF
+				if (vg - vb >= 45 and vg - vr >= 25 and vg >= 110 and ++hits >= 5)
+					break
+				o += ostep
+				}
+			}
+		else
+			{
+			while (o < oEnd)
+				{
+				pv := NumGet(p + 0, o, "UInt"), vb := pv & 0xFF, vg := (pv >> 8) & 0xFF, vr := (pv >> 16) & 0xFF
+				if (vr - vg >= 60 and vr - vb >= 60 and vr >= 100 and ++hits >= 5)
+					break
+				o += ostep
+				}
 			}
 		if (hits >= 5)
 			cand.Push(y)
@@ -12858,7 +12969,8 @@ KbBoxes(kind, ByRef bL, ByRef bR, ByRef bT, ByRef bB) {
 	return bL.MaxIndex() ? bL.MaxIndex() : 0
 }
 
-KbFind(kind, ByRef fx, ByRef fy, want := "") {
+; nearX/nearY: only a button at that spot (within 15 px) counts - other things on screen can look like one
+KbFind(kind, ByRef fx, ByRef fy, want := "", nearX := -1, nearY := -1) {
 	global AqX0, AqY0
 	fx := -1
 	fy := -1
@@ -12866,7 +12978,14 @@ KbFind(kind, ByRef fx, ByRef fy, want := "") {
 		return false
 	if (!KbBoxes(kind, gL, gR, gT, gB))
 		return false
-	if (!KbBoxes("red", rL, rR, rT, rB))
+	; the red button sits on the same rows (top and bottom within 5 px) - only search those rows
+	yA := gT[1]
+	yB := gB[1]
+	for i, v in gT
+		yA := (v < yA) ? v : yA
+	for i, v in gB
+		yB := (v > yB) ? v : yB
+	if (!KbBoxes("red", rL, rR, rT, rB, yA - 8, yB + 8))
 		return false
 	i := 1
 	while (i <= gL.MaxIndex())
@@ -12877,6 +12996,8 @@ KbFind(kind, ByRef fx, ByRef fy, want := "") {
 			if (Abs(gT[i] - rT[j]) <= 5 and Abs(gB[i] - rB[j]) <= 5)
 				{
 				ok := (kind = "enchant") ? (rL[j] > gR[i]) : (rR[j] < gL[i])
+				if (ok and nearX >= 0 and (Abs(AqX0 + ((gL[i] + gR[i]) // 2) - nearX) > 15 or Abs(AqY0 + ((gT[i] + gB[i]) // 2) - nearY) > 15))
+					ok := false
 				if (ok)
 					{
 					if (want = "red")
@@ -12899,10 +13020,18 @@ KbFind(kind, ByRef fx, ByRef fy, want := "") {
 	return false
 }
 
+; 1 = closed, 0 = the key was not pressed, 2 = the key was pressed but the close was not seen
 KbFastClose(x, y, col) {
 	global KeeperInvKey
-	if (!KbPixNear(x, y, col))
-		return false
+	; the confirm box can still be fading out over the button - give the inventory a moment to show again
+	; instead of falling back to the slow way (a full screen search per check)
+	t0 := A_TickCount
+	while (!KbPixNear(x, y, col))
+		{
+		if (A_TickCount - t0 >= TA("kbfastwait", 400))
+			return 0
+		Sleep, 10
+		}
 	SetKeyDelay, 25, 40
 	Send, %KeeperInvKey%
 	SetKeyDelay, -1, -1
@@ -12914,13 +13043,31 @@ KbFastClose(x, y, col) {
 			{
 			gone++
 			if (gone >= 2)
-				return true
+				return 1
 			}
 		else
 			gone := 0
 		Sleep, 10
 		}
-	return false
+	return 2
+}
+
+; the colour at x,y once two reads a moment apart agree (the inventory is still animating otherwise), -1 if not
+KbSteadyCol(x, y) {
+	PixelGetColor, c1, %x%, %y%, RGB
+	if (ErrorLevel)
+		return -1
+	Loop 4
+		{
+		Sleep, 40
+		PixelGetColor, c2, %x%, %y%, RGB
+		if (ErrorLevel)
+			return -1
+		if (Abs(((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF)) + Abs(((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF)) + Abs((c1 & 0xFF) - (c2 & 0xFF)) <= 12)
+			return c2
+		c1 := c2
+		}
+	return -1
 }
 
 KbPixNear(x, y, col) {
@@ -12982,12 +13129,12 @@ KbAt(kind, ByRef fx, ByRef fy) {
 	return KbFind(kind, fx, fy)
 }
 
-KbGone(kind, ms) {
+KbGone(kind, ms, nearX := -1, nearY := -1) {
 	started := A_TickCount
 	miss := 0
 	Loop
 		{
-		if (!KbFind(kind, gx, gy))
+		if (!KbFind(kind, gx, gy, "", nearX, nearY))
 			{
 			miss++
 			if (miss >= 2)
@@ -18692,7 +18839,7 @@ SwSlotsScan(now, held := false) {
 }
 
 SwAssign(k, now) {
-	global SwMaxSigns
+	global SwMaxSigns, SwClickAt, SwClickLit, SwBurstN
 	global SwSlotSt, SwSlotFirst, SwSlotLvl, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ, SwPhaseT, SwStarStableT, SwLitRaw, SwLitRawT, SwTieWas, SwSlotBlind
 	SwSlotSt[k] := 2
 	if (SwK0 < 0 and now - SwStarStableT >= SwSec(SwMaxSigns ? 0 : 0.1) and SwLit = SwLitRaw and now - SwLitRawT >= SwSec(SwMaxSigns ? 0.05 : 0.3))
@@ -18708,12 +18855,16 @@ SwAssign(k, now) {
 			break
 		i--
 		}
-	; counted late (it was half hidden): the signs before it already lit their stars, so it goes after
-	; them, marked as a tie so its shape decides
+	; counted late (it was half hidden): the signs whose stars already lit stay before it, so it goes after
+	; them, marked as a tie so its shape decides. Counted by lit stars, not by clicks - a click that never
+	; lit a star (failed, retried) does not hold a place. A click still waiting for its star does.
 	late := false
-	if (pos <= SwClicks)
+	done := (SwK0 >= 0) ? SwLit - SwK0 : 0
+	if (SwClickAt and SwK0 >= 0 and SwClickLit - SwK0 + SwBurstN > done)
+		done := SwClickLit - SwK0 + SwBurstN
+	if (done > 0 and pos <= done)
 		{
-		pos := SwClicks + 1
+		pos := done + 1
 		if (pos > SwOrder.Length() + 1)
 			pos := SwOrder.Length() + 1
 		late := true
@@ -18789,8 +18940,12 @@ SwZodiac(i) {
 
 SwSoftFail(why, now) {
 	global SwRetryFails, SwFailN, SwFailAt, SwClickAt, SwRetry, SwPurpleN, SwClickSlot, SwMaxSigns, SwRetryK, SwLit, SwK0, SwOrder
+	global SwFailLit, SwFailSlot, SwFailWhite
 	if (!SwRetryFails or SwFailN >= 3)
 		return false
+	SwFailLit := SwLit
+	SwFailSlot := SwClickSlot
+	SwFailWhite := (why = "white") ? SwClickSlot : 0
 	ti := SwLit - SwK0 + 1
 	SwRetryK := (SwK0 >= 0 and ti >= 1 and ti <= SwOrder.Length()) ? SwOrder[ti] : SwClickSlot
 	; the sign went white but no star lit - it was probably the wrong sign, so look for the right one first
@@ -18800,6 +18955,9 @@ SwSoftFail(why, now) {
 		if (fk)
 			SwRetryK := fk
 		}
+	; a sign that went white is used up - never re-click it; when the retry is due, look for the right one
+	if (SwFailWhite and SwRetryK = SwFailWhite)
+		SwRetryK := -1
 	SwFailN := SwFailN + 1
 	SwClickAt := 0
 	SwRetry := 0
@@ -18892,6 +19050,135 @@ SwVetoWait(i, k, z, now) {
 	SwStop := true
 	SwStopWhy := "shape veto " . SwZodiac(z) . " slot " . k . " (right sign not found)"
 	SwLog("stop: " . SwStopWhy)
+}
+
+; true when sign k clearly reads as a later zodiac than z (the one that is due)
+SwLooksOther(k, z) {
+	tdZ := -1
+	tdS := -9
+	sc := SwTplBest2(k, z, tdZ, tdS)
+	return (tdS >= 0.5 and tdZ != z and tdS >= sc + 0.2)
+}
+
+; a queued retry only clicks when it is still needed and still aimed at the right sign: a star that lit late
+; means the first click worked (nothing is re-clicked), and a used-up (white) sign or one that reads as a
+; different zodiac is swapped for the sign that matches - or nothing is clicked at all
+SwRetryFire() {
+	global SwRetryK, SwFailAt, SwFailLit, SwFailSlot, SwFailWhite, SwLit, SwLitRaw, SwLitRawT, SwK0, SwOrder, SwSlotSt
+	global SwFailN, SwStop, SwStopWhy
+	now := SwNow()
+	if (now < SwFailAt)
+		return
+	if (SwLit != SwLitRaw or now - SwLitRawT < 0.08)
+		return
+	if (SwLit < SwFailLit)
+		{
+		; a dropped count is nearly always a misread - wait for it, then leave it to the normal checks
+		if (now - SwLitRawT < 0.4)
+			return
+		SwRetryK := 0
+		return
+		}
+	if (SwLit > SwFailLit)
+		{
+		if (SwK0 >= 0)
+			{
+			bi := SwFailLit - SwK0 + 1
+			; the click that "failed" is the one that worked - put it back in its place if the order was changed
+			if (SwFailSlot and bi >= 1 and bi <= SwOrder.Length() and SwOrder[bi] != SwFailSlot)
+				{
+				Loop % SwOrder.Length()
+					{
+					if (SwOrder[A_Index] = SwFailSlot)
+						{
+						SwOrder.RemoveAt(A_Index)
+						break
+						}
+					}
+				SwOrder.InsertAt(bi, SwFailSlot)
+				}
+			Loop % SwLit - SwFailLit
+				{
+				bj := bi + A_Index - 1
+				if (bj >= 1 and bj <= SwOrder.Length())
+					{
+					SwSlotSt[SwOrder[bj]] := 3
+					SwMemMark(SwOrder[bj])
+					}
+				}
+			if (SwLit >= 12)
+				SwMemReset()
+			}
+		SwLog("retry cancelled - the star lit late " . SwFailLit . "->" . SwLit)
+		SwRetryK := 0
+		SwFailN := 0
+		SwFailAt := 0
+		return
+		}
+	ti := SwLit - SwK0 + 1
+	z := Mod(SwK0 + ti - 1, 12)
+	k := SwRetryK
+	if (k > 0 and (SwSlotSt[k] = 3 or SwSlotWhite(k)))
+		{
+		SwLog("retry target slot " . k . " is used up - looking for " . SwZodiac(z))
+		k := 0
+		}
+	else if (k > 0)
+		{
+		; the failed sign is suspect: whichever sign reads most like the due zodiac gets the retry
+		pk := SwPickSign(ti, k, z, 0)
+		if (pk = k and SwLooksOther(k, z))
+			pk := 0
+		k := pk
+		}
+	if (k <= 0)
+		k := SwFindSign(ti, z, SwFailWhite, true)
+	if (!k)
+		{
+		; the fish or the bar can hide the right sign for a moment - keep looking a little
+		if (now - SwFailAt < 0.6)
+			return
+		SwRetryK := 0
+		SwStop := true
+		SwStopWhy := "retry: no sign that reads as " . SwZodiac(z)
+		SwLog("stop: " . SwStopWhy)
+		return
+		}
+	SwRetryK := 0
+	SwRetryClick(k)
+}
+
+; which sign to click for zodiac z at place i: k - unless k reads more like another zodiac (by at least
+; `need`) and a sign not clicked yet reads as z; then that one (moved to place i in the click order).
+; need 0.1 before a first click (only a clear mix-up switches), 0 after a click did not take (k is suspect)
+SwPickSign(i, k, z, need) {
+	tdZ := -1
+	tdS := -9
+	sc := SwTplBest2(k, z, tdZ, tdS)
+	if (sc <= -9 or tdZ = z or tdS < sc + need)
+		return k
+	fk := SwFindSign(i, z, k, true)
+	if (!fk)
+		return k
+	SwLog("slot " . k . " reads as " . SwZodiac(tdZ) . " - slot " . fk . " for " . SwZodiac(z))
+	return fk
+}
+
+; the sign to press again after a click did not take: the one that reads most like the due zodiac - never the
+; same one again when it clearly reads as another zodiac (0 = do not click)
+SwPurpleTarget() {
+	global SwClickSlot, SwClickLit, SwK0
+	z := Mod(SwClickLit, 12)
+	ti := SwClickLit - SwK0 + 1
+	if (SwK0 < 0 or ti < 1)
+		return SwClickSlot
+	rk := SwPickSign(ti, SwClickSlot, z, 0)
+	if (rk = SwClickSlot and SwLooksOther(SwClickSlot, z))
+		{
+		SwLog("re-click slot " . SwClickSlot . " is not " . SwZodiac(z) . " - none found")
+		return 0
+		}
+	return rk
 }
 
 SwRetryClick(k) {
@@ -19358,12 +19645,7 @@ SwClickStepMax() {
 		}
 	if (SwRetryK and SwPhase and SwClickSigns and !SwStop and !SwLockFail)
 		{
-		if (SwNow() >= SwFailAt)
-			{
-			k := SwRetryK
-			SwRetryK := 0
-			SwRetryClick(k)
-			}
+		SwRetryFire()
 		return
 		}
 	if (SwPhase and SwClickSigns)
@@ -19439,7 +19721,9 @@ SwClickStepMax() {
 			SwRetry := SwRetry + 1
 			SwPurpleN := 0
 			SwLog("retry " . SwRetry . " slot " . SwClickSlot . " (still purple)")
-			SwRetryClick(SwClickSlot)
+			rk := SwPurpleTarget()
+			if (rk)
+				SwRetryClick(rk)
 			return
 			}
 		if (now - SwClickAt < (SwMaxSigns ? TA("swgiveupmax", 600) : TA("swgiveup", 1500)) / 1000.0)
@@ -19610,6 +19894,7 @@ SwClickStepMax() {
 			SwLog("stop: " . SwStopWhy)
 			return
 			}
+		k := SwPickSign(i, k, z, 0.1)
 		if (SwMaxSigns and !SwFailN)
 			SwBurstMax(i, k, now)
 		else
@@ -19619,6 +19904,7 @@ SwClickStepMax() {
 	res := SwTplOk(k, z)
 	if (res = 1)
 		{
+		k := SwPickSign(i, k, z, 0.1)
 		SwDoClickMax(k, now, SwFailN > 0)
 		return
 		}
@@ -19899,12 +20185,7 @@ SwClickStep() {
 		}
 	if (SwRetryK and SwPhase and SwClickSigns and !SwStop and !SwLockFail)
 		{
-		if (SwNow() >= SwFailAt)
-			{
-			k := SwRetryK
-			SwRetryK := 0
-			SwRetryClick(k)
-			}
+		SwRetryFire()
 		return
 		}
 	if (SwWantK)
@@ -20020,8 +20301,13 @@ SwClickStep() {
 					SwPressN := SwPressN + 1
 					SwDwellPN := 0
 					SwTryAt := now
-					SwLog("repress " . SwPressN . " slot " . SwClickSlot)
-					SwDoClick(SwClickSlot, now)
+					; it did not take - it may be the wrong sign, so press the one that reads most like the due zodiac
+					rk := SwPurpleTarget()
+					SwLog("repress " . SwPressN . " slot " . rk)
+					if (rk and rk != SwClickSlot)
+						SwDwellEnd()
+					if (rk)
+						SwDoClick(rk, now)
 					return
 					}
 				}
@@ -20050,7 +20336,9 @@ SwClickStep() {
 			SwPurpleN := 0
 			SwTryAt := now
 			SwLog("retry " . SwRetry . " slot " . SwClickSlot . " (still purple)")
-			SwRetryClick(SwClickSlot)
+			rk := SwPurpleTarget()
+			if (rk)
+				SwRetryClick(rk)
 			return
 			}
 		if (now - ta < (SwRetryClicks ? swW + 0.5 : 1.5) or (left and fout))
@@ -20229,12 +20517,14 @@ SwClickStep() {
 			SwLog("stop: " . SwStopWhy)
 			return
 			}
+		k := SwPickSign(i, k, z, 0.1)
 		SwDoClick(k, now)
 		return
 		}
 	res := SwTplOk(k, z)
 	if (res = 1)
 		{
+		k := SwPickSign(i, k, z, 0.1)
 		SwDoClick(k, now)
 		return
 		}
@@ -21143,8 +21433,8 @@ SwTip(now) {
 		}
 	else
 		{
-		txt := "Stellarwave: " . SwLit . "/12 lit, " . SwOrder.Length() . " signs seen, " . SwClicks . " clicked" . ((SwLit < 12) ? ", next " . SwZodiac(SwLit) : "")
-		SwPanelLast := SwLit . "/12 lit, " . SwClicks . " clicked"
+		txt := "Stellarwave: " . SwLit . "/12 lit, " . SwOrder.Length() . " signs seen" . ((SwLit < 12) ? ", next " . SwZodiac(SwLit) : "")
+		SwPanelLast := SwLit . "/12 lit" . ((SwLit < 12) ? ", next " . SwZodiac(SwLit) : "")
 		SwPanelTxt := SwPanelLast
 		}
 	tooltip, %txt%, %TooltipX%, %Tooltip13%, 13
