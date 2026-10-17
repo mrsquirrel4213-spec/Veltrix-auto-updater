@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 53
+DFModBuild := 54
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -3846,7 +3846,7 @@ if (OverlayHidden)
 return
 
 OverlaySetHidden(hide) {
-	static hook := 0, cb := 0
+	static hook := 0, cb := 0, cbt := 0, cbtCb := 0
 	pid := DllCall("GetCurrentProcessId")
 	if (hide and !hook)
 		{
@@ -3859,6 +3859,19 @@ OverlaySetHidden(hide) {
 		DllCall("UnhookWinEvent", "Ptr", hook)
 		hook := 0
 		}
+	; clearing a tooltip destroys its window, so new text makes a new one - the hook above only hears about it
+	; after it was drawn once (a flicker). This one runs while the window is being made, so it starts invisible.
+	if (hide and !cbt)
+		{
+		if (!cbtCb)
+			cbtCb := RegisterCallback("OverlayCbt", "Fast")
+		cbt := DllCall("SetWindowsHookEx", "Int", 5, "Ptr", cbtCb, "Ptr", 0, "UInt", DllCall("GetCurrentThreadId", "UInt"), "Ptr")
+		}
+	else if (!hide and cbt)
+		{
+		DllCall("UnhookWindowsHookEx", "Ptr", cbt)
+		cbt := 0
+		}
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows, On
 	WinGet, ids, List, ahk_class tooltips_class32 ahk_pid %pid%
@@ -3866,11 +3879,66 @@ OverlaySetHidden(hide) {
 		{
 		h := ids%A_Index%
 		if (hide)
+			{
+			OverlayTipGuard(h)
 			WinSet, Transparent, 0, ahk_id %h%
+			}
 		else
+			{
 			WinSet, Transparent, Off, ahk_id %h%
+			; it was kept hidden - show it again (a cleared tooltip has no window, so these all have text)
+			DllCall("ShowWindow", "Ptr", h, "Int", 8)
+			}
 		}
 	DetectHiddenWindows, %dhw%
+}
+
+; a tooltip window being made while tooltips are hidden - guarded before it is ever shown
+OverlayCbt(nCode, wParam, lParam) {
+	global TipsHidden
+	if (nCode = 3 and TipsHidden)
+		{
+		VarSetCapacity(cls, 128, 0)
+		DllCall("GetClassName", "Ptr", wParam, "Str", cls, "Int", 64)
+		if (cls = "tooltips_class32")
+			OverlayTipGuard(wParam)
+		}
+	return DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr")
+}
+
+; while tooltips are hidden a guarded tooltip never shows: "show" is taken out of every move it makes.
+; Alpha 0 alone flickered - the tooltip sets its own alpha back to full each time it shows.
+OverlayTipGuard(h) {
+	global OverlayTipOld
+	static proc := 0
+	if (!IsObject(OverlayTipOld))
+		OverlayTipOld := {}
+	if (OverlayTipOld.HasKey(h))
+		return
+	if (!proc)
+		proc := RegisterCallback("OverlayTipProc", "Fast")
+	old := DllCall((A_PtrSize = 8) ? "SetWindowLongPtr" : "SetWindowLong", "Ptr", h, "Int", -4, "Ptr", proc, "Ptr")
+	if (old)
+		OverlayTipOld[h] := old
+	if (DllCall("IsWindowVisible", "Ptr", h))
+		DllCall("ShowWindow", "Ptr", h, "Int", 0)
+}
+
+OverlayTipProc(h, msg, wParam, lParam) {
+	global TipsHidden, OverlayTipOld
+	old := OverlayTipOld[h]
+	if (msg = 0x46 and TipsHidden)
+		{
+		; WM_WINDOWPOSCHANGING: drop SWP_SHOWWINDOW
+		off := (A_PtrSize = 8) ? 32 : 24
+		fl := NumGet(lParam + 0, off, "UInt")
+		if (fl & 0x40)
+			NumPut(fl & ~0x40, lParam + 0, off, "UInt")
+		}
+	r := DllCall("CallWindowProc", "Ptr", old, "Ptr", h, "UInt", msg, "Ptr", wParam, "Ptr", lParam, "Ptr")
+	if (msg = 0x82)
+		OverlayTipOld.Delete(h)
+	return r
 }
 
 OverlayWinEvent(hHook, event, hwnd, idObject, idChild, thread, time) {
