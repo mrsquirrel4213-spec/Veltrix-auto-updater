@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 54
+DFModBuild := 55
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -258,6 +258,14 @@ ProfileFields.Push( ["Totem","TotemAuto","false","bool"]
                   , ["Totem","TotemSel1","Aurora","totemsel"]
                   , ["Totem","TotemSel2","None","totemsel"]
                   , ["Totem","TotemSel3","None","totemsel"] )
+ProfileFields.Push( ["Misc","PogoOn","false","bool"]
+                  , ["Misc","PogoHotkey","F6","str"]
+                  , ["Misc","PogoKey","9","str"]
+                  , ["Misc","PogoWait","600","num"]
+                  , ["Misc","PogoCoilKey","2","str"]
+                  , ["Misc","PogoCoilWait","0","num"]
+                  , ["Misc","PogoJumpKey","Space","str"]
+                  , ["Misc","PogoHold","30","num"] )
 
 gosub, EnsureConfigFiles
 gosub, LoadSettingsFile
@@ -551,6 +559,10 @@ Hotkey, % "$" . ExitKey, HotkeyExit, Off
 ForceReEquip := false
 RodEquippedOnce := false
 Hotkey, $F9, FreezePickHotkey, On
+GroupAdd, RobloxGrp, ahk_exe RobloxPlayerBeta.exe
+GroupAdd, RobloxGrp, ahk_exe Windows10Universal.exe
+PogoHkNow := ""
+gosub, PogoApplyHotkey
 
 Menu, Tray, Tip, DeepFish BETA
 Menu, Tray, Add, Show DeepFish, ShowGuiFromTray
@@ -4153,7 +4165,7 @@ for i, f in ProfileFields
 	key := f[2]
 	def := f[3]
 	type := f[4]
-	SrcFile := (sec = "Aquarium" or sec = "Keeper" or sec = "Update" or sec = "Advanced" or (TotemGlobal and sec = "Totem")) ? SettingsFile : ActiveProfileFile
+	SrcFile := (sec = "Aquarium" or sec = "Keeper" or sec = "Update" or sec = "Advanced" or sec = "Misc" or (TotemGlobal and sec = "Totem")) ? SettingsFile : ActiveProfileFile
 	IniRead, val, %SrcFile%, %sec%, %key%, %def%
 	if (val = "ERROR" and def = "")
 		val := ""
@@ -23926,6 +23938,7 @@ PerfectCastCtrls := []
 ShakeCtrls := []
 UtilCtrls := []
 TotemCtrls := []
+MiscCtrls := []
 TotemBodyCtrls := []
 AquariumCtrls := []
 AquariumBodyCtrls := []
@@ -24091,7 +24104,7 @@ Gui, Add, Text, x10 y8 w44 h40 Center +0x200 HwndhLogoTile, 🐟
 SpecialBrushes[hLogoTile] := {brush: hBrushPanel, text: ColorTextBGR}
 
 NavDefs := [ ["ReadThis","⚠  READ THIS"], ["Home","🏠  Fishing"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
-	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"]
+	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"], ["Misc","🧩  Miscellaneous"]
 	, ["Faq","❓  FAQ"], ["About","ℹ️  About"] ]
 
 NavY := 62
@@ -24225,6 +24238,11 @@ else if (NeedSection = "Totem")
 	{
 	gosub, BuildTotemSection
 	NewLists := [TotemCtrls]
+	}
+else if (NeedSection = "Misc")
+	{
+	gosub, BuildMiscSection
+	NewLists := [MiscCtrls]
 	}
 else if (NeedSection = "Aquarium")
 	{
@@ -28361,6 +28379,146 @@ return
 
 ;====================================================================================================;
 
+BuildMiscSection:
+
+Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CARDX% y120 w300 h16 HwndhC, MISCELLANEOUS
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
+
+hC := AddPanel(CARDX, 140, CARDW, 54)
+MiscCtrls.Push(hC)
+Gui, Font, s11 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y157 w300 h20 HwndhC, Pogo Jump Tech
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+PjChk := PogoOn ? "Checked" : ""
+Gui, Add, CheckBox, x572 y157 w58 h20 c%ColorText% vPogoOn %PjChk% gPogoOnChanged HwndhC, On
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x642 y153 w86 h28 Center +0x100 +0x200 gPogoTry HwndhC, ▶ Try
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(hC, 86, 28, 7)
+IconTips[hC] := "Switches to Roblox and does the jump once"
+
+hC := AddPanel(CARDX, 204, CARDW, 296)
+MiscCtrls.Push(hC)
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y214 w%TXW% h34 HwndhC, Press the hotkey in Roblox and it does, top to bottom: pogo stick, wait, jump coil, jump.`nKeys: a number or letter, or a key name like Space, Numpad9 or LShift.
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+
+PjY := 256
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y%PjY% w%LW% h20 HwndhC, Hotkey:
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Add, Hotkey, x%IX% y%PjY% w%IW% h20 vPogoHotkeyCtrl gQueueAutoSave HwndhC, %PogoHotkey%
+MiscCtrls.Push(hC)
+ThemedCtrls.Push(hC)
+IconTips[hC] := "The key that starts the Pogo Jump Tech.`nIt only works while Roblox is the active window."
+PjY += 34
+
+for i, d in [ ["1.  Pogo stick key","PogoKey",""], ["2.  Wait (ms)","PogoWait","num"], ["3.  Jump coil key","PogoCoilKey",""]
+	, ["     Wait before jumping (ms)","PogoCoilWait","num"], ["4.  Jump key","PogoJumpKey",""], ["Key hold (ms)","PogoHold","num"] ]
+	{
+	PjLbl := d[1]
+	PjVar := d[2]
+	PjOpt := (d[3] = "num") ? "+Number" : ""
+	PjVal := %PjVar%
+	Gui, Add, Text, x%CX% y%PjY% w%LW% h20 HwndhC, %PjLbl%:
+	MiscCtrls.Push(hC)
+	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+	Gui, Add, Edit, x%IX% y%PjY% w90 h20 v%PjVar% gQueueAutoSave %PjOpt% HwndhC, %PjVal%
+	MiscCtrls.Push(hC)
+	ThemedCtrls.Push(hC)
+	PjY += 28
+	if (i = 5)
+		PjY += 6
+	}
+Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y%PjY% w%TXW% h18 vPogoStatus HwndhC, % PogoStatusText()
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+return
+
+PogoOnChanged:
+GuiControlGet, PogoOn, 1:, PogoOn
+PogoOn := PogoOn ? true : false
+gosub, PogoApplyHotkey
+gosub, QueueAutoSave
+return
+
+; (re)arms the Pogo Jump Tech hotkey - only while Roblox is the active window
+PogoApplyHotkey:
+Hotkey, IfWinActive, ahk_group RobloxGrp
+if (PogoHkNow != "")
+	Hotkey, % "$" . PogoHkNow, PogoRun, Off UseErrorLevel
+PogoHkNow := ""
+if (PogoOn and PogoHotkey != "")
+	{
+	Hotkey, % "$" . PogoHotkey, PogoRun, On UseErrorLevel
+	if (!ErrorLevel)
+		PogoHkNow := PogoHotkey
+	}
+Hotkey, IfWinActive
+GuiControl, 1:, PogoStatus, % PogoStatusText()
+return
+
+PogoStatusText() {
+	global PogoOn, PogoHkNow, PogoHotkey
+	if (!PogoOn)
+		return "Off - tick On to use it."
+	if (PogoHkNow = "")
+		return "That hotkey cannot be used - pick another one."
+	return "Ready - press " . PogoHkNow . " in Roblox."
+}
+
+PogoTry:
+gosub, ResolveRoblox
+if (!RobloxHwnd)
+	{
+	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	return
+	}
+WinActivate, ahk_id %RobloxHwnd%
+WinWaitActive, ahk_id %RobloxHwnd%, , 2
+Sleep, 300
+gosub, PogoRun
+return
+
+PogoRun:
+if (PogoBusy)
+	return
+PogoBusy := true
+PogoPress(PogoKey)
+PreciseSleep(PogoNum(PogoWait, 600))
+PogoPress(PogoCoilKey)
+PreciseSleep(PogoNum(PogoCoilWait, 0))
+PogoPress(PogoJumpKey)
+PogoBusy := false
+return
+
+PogoNum(v, def) {
+	if v is not number
+		return def
+	return (v < 0) ? 0 : v
+}
+
+; one key: down, hold, up. A key name that Windows does not know is skipped.
+PogoPress(k) {
+	global PogoHold
+	k := Trim(k)
+	if (k = "" or (!GetKeyVK(k) and !GetKeySC(k)))
+		return
+	Send, {%k% down}
+	PreciseSleep(PogoNum(PogoHold, 30))
+	Send, {%k% up}
+}
+
 BuildTotemSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
@@ -29306,6 +29464,7 @@ VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any mon
 	, "Smart cast can cast N times in a row (each cast waits Cast hold + 50 ms before the next)"
 	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
 	, "Installs check in with the owner when they start (Install ID, keyed or not, version)"
+	, "Miscellaneous tab with Pogo Jump Tech: one hotkey does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
 	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
@@ -29502,6 +29661,7 @@ ShowList(NormalCastCtrls, OnCast and CastMode = "Normal")
 ShowList(PerfectCastCtrls, OnCast and CastMode != "Normal")
 ShowList(ShakeCtrls, TargetSection = "Shake")
 ShowList(UtilCtrls, OnUtil)
+ShowList(MiscCtrls, TargetSection = "Misc")
 ShowList(FaqCtrls, TargetSection = "Faq")
 ShowList(AboutCtrls, TargetSection = "About")
 ShowList(VersionsCtrls, TargetSection = "Versions")
@@ -30174,6 +30334,8 @@ return
 SaveSettings:
 
 Gui, Submit, NoHide
+if (SectionBuilt.HasKey("Misc"))
+	PogoHotkey := PogoHotkeyCtrl
 
 BadFields := ""
 for i, f in ProfileFields
@@ -30203,7 +30365,7 @@ for i, f in ProfileFields
 	val := %key%
 	if (type = "bool")
 		val := val ? "true" : "false"
-	DstFile := (sec = "Aquarium" or sec = "Keeper" or sec = "Update" or sec = "Advanced" or (TotemGlobal and sec = "Totem")) ? SettingsFile : ActiveProfileFile
+	DstFile := (sec = "Aquarium" or sec = "Keeper" or sec = "Update" or sec = "Advanced" or sec = "Misc" or (TotemGlobal and sec = "Totem")) ? SettingsFile : ActiveProfileFile
 	IniWrite, %val%, %DstFile%, %sec%, %key%
 	}
 
@@ -30240,6 +30402,7 @@ IniWrite, %WhVal%, %SettingsFile%, Webhook, OnAlert
 IniWrite, %StartStopKey%, %SettingsFile%, Hotkeys, StartStop
 IniWrite, %ReloadKey%, %SettingsFile%, Hotkeys, Reload
 IniWrite, %ExitKey%, %SettingsFile%, Hotkeys, Exit
+gosub, PogoApplyHotkey
 
 GuiControl, 1:, SaveStatusText, ✅ Saved
 settimer, RestoreSaveButton, -1500
