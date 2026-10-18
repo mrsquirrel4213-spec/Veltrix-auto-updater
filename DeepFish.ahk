@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 55
+DFModBuild := 56
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -28416,10 +28416,19 @@ Gui, Font, s9 Norm c%ColorText%, Segoe UI
 Gui, Add, Text, x%CX% y%PjY% w%LW% h20 HwndhC, Hotkey:
 MiscCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Add, Hotkey, x%IX% y%PjY% w%IW% h20 vPogoHotkeyCtrl gQueueAutoSave HwndhC, %PogoHotkey%
+Gui, Add, Edit, x%IX% y%PjY% w120 h20 vPogoHotkeyCtrl gQueueAutoSave HwndhC, %PogoHotkey%
 MiscCtrls.Push(hC)
 ThemedCtrls.Push(hC)
-IconTips[hC] := "The key that starts the Pogo Jump Tech.`nIt only works while Roblox is the active window."
+IconTips[hC] := "The key or mouse button that starts the Pogo Jump Tech.`nPress Set, then the key or mouse button you want - or type it:`nXButton1 = mouse back side button, XButton2 = front side button,`nMButton = middle button. Add ^ ! + for Ctrl Alt Shift (^XButton1).`nIt only works while Roblox is the active window."
+PjSx := IX + 128
+PjSy := PjY - 2
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%PjSx% y%PjSy% w72 h24 Center +0x100 +0x200 vPogoSetBtn gPogoSetKey HwndhC, Set
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorAccentBGR}
+RoundCtrl(hC, 72, 24, 7)
+IconTips[hC] := "Press this, then the key or mouse button you want (Esc cancels)"
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
 PjY += 34
 
 for i, d in [ ["1.  Pogo stick key","PogoKey",""], ["2.  Wait (ms)","PogoWait","num"], ["3.  Jump coil key","PogoCoilKey",""]
@@ -28473,8 +28482,81 @@ PogoStatusText() {
 	if (!PogoOn)
 		return "Off - tick On to use it."
 	if (PogoHkNow = "")
-		return "That hotkey cannot be used - pick another one."
-	return "Ready - press " . PogoHkNow . " in Roblox."
+		return "That hotkey cannot be used - press Set and pick another one."
+	return "Ready - press " . PogoHkNow . PogoKeyNice(PogoHkNow) . " in Roblox."
+}
+
+PogoKeyNice(k) {
+	k := RegExReplace(k, "^[\^!+#]+")
+	return {XButton1: " (mouse back side button)", XButton2: " (mouse front side button)", MButton: " (middle mouse button)", RButton: " (right mouse button)"}[k]
+}
+
+; Set: the next key or mouse button pressed becomes the hotkey (Esc cancels)
+PogoSetKey:
+if (PogoCapturing)
+	return
+PogoCapturing := true
+; the old hotkey must not fire (or swallow the press) while choosing
+Hotkey, IfWinActive, ahk_group RobloxGrp
+if (PogoHkNow != "")
+	Hotkey, % "$" . PogoHkNow, PogoRun, Off UseErrorLevel
+Hotkey, IfWinActive
+PogoHkNow := ""
+GuiControl, 1:, PogoSetBtn, ...
+GuiControl, 1:, PogoStatus, Press the key or mouse button you want - Esc cancels.
+; a key pressed now also types into the box that has focus - make that the hotkey box, it is overwritten after
+GuiControl, 1:Focus, PogoHotkeyCtrl
+PogoNew := PogoCapture()
+GuiControl, 1:, PogoSetBtn, Set
+if (PogoNew != "")
+	{
+	PogoHotkey := PogoNew
+	GuiControl, 1:, PogoHotkeyCtrl, %PogoNew%
+	gosub, QueueAutoSave
+	}
+gosub, PogoApplyHotkey
+PogoCapturing := false
+return
+
+; waits up to 10 s for a key or mouse button (left click excluded) and returns its hotkey name with
+; ^ ! + # for any Ctrl Alt Shift Win held with it, "" on Esc or time-out
+PogoCapture() {
+	; the click on Set is still down
+	KeyWait, LButton
+	t0 := A_TickCount
+	while (A_TickCount - t0 < 10000)
+		{
+		if (GetKeyState("Escape", "P"))
+			{
+			KeyWait, Escape
+			return ""
+			}
+		vk := 2
+		while (vk <= 0xFE)
+			{
+			; skip Esc, and Ctrl Alt Shift Win themselves - those only count held with another key
+			if (vk = 0x1B or vk = 0x10 or vk = 0x11 or vk = 0x12 or (vk >= 0xA0 and vk <= 0xA5) or vk = 0x5B or vk = 0x5C)
+				{
+				vk++
+				continue
+				}
+			kv := "vk" . Format("{:02X}", vk)
+			if (GetKeyState(kv, "P") or GetKeyState(kv))
+				{
+				name := GetKeyName(kv)
+				if (name != "")
+					{
+					pre := (GetKeyState("Ctrl") ? "^" : "") . (GetKeyState("Alt") ? "!" : "") . (GetKeyState("Shift") ? "+" : "") . ((GetKeyState("LWin") or GetKeyState("RWin")) ? "#" : "")
+					; let go first, so it does not fire the moment it is set
+					KeyWait, %name%
+					return pre . name
+					}
+				}
+			vk++
+			}
+		Sleep, 15
+		}
+	return ""
 }
 
 PogoTry:
@@ -29464,7 +29546,7 @@ VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any mon
 	, "Smart cast can cast N times in a row (each cast waits Cast hold + 50 ms before the next)"
 	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
 	, "Installs check in with the owner when they start (Install ID, keyed or not, version)"
-	, "Miscellaneous tab with Pogo Jump Tech: one hotkey does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
+	, "Miscellaneous tab with Pogo Jump Tech: one hotkey (any key or mouse side button) does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
 	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
