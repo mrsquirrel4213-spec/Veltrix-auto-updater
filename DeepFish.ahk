@@ -17853,6 +17853,16 @@ SwSlotX(k) {
 ; tokens left move to new spots, so a spot that empties is forgotten and read again. Built and checked on 4K
 ; recordings of real fights; every size is in star spacings (sp), so it works at any window size.
 
+; ouija debug log (ouija_debug.txt next to the script): each message at most once every 0.5 s
+OjDbg(m) {
+	static last := {}
+	k := SubStr(m, 1, 24)
+	if (last.HasKey(k) and A_TickCount - last[k] < 500)
+		return
+	last[k] := A_TickCount
+	FileAppend, % A_Hour . ":" . A_Min . ":" . A_Sec . "." . A_MSec . "  " . m . "`n", %A_ScriptDir%\ouija_debug.txt
+}
+
 OjReset() {
 	global OjCache, OjPend, OjMiss, OjClickAt, OjClickLit, OjClickK, OjTry, OjStarsVis, OjStarSeenT, OjNextRd, OjStarsMissN, OjLastFind, OjBarL, OjTipT
 	OjCache := {}, OjPend := {}, OjMiss := {}
@@ -17951,6 +17961,7 @@ OjFindGeom() {
 	if (!RobloxHwnd)
 		return false
 	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	OjDbg("find: window " . ww . "x" . wh)
 	if (ww < 300 or wh < 300)
 		return false
 	; a place found once and waiting to be confirmed, then the last place found: look there first. Without this a
@@ -17970,6 +17981,7 @@ OjFindGeom() {
 	if (A_TickCount - fullT < 1500)
 		return false
 	fullT := A_TickCount
+	OjDbg("find: wide look")
 	; the wide look is far wider than the board, so the share of star pixels on its row is judged against a board
 	; of at least 0.6x the usual size, not against the whole width (that asked for 30% of the screen's width)
 	return OjFindIn(Round(ww * 0.05), Round(wh * 0.15), Round(ww * 0.90), Round(wh * 0.80), ww, wh, 0.30 * (0.6 * 17.6 * sp) / 4)
@@ -18023,7 +18035,10 @@ OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 	if (minN = "" or minN > 0.30 * (gw / 4))
 		minN := 0.30 * (gw / 4)
 	if (bestN < minN)
+		{
+		OjDbg("findin " . gx . "," . gy . " " . gw . "x" . gh . ": too few star pixels " . bestN . "<" . Round(minN))
 		return false
+		}
 	dy := Round(wh * 0.028)
 	st := (dy // 15 < 1) ? 1 : dy // 15
 	need := Round(0.35 * ((2 * dy) // st + 1))
@@ -18054,7 +18069,10 @@ OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 		x += 2
 		}
 	if (peaks.Length() < 12)
+		{
+		OjDbg("findin " . gx . "," . gy . " " . gw . "x" . gh . ": row " . (gy + best) . " only " . peaks.Length() . " star spikes")
 		return false
+		}
 	if (peaks.Length() > 12)
 		{
 		; the glow round a star that just lit can add a blip - keep the 12 that sit evenly spaced
@@ -18085,18 +18103,27 @@ OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 				}
 			}
 		if (!IsObject(chosen))
+			{
+			OjDbg("findin " . gx . "," . gy . ": " . peaks.Length() . " spikes, no 12 evenly spaced")
 			return false
+			}
 		peaks := chosen
 		}
 	sp := (peaks[12] - peaks[1]) / 11
 	Loop 11
 		{
 		if (Abs(peaks[A_Index + 1] - peaks[A_Index] - sp) > 0.15 * sp)
+			{
+			OjDbg("findin " . gx . "," . gy . ": spikes not evenly spaced")
 			return false
+			}
 		}
 	sy := gy + best
 	if (sy + 2.7 * sp >= wh)
+		{
+		OjDbg("findin: stars too low " . sy)
 		return false
+		}
 	cxs := []
 	for i, v in peaks
 		cxs.Push(gx + v)
@@ -18106,9 +18133,11 @@ OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 		and Abs(OjGeoCand.cx - cand.cx) <= 3)
 		{
 		OjGeo := cand, OjGeoCand := "", OjGeoSeen := false
+		OjDbg("BOARD CONFIRMED row " . sy . " spacing " . Round(sp, 1) . " centre " . Round(cand.cx))
 		return true
 		}
 	OjGeoCand := cand, OjGeoCandT := A_TickCount
+	OjDbg("board seen once row " . sy . " spacing " . Round(sp, 1) . " centre " . Round(cand.cx))
 	return false
 }
 
@@ -18505,6 +18534,7 @@ OjBarScan(now) {
 	yA := OjRimRow()
 	if (yA >= 0)
 		OjBarFit(yA)
+	OjDbg("bar: stars " . (st ? "ok" : "MISSING") . ", rim row " . yA . ", bar " . (SwFound ? "found" : "NOT found") . ", planchette " . SwFishX . ", playing " . (MgInPlay ? 1 : 0))
 	if (MgInPlay and now - OjTipT >= 0.25)
 		{
 		OjTipT := now
