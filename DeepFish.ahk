@@ -17961,7 +17961,8 @@ OjFindGeom() {
 		return true
 	if (IsObject(OjGeo) and OjGeo.ww = ww and OjGeo.wh = wh and OjFindNear(OjGeo, ww, wh))
 		return true
-	; then a small look where the board sits at the usual UI size (quick), the whole lower screen only now and then
+	; then a small look where the board sits at the usual UI size (quick), most of the screen only now and then -
+	; a bigger UI puts the board higher and larger
 	sp := 0.0615 * wh
 	gx := Round(ww / 2 - 8.8 * sp)
 	if (gx >= 0 and OjFindIn(gx, Round(0.7389 * wh - 0.9 * sp), Round(17.6 * sp), Round(1.8 * sp), ww, wh))
@@ -17971,7 +17972,7 @@ OjFindGeom() {
 	fullT := A_TickCount
 	; the wide look is far wider than the board, so the share of star pixels on its row is judged against a board
 	; of at least 0.6x the usual size, not against the whole width (that asked for 30% of the screen's width)
-	return OjFindIn(Round(ww * 0.05), Round(wh * 0.40), Round(ww * 0.90), Round(wh * 0.55), ww, wh, 0.30 * (0.6 * 17.6 * sp) / 4)
+	return OjFindIn(Round(ww * 0.05), Round(wh * 0.15), Round(ww * 0.90), Round(wh * 0.80), ww, wh, 0.30 * (0.6 * 17.6 * sp) / 4)
 }
 
 ; a small look round a place found before (its own size, so any UI size)
