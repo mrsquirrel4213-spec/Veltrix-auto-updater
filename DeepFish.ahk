@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 56
+DFModBuild := 57
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -178,6 +178,7 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","SwClickSigns","true","bool"]
 				  , ["Rods","SwFastClicks","false","bool"]
 				  , ["Rods","SwRetryFails","false","bool"]
+				  , ["Rods","SwPreset","Normal","str"]
 				  , ["Rods","SwMaxSigns","false","bool"]
 				  , ["Rods","SwAllSigns","false","bool"]
 				  , ["Rods","SwWaitN","12","num"]
@@ -197,7 +198,9 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","StellarFishColors","0xAFDAE8","str"]
 				  , ["Rods","StellarFishTol","22","num"]
 				  , ["Rods","StellarHeadColors","0xFFFFFF","str"]
-				  , ["Rods","StellarHeadTol","30","num"] )
+				  , ["Rods","StellarHeadTol","30","num"]
+				  , ["Rods","SwColsNormal","","str"]
+				  , ["Rods","SwColsOuija","","str"] )
 ProfileFields.Push( ["Tuning","StableRightMultiplier","2.1","num"]
                   , ["Tuning","StableRightDivision","1.4","num"]
                   , ["Tuning","StableLeftMultiplier","1.1","num"]
@@ -770,6 +773,12 @@ if WinActive("ahk_id " . RobloxHwnd)
 	tooltip, Runtime: %runtimeH%h %runtimeM%m %runtimeS%s | Running:%RunDbg% Keys:%KeyDbg%, %TooltipX%, %Tooltip2%, 2
 	gosub, RefreshHints
 	}
+else if (PasIdle())
+	{
+	; passive mode waiting for a minigame: you can be in another window - nothing is pressed until one shows up,
+	; then Roblox is brought back to play it
+	tooltip, Runtime: %runtimeH%h %runtimeM%m %runtimeS%s | Passive - Roblox is in the background, %TooltipX%, %Tooltip2%, 2
+	}
 else
 	{
 	if (!CastHolding)
@@ -1104,8 +1113,12 @@ if (!MacroRunning)
 if (SwPressK)
 	SwPressEnd()
 SwWantK := 0
-send {lbutton up}
-send {rbutton up}
+; in passive mode you may be in another window - do not send it stray button-ups
+if (!PasIdle() or WinActive("ahk_id " . RobloxHwnd))
+	{
+	send {lbutton up}
+	send {rbutton up}
+	}
 if (SwPreK)
 	{
 	SwPreEnd("restart")
@@ -1239,7 +1252,8 @@ if (!MacroRunning)
 tooltip, , , , 9
 
 tooltip, Current Task: AutoLookDownCamera, %TooltipX%, %Tooltip7%, 7
-if (AutoLookDownCamera == true)
+; passive mode leaves the mouse alone (only a Stellarwave fight moves it, to click the signs)
+if (AutoLookDownCamera == true and !PasIdle())
 	{
 	send {rbutton up}
 	Sleep, % Tm(AutoLookDelay)
@@ -1264,7 +1278,8 @@ if (!MacroRunning)
 	goto Idle
 
 tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
-if (AutoBlurCamera == true)
+; the M key would type into whatever window you tabbed to
+if (AutoBlurCamera == true and !(PasIdle() and !WinActive("ahk_id " . RobloxHwnd)))
 	{
 	tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
 	Sleep, % Tm(AutoBlurDelay)
@@ -1393,6 +1408,13 @@ if (KeeperAuto and KeeperAutoBar and !KbBusy)
 	else if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
 		gosub, KbPreRead
 	}
+; the totem check reads its icons now too, while nothing else happens - only if the read fits in the wait
+if (TotemAuto and !TotemPreDone and (!TotemLastCheck or A_TickCount - TotemLastCheck >= TotemPollSec * 1000))
+	{
+	TotemLeft := KbPreWait - (A_TickCount - KbPreT0)
+	if (TotemLeft >= ((TotemReadMs = "") ? 400 : TotemReadMs + 60))
+		gosub, TotemAssess
+	}
 KbPreLeft := KbPreWait - (A_TickCount - KbPreT0)
 if (KbPreLeft > 0)
 	Sleep, %KbPreLeft%
@@ -1407,8 +1429,11 @@ goto NavigationShakeMode
 ;====================================================================================================;
 
 SwPassiveWatch:
-send {lbutton up}
-send {rbutton up}
+if (WinActive("ahk_id " . RobloxHwnd))
+	{
+	send {lbutton up}
+	send {rbutton up}
+	}
 tooltip, Current Task: Passive - watching for the minigame, %TooltipX%, %Tooltip7%, 7
 tooltip, , , , 8
 tooltip, , , , 10
@@ -1425,6 +1450,13 @@ Loop
 	PasStellar := (SwPassive and SpecialRod = "Stellarwave Melody")
 	if (!PassiveAll and !PasStellar)
 		goto RestartMacro
+	; tabbed out with something covering the fish bar: those pixels are not Roblox, so do not look at them
+	if (!PasRobloxShown())
+		{
+		PasSeen := 0
+		Sleep, 100
+		continue
+		}
 	gosub, CaptureFishBar
 	if (SpecialRod = "Tranquility")
 		{
@@ -1432,6 +1464,7 @@ Loop
 		if (PasSeen >= 2)
 			{
 			tooltip, , , , 7
+			gosub, PasFocus
 			goto BarMinigame
 			}
 		if (PasSeen)
@@ -1445,9 +1478,10 @@ Loop
 		if (FishLineVisible() or BarPresent())
 			{
 			tooltip, , , , 7
+			gosub, PasFocus
 			goto BarMinigame
 			}
-		if ((SpecialRod = "Stellarwave Melody") ? (SwFrameTop() >= 0) : MinigameVisible(6))
+		if ((SpecialRod = "Stellarwave Melody") ? ((SwPreset = "Ominous Ouija") ? OjSeen() : (SwFrameTop() >= 0)) : MinigameVisible(6))
 			{
 			SwBurstT0 := A_TickCount
 			while (MacroRunning and A_TickCount - SwBurstT0 < 1500)
@@ -1456,6 +1490,7 @@ Loop
 				if (FishLineVisible() or BarPresent())
 					{
 					tooltip, , , , 7
+					gosub, PasFocus
 					goto BarMinigame
 					}
 				Sleep, 5
@@ -1467,6 +1502,15 @@ Loop
 		SwPassWait := 500
 	Sleep, % (SwPassWait < 10) ? 10 : Round(SwPassWait)
 	}
+
+; a minigame showed up while you were in another window - Roblox has to be in front to play it
+PasFocus:
+if (RobloxHwnd and !WinActive("ahk_id " . RobloxHwnd))
+	{
+	WinActivate, ahk_id %RobloxHwnd%
+	WinWaitActive, ahk_id %RobloxHwnd%, , 1
+	}
+return
 
 NavigationShakeFailsafe:
 NavigationFailsafeCount++
@@ -1703,7 +1747,7 @@ if (ForceReset == true)
 gosub, CaptureFishBar
 if (PasNow)
 	{
-	if (BarPresent() or FishLineVisible() or MinigameVisible(6) or (SpecialRod = "Stellarwave Melody" and SwFrameTop() >= 0))
+	if (BarPresent() or FishLineVisible() or MinigameVisible(6) or (SpecialRod = "Stellarwave Melody" and ((SwPreset = "Ominous Ouija") ? OjSeen() : (SwFrameTop() >= 0))))
 		PasLastSeen := A_TickCount
 	else if (A_TickCount - PasLastSeen > TA("passivelost", 3000))
 		{
@@ -2142,7 +2186,20 @@ if (!FoundBar and !LineSeen)
 		}
 	BarLostMs := BarLostAt ? (BarLostNow - BarLostAt) * 1000.0 / QpcFreq : 0
 	BarLostLimNow := BarLostLim()
-	if (SpecialRod = "Stellarwave Melody" and SwStarOkT)
+	if (SpecialRod = "Stellarwave Melody" and SwPreset = "Ominous Ouija")
+		{
+		; the tokens can cover the bar (and its look may not be picked up): keep clicking letters, and the fight
+		; is not over while its stars still show - it ends the moment they are gone
+		OjStep()
+		if (OjStarsVis)
+			BarLostLimNow := 2147483647
+		else if (OjStarSeenT and BarLostMs >= TA("swendfast", 120) and A_TickCount - OjStarSeenT >= 80)
+			{
+			MgOverWhy := "ojend"
+			goto BarMinigameOver
+			}
+		}
+	else if (SpecialRod = "Stellarwave Melody" and SwStarOkT)
 		{
 		; the star row goes away together with the bar when the fight is over - then it is over at once.
 		; While the stars still show, the bar is only hidden behind the signs: never end it early then
@@ -2236,7 +2293,12 @@ DllCall("QueryPerformanceCounter", "Int64*", PfD)
 FishX := GetFishPos()
 DllCall("QueryPerformanceCounter", "Int64*", PfE)
 if (SpecialRod = "Stellarwave Melody")
-	SwClickStep()
+	{
+	if (SwPreset = "Ominous Ouija")
+		OjStep()
+	else
+		SwClickStep()
+	}
 
 if (SpecialRod != "Tranquility" and SpecialRod != "Lullaby" and SpecialRod != "Noiseform")
 	{
@@ -7363,6 +7425,9 @@ AdvRegistry() {
 	r.Push(["Minigame", "L", "twig3", 260, "ms|Splitbranch Twig: pause after clicking"])
 	r.Push(["Stellarwave Melody", "L", "swallwait", 700, "ms|All signs: start anyway if no new sign for"])
 	r.Push(["Stellarwave Melody", "L", "swretry", 250, "ms|Retry: wait before re-clicking"])
+	r.Push(["Stellarwave Melody", "L", "ojwait", 600, "ms|Ouija: wait for the star before clicking again"])
+	r.Push(["Stellarwave Melody", "L", "ojhover", 25, "ms|Ouija: hover before the click"])
+	r.Push(["Stellarwave Melody", "L", "ojhold", 60, "ms|Ouija: click hold"])
 	r.Push(["Stellarwave Melody", "L", "swendfast", 120, "ms|Fight over once the bar and stars are gone for"])
 	r.Push(["Stellarwave Melody", "L", "swretrymax", 150, "ms|...same, with Max sign speed"])
 	r.Push(["Stellarwave Melody", "L", "swrcneutral", 40, "ms|Retry click: pause at the neutral spot"])
@@ -10206,9 +10271,19 @@ PinionScan() {
 TotemMaybeRun:
 if (!TotemAuto or !MacroRunning)
 	return
-if (TotemLastCheck and (A_TickCount - TotemLastCheck) < (TotemPollSec * 1000))
+if (!TotemPreDone)
+	{
+	if (TotemLastCheck and (A_TickCount - TotemLastCheck) < (TotemPollSec * 1000))
+		return
+	; not read during the last bobber wait (it was too short) - one read here
+	tooltip, Current Task: Checking Totems, %TooltipX%, %Tooltip7%, 7
+	gosub, TotemAssess
+	}
+TotemPreDone := false
+; nothing to pop: no time is spent here at all
+if (TotemPending = "")
 	return
-TotemLastCheck := A_TickCount
+TotemPending := ""
 tooltip, Current Task: Checking Totems, %TooltipX%, %Tooltip7%, 7
 tooltip, , , , 8
 if (WhLastCatchTick)
@@ -10217,7 +10292,23 @@ if (WhLastCatchTick)
 	if (TotemSinceCatch >= 0 and TotemSinceCatch < TA("totemcatch", 0))
 		Sleep, % Tm(TA("totemcatch", 0) - TotemSinceCatch)
 	}
+; a totem is due: the careful check (two matching reads) runs before anything is popped
+TotemSkipNo := true
 gosub, TotemRunCycle
+TotemSkipNo := false
+return
+
+; one read of the totem icons and the decision, nothing popped: TotemPending = the totem that is due ("" = none)
+TotemAssess:
+TotemPending := ""
+TotemAssessOnly := true
+TotemAssessOk := false
+TotemAsT0 := A_TickCount
+gosub, TotemRunCycle
+TotemAssessOnly := false
+TotemLastCheck := A_TickCount
+; a failed read is left to the restart (it tries again the normal way)
+TotemPreDone := TotemAssessOk
 return
 
 ;====================================================================================================;
@@ -10226,7 +10317,8 @@ TotemRunCycle:
 TotemDidPop := false
 TotemPass := 0
 TotemCyclePopped := ","
-TotemCheckNo++
+if (!TotemSkipNo)
+	TotemCheckNo++
 TotemLoop:
 TotemPass++
 if (TotemPass > 6 or !MacroRunning)
@@ -10241,8 +10333,20 @@ Loop, 8
 	if (!MacroRunning)
 		goto TotemDone
 	TotemSig := ""
+	TotemRdT := A_TickCount
 	if (TotemCaptureStrip() and TotemReadState())
 		TotemSig := TotemTime . "|" . TotemWeather . "|" . TotemEvents
+	TotemRdT := A_TickCount - TotemRdT
+	TotemReadMs := (TotemReadMs = "") ? TotemRdT : Round(0.7 * TotemReadMs + 0.3 * TotemRdT)
+	if (TotemAssessOnly)
+		{
+		; one read decides - a pop is still checked carefully at the restart before it happens
+		if (TotemSig = "")
+			goto TotemDone
+		TotemAssessOk := true
+		TotemSettled := true
+		break
+		}
 	if (TotemSig != "" and TotemSig = TotemPrevSig)
 		{
 		TotemSettled := true
@@ -10354,6 +10458,11 @@ if (TotemNext = "")
 	goto TotemDone
 if (InStr(TotemCyclePopped, "," . TotemNext . ","))
 	goto TotemDone
+if (TotemAssessOnly)
+	{
+	TotemPending := TotemNext
+	goto TotemDone
+	}
 tooltip, Current Task: Totem - %TotemNext%, %TooltipX%, %Tooltip7%, 7
 send {%TotemNextKey%}
 Sleep, % Tm(TA("totemkey", 300))
@@ -12715,7 +12824,7 @@ if (!MgOnScreen and KbPostponeN < 3)
 	if (!MgOnScreen and SpecialRod = "Tranquility")
 		MgOnScreen := ManiaVisible()
 	if (!MgOnScreen and SpecialRod = "Stellarwave Melody")
-		MgOnScreen := (SwFrameTop() >= 0)
+		MgOnScreen := (SwPreset = "Ominous Ouija") ? OjSeen() : (SwFrameTop() >= 0)
 	}
 return
 
@@ -17191,6 +17300,18 @@ SwSetFrame(r, g, b) {
 	PcSetPrm(SwPrmFrI, hex, SwFrTol, 0, 1)
 }
 
+; the six Stellarwave color boxes as one string, and back
+SwColsGet() {
+	global StellarBarColors, StellarBarTol, StellarFishColors, StellarFishTol, StellarHeadColors, StellarHeadTol
+	return StellarBarColors . "|" . StellarBarTol . "|" . StellarFishColors . "|" . StellarFishTol . "|" . StellarHeadColors . "|" . StellarHeadTol
+}
+
+SwColsSet(v) {
+	global StellarBarColors, StellarBarTol, StellarFishColors, StellarFishTol, StellarHeadColors, StellarHeadTol
+	p := StrSplit(v, "|")
+	StellarBarColors := p[1], StellarBarTol := p[2], StellarFishColors := p[3], StellarFishTol := p[4], StellarHeadColors := p[5], StellarHeadTol := p[6]
+}
+
 SwTolOf(v, d) {
 	if v is not number
 		return d
@@ -17616,8 +17737,45 @@ SwFightReset() {
 	SwMoveOn := 0.06
 	SwHyb := 0.012
 	SwPhaseReset()
-	if (MacroRunning and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
+	OjReset()
+	; (passive mode waiting for a minigame leaves the mouse where you put it)
+	if (MacroRunning and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd) and !PasIdle())
 		MouseMove, %LookDownX%, %LookDownY%, 0
+}
+
+; passive mode, waiting for a minigame (not in one): the mouse is left alone and Roblox may be in the background
+PasIdle() {
+	global MacroRunning, PassiveAll, SwPassive, SpecialRod, MgInPlay
+	return (MacroRunning and !MgInPlay and (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody")))
+}
+
+; true when the fish bar area on screen really shows Roblox (in front, or not covered by another window)
+PasRobloxShown() {
+	global RobloxHwnd, FishBarLeft, FishBarRight, FishBarTop, FishBarBottom
+	if (!RobloxHwnd)
+		return false
+	if (WinActive("ahk_id " . RobloxHwnd))
+		return true
+	me := DllCall("GetCurrentProcessId")
+	for i, f in [0.1, 0.5, 0.9]
+		{
+		VarSetCapacity(pt, 8, 0)
+		NumPut(Round(FishBarLeft + f * (FishBarRight - FishBarLeft)), pt, 0, "Int")
+		NumPut(Round((FishBarTop + FishBarBottom) / 2), pt, 4, "Int")
+		DllCall("ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
+		if (A_PtrSize = 8)
+			h := DllCall("WindowFromPoint", "Int64", NumGet(pt, 0, "Int64"), "Ptr")
+		else
+			h := DllCall("WindowFromPoint", "Int", NumGet(pt, 0, "Int"), "Int", NumGet(pt, 4, "Int"), "Ptr")
+		r := DllCall("GetAncestor", "Ptr", h, "UInt", 2, "Ptr")
+		if (r = RobloxHwnd)
+			continue
+		; our own overlays (info panel, HUD) do not count as covering it
+		DllCall("GetWindowThreadProcessId", "Ptr", r, "UInt*", wpid)
+		if (wpid != me)
+			return false
+		}
+	return true
 }
 
 SwPhaseReset() {
@@ -17689,8 +17847,931 @@ SwSlotX(k) {
 	return SwSlotC0 + (k - 1) * SwPitch
 }
 
+;---- Ominous Ouija (a Stellarwave preset) ------------------------------------------------------------
+; The same game as the zodiac signs: 12 stars, and tokens that show up one by one in 12 spots on the bar and are
+; clicked in star order - here each token shows a letter and the order spells GRIMPLANCHET. Now and then the
+; tokens left move to new spots, so a spot that empties is forgotten and read again. Built and checked on 4K
+; recordings of real fights; every size is in star spacings (sp), so it works at any window size.
+
+OjReset() {
+	global OjCache, OjPend, OjMiss, OjClickAt, OjClickLit, OjClickK, OjTry, OjStarsVis, OjStarSeenT, OjNextRd, OjStarsMissN, OjLastFind, OjBarL, OjTipT
+	OjCache := {}, OjPend := {}, OjMiss := {}
+	OjClickAt := 0, OjClickLit := -1, OjClickK := 0, OjTry := 0
+	OjStarsVis := false, OjStarSeenT := 0, OjNextRd := 1, OjStarsMissN := 0
+	; a blank time would make "now - OjLastFind < 300" true forever (blank math is blank in AHK v1) - so set it
+	OjLastFind := -99999, OjBarL := -99999, OjTipT := 0
+}
+
+; the 12 letters as 10x14 coverage grids (from a 4K fight): letter:aspect*1000:140 hex bytes
+OjTplInit() {
+	global OjTpl
+	if (IsObject(OjTpl))
+		return
+	OjTpl := {}
+	for i, part in StrSplit("G:757:000067FAFFFFE0C656000081D7FA4E3479D7B5002BE9D78100000067E900C6E0FF2B000000098100C6CFC600000000000000B5D7AC000079B52B6792ACD7AC000045FAD7FFBEE9E0E000000081A4FF22AC9BD71100005681FF005FC6D75F00005F81FF0000E0FFFF6767FF9BFF00000967F1D7FFC6BEFF00000000092B220000000000092B2B2B342B2B0000|R:875:CDFC5ECDFFFFDC180000A5ECECFFADCDFFB5000027C5ECB50010D4EC2F00279DEC7600009DEC5700279DEC760008E4EC5E00279DEC76007EFFEC1F00279DECFCDCECFF6600002FBDFFEC8EFFFF270000279DEC7600A5D4A50000279DEC76004FBDEC1F473FDCECCD1008BDE4BDE4F4ECD4FF7600B5D4ECB59D5E08662F00107E7E1800272737272F1F000000|I:466:0EF5FFE6909ED8FFFF48002BBBD8D8FFD8E63A00000048D890FFD8900000000048D848FFD8900000000056FF56FFFFAD0000000048D848FFD8900000000048D848FFD8900000000048D848FFD8900000000048D848FFD8900000000056FF81FFFFAD000000009ED8D8FFD8BB000000C9FFD881C9D8FFD8000048651D00002B7356003A2B3A2B2B3A2B3A2B2B|M:1062:E7FFFF10000000CFFFB740FFFF87000040FFFF5800DFBFC700009FDFDF0000FFCFFF6038FFF7FF0000FFD7C7DFC7FFEFFF0000DF5097DFDF60BFDF0000FF509FDFFF08EFFF0000FF5020EF7700EFFF0000DF4000870800BFDF0000FF5000000018F7FF0097FFC70800089FFFFF7FDFA7DF200020DF9FBFBF3000300838303800083000002030000838100000|P:691:FFFF7B86FFFFD4B30B0086FFFFDFBE4EBEFFEB0B00C9FFDF0B0016DFFF7B00A8FFDF000000A8F6C900A8FFDF000000EBFFC900A8FFDF00007BFFFF7B0086DFB39CA8B3DFBE0B00A8FFDFFFFFDFDF220000A8FFDF4E381600000000B3FFDF380000000000A8FFFFDFDF4300000000A8861659A8430000000000000022382D000000000038380000002D380B00|L:691:FFFF86A8FF700000000059FFFFDF860B0000000000B3DFDF38000000000000A8A8DF38000000000000A8A8DF38000000000000A8A8DF380000000000008686B32D000000000000A8A8DF38000000597B00B3B3DF3800000BF69C0BEBFFDF9C384EEBFF59EBFFFFDFFFFFDFFFFF16A87B004EA8A84E4391000000002D382D00000000002D2D00000B22220000|A:971:000048FF87BFEF000000000010C7EFFF6F000000000000B7E7EF58000000000000FFA7C7BF000000000048FF10BFFF100000000097B700AFD77700000000B76F0067A7AF00000048EFFFEFFFDFEF4800009FBF6F5F6FBFBFA70000F77700000040EFFF10AFFFC7400010A7E7FFA79F386F5F0018A730488F0000000030300000000000002030000038180000|N:794:FFF3C200000092FDAFE988F3FF7500001DFDF34400A5FFF3570000C2CC000092FFE0E93A00C2C2000092FF9CE9FD0AC2C2000092FFAF88FFB9CCC2000075E90A9C92C2E99C000092FF003AD6D6FFC2000092FF00008892FFC200009CFF130000AFCCC2004EE9FFA513000AF3C200576B31921D0000314E000000001D313100000000000A2713000A27270000|C:643:000071B5FFE3EE71D72D0093FFE3B54F93D7FF3966C1FF9F00000044FF39AA9FFF1700000000E339B5E3F900000000000000AAE3E300000000000000AAE3E300000000000000D79FFF0B00000000394FAA71FF7100000000D7AA22B5F9E37D0B2D9FFF2D0022E3E3FFE3FFCC44000000002D715B4F00000000000000000000000000002D2D2D392D2D220B00|H:826:DAECACDAACB6E3A3ECA32DFEFFBF2D2DC8FFFE24009AFF64000088D1E3000088FF5B000088B6E3000088FFACA3A3BFB6E3000088FFD1DADADAB6E3000088FF5B000088B6E3000088FF5B000088B6E3000076FF5B000088BFE30009DAFF880009C8FFF500E3FFECE388BFE3F5FFB66D400949495B4909525B00000012362D0000000000091B1B000924240000|E:696:FFF881C2D8FFE2A2D80041FFFFFFA25661E2FF1600D8F8FF0B00000BE21600D8D8FF0020A200000000D8D8FF2BA2ED00000000D8D8FFD8FF9700000000D8D8FF0B8CFF00000000D8D8FF00000000566100D8D8FF16000000CDB700E2F8FF77000077FFA281FFD8E2D8EDFFF8EDA24156000B416C560B362B000000202B3600000000002B360B00002B360B00|T:710:E8A9C9FFDEC9FFE8B4C9FFFF94DEFFFFD39EFFD3FF94006ABEFF3F00C9D3FF3F006AD3FF35009ED37415006AD3FF3500352A0000006AD3FF350000000000006AD3FF350000000000006AD3FF350000000000006A9EFF350000000000007FF3FF4A00000000004AFDF3E8F320000000002A5F15156A15000000000015353500000000000B351500002A2A0000", "|")
+		{
+		f := StrSplit(part, ":")
+		v := []
+		Loop 140
+			{
+			n := "0x" . SubStr(f[3], A_Index * 2 - 1, 2)
+			n += 0
+			v.Push(n / 255.0)
+			}
+		OjTpl[f[1]] := {a: f[2] / 1000.0, v: v}
+		}
+}
+
+; copies a client-area rectangle of the screen; OjBits holds it (BGRA, top-down)
+OjGrab(x, y, w, h) {
+	global RobloxHwnd, OjDC, OjBM, OjBits, OjGW, OjGH, OjGX, OjGY, OjOwnBits, OjDW, OjDH, OjBandN, OjBandKey
+	if (!RobloxHwnd or w < 10 or h < 10)
+		return false
+	RobloxClientRect(RobloxHwnd, wx, wy)
+	if (!OjDC or w != OjDW or h != OjDH)
+		{
+		if (OjDC)
+			{
+			DllCall("DeleteObject", "Ptr", OjBM)
+			DllCall("DeleteDC", "Ptr", OjDC)
+			}
+		hdcS := DllCall("GetDC", "Ptr", 0, "Ptr")
+		OjDC := DllCall("CreateCompatibleDC", "Ptr", hdcS, "Ptr")
+		VarSetCapacity(bi, 40, 0)
+		NumPut(40, bi, 0, "UInt"), NumPut(w, bi, 4, "Int"), NumPut(-h, bi, 8, "Int"), NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+		OjOwnBits := 0
+		OjBM := DllCall("CreateDIBSection", "Ptr", OjDC, "Ptr", &bi, "UInt", 0, "Ptr*", OjOwnBits, "Ptr", 0, "UInt", 0, "Ptr")
+		DllCall("SelectObject", "Ptr", OjDC, "Ptr", OjBM)
+		DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
+		OjDW := w, OjDH := h
+		}
+	hdcS := DllCall("GetDC", "Ptr", 0, "Ptr")
+	DllCall("BitBlt", "Ptr", OjDC, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", wx + x, "Int", wy + y, "UInt", 0x00CC0020)
+	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
+	OjBits := OjOwnBits, OjGW := w, OjGH := h, OjGX := x, OjGY := y
+	OjBandN := (OjBandN = "") ? 1 : OjBandN + 1, OjBandKey := ""
+	return true
+}
+
+OjPx(x, y) {
+	global OjBits, OjGW, OjGH, OjGX, OjGY
+	x := Round(x) - OjGX, y := Round(y) - OjGY
+	if (x < 0 or y < 0 or x >= OjGW or y >= OjGH)
+		return 0
+	return NumGet(OjBits + 0, (y * OjGW + x) * 4, "UInt")
+}
+
+OjLum(v) {
+	return (((v >> 16) & 0xFF) + 2 * ((v >> 8) & 0xFF) + (v & 0xFF)) // 4
+}
+
+; a star: dark purple when unlit, white when lit
+OjStarPx(v) {
+	r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+	return ((b >= 75 and b - g >= 40 and r - g >= 15) or (r > 200 and g > 190 and b > 205))
+}
+
+OjSlotX(k) {
+	global OjGeo
+	return OjGeo.cx + (k - 6.5) * OjGeo.sp * 1.3125
+}
+
+OjGeoFits() {
+	global OjGeo, RobloxHwnd
+	if (!IsObject(OjGeo) or !RobloxHwnd)
+		return false
+	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	return (ww = OjGeo.ww and wh = OjGeo.wh)
+}
+
+; finds the star row: the row with the most star pixels, then 12 tall evenly spaced star spikes on it
+OjFindGeom() {
+	global RobloxHwnd
+	static fullT := -999999
+	if (!RobloxHwnd)
+		return false
+	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	if (ww < 300 or wh < 300)
+		return false
+	; first a small look where the board sits at the usual UI size (quick), the whole lower screen only now and then
+	sp := 0.0615 * wh
+	gx := Round(ww / 2 - 8.8 * sp)
+	if (gx >= 0 and OjFindIn(gx, Round(0.7389 * wh - 0.9 * sp), Round(17.6 * sp), Round(1.8 * sp), ww, wh))
+		return true
+	if (A_TickCount - fullT < 1500)
+		return false
+	fullT := A_TickCount
+	return OjFindIn(Round(ww * 0.05), Round(wh * 0.40), Round(ww * 0.90), Round(wh * 0.55), ww, wh)
+}
+
+OjFindIn(gx, gy, gw, gh, ww, wh) {
+	global OjGeo, OjBits, OjGeoCand, OjGeoCandT, OjGeoSeen
+	if (gy + gh > wh)
+		gh := wh - gy
+	if (!OjGrab(gx, gy, gw, gh))
+		return false
+	best := -1, bestN := 0
+	Loop 2
+		{
+		pass := A_Index
+		y := (pass = 1) ? 0 : ((best - 4 < 0) ? 0 : best - 4)
+		yEnd := (pass = 1) ? gh - 1 : ((best + 4 > gh - 1) ? gh - 1 : best + 4)
+		ys := (pass = 1) ? 4 : 1
+		xs := (pass = 1) ? 8 : 4
+		if (pass = 2)
+			bestN := 0
+		while (y <= yEnd)
+			{
+			n := 0, p := OjBits + y * gw * 4, x := 0
+			while (x < gw)
+				{
+				v := NumGet(p + 0, x * 4, "UInt"), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+				if ((b >= 75 and b - g >= 40 and r - g >= 15) or (r > 200 and g > 190 and b > 205))
+					n++
+				x += xs
+				}
+			if (n > bestN)
+				best := y, bestN := n
+			y += ys
+			}
+		if (best < 0)
+			return false
+		}
+	if (bestN < 0.30 * (gw / 4))
+		return false
+	dy := Round(wh * 0.028)
+	st := (dy // 15 < 1) ? 1 : dy // 15
+	need := Round(0.35 * ((2 * dy) // st + 1))
+	peaks := [], run := false, s0 := 0, x := 0
+	while (x < gw)
+		{
+		e := 0, yy := best - dy
+		while (yy <= best + dy)
+			{
+			if (yy >= 0 and yy < gh)
+				{
+				v := NumGet(OjBits + 0, (yy * gw + x) * 4, "UInt"), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+				if ((b >= 75 and b - g >= 40 and r - g >= 15) or (r > 200 and g > 190 and b > 205))
+					e++
+				}
+			yy += st
+			}
+		if (e >= need)
+			{
+			if (!run)
+				s0 := x, run := true
+			}
+		else if (run)
+			{
+			peaks.Push((s0 + x - 2) / 2)
+			run := false
+			}
+		x += 2
+		}
+	if (peaks.Length() < 12)
+		return false
+	if (peaks.Length() > 12)
+		{
+		; the glow round a star that just lit can add a blip - keep the 12 that sit evenly spaced
+		ds := []
+		Loop % peaks.Length() - 1
+			ds.Push(peaks[A_Index + 1] - peaks[A_Index])
+		spm := MedianOf(ds)
+		chosen := ""
+		for i, p0 in peaks
+			{
+			got := []
+			Loop 12
+				{
+				want := p0 + (A_Index - 1) * spm, bd := 0.15 * spm, bp := ""
+				for j, pv in peaks
+					{
+					if (Abs(pv - want) <= bd)
+						bd := Abs(pv - want), bp := pv
+					}
+				if (bp = "")
+					break
+				got.Push(bp)
+				}
+			if (got.Length() = 12)
+				{
+				chosen := got
+				break
+				}
+			}
+		if (!IsObject(chosen))
+			return false
+		peaks := chosen
+		}
+	sp := (peaks[12] - peaks[1]) / 11
+	Loop 11
+		{
+		if (Abs(peaks[A_Index + 1] - peaks[A_Index] - sp) > 0.15 * sp)
+			return false
+		}
+	sy := gy + best
+	if (sy + 2.7 * sp >= wh)
+		return false
+	cxs := []
+	for i, v in peaks
+		cxs.Push(gx + v)
+	cand := {y: sy, xs: cxs, sp: sp, cx: (cxs[1] + cxs[12]) / 2, ww: ww, wh: wh}
+	; the board grows and slides in when a fight starts: only a place found the same twice in a row counts
+	if (IsObject(OjGeoCand) and A_TickCount - OjGeoCandT < 400 and OjGeoCand.wh = wh and Abs(OjGeoCand.sp - sp) <= 0.01 * sp and Abs(OjGeoCand.y - sy) <= 2
+		and Abs(OjGeoCand.cx - cand.cx) <= 3)
+		{
+		OjGeo := cand, OjGeoCand := "", OjGeoSeen := false
+		return true
+		}
+	OjGeoCand := cand, OjGeoCandT := A_TickCount
+	return false
+}
+
+; time for another look for the board? (every 0.3 s; 0.08 s while a place found once waits to be confirmed)
+OjFindDue() {
+	global OjLastFind, OjGeoCand, OjGeoCandT
+	if (OjLastFind != "" and A_TickCount - OjLastFind < ((IsObject(OjGeoCand) and A_TickCount - OjGeoCandT < 400) ? 80 : 300))
+		return false
+	OjLastFind := A_TickCount
+	return true
+}
+
+; the band with the stars, the planchette and the tokens
+OjGrabBand() {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY, OjBandN, OjBandKey, pNoteBits, NoteOriginX, NoteOriginY, NoteW, NoteFullH, NoteBlitAt, QpcFreq, SpecialRod
+	x0 := Round(OjGeo.cx - 8.2 * OjGeo.sp)
+	y0 := Round(OjGeo.y - 0.15 * OjGeo.sp)
+	x0 := (x0 < 0) ? 0 : x0, y0 := (y0 < 0) ? 0 : y0
+	w := Round(16.4 * OjGeo.sp), h := Round(2.95 * OjGeo.sp)
+	; the Stellarwave capture of this frame already holds the band at the usual UI sizes - read it there, no extra copy
+	if (pNoteBits and SpecialRod = "Stellarwave Melody" and NoteBlitAt and x0 >= NoteOriginX and y0 >= NoteOriginY
+		and x0 + w <= NoteOriginX + NoteW and y0 + h <= NoteOriginY + NoteFullH)
+		{
+		DllCall("QueryPerformanceCounter", "Int64*", qn)
+		if ((qn - NoteBlitAt) * 1000.0 / QpcFreq < 25)
+			{
+			OjBits := pNoteBits, OjGW := NoteW, OjGH := NoteFullH, OjGX := NoteOriginX, OjGY := NoteOriginY
+			if (OjBandKey != NoteBlitAt)
+				OjBandKey := NoteBlitAt, OjBandN := (OjBandN = "") ? 1 : OjBandN + 1
+			return true
+			}
+		}
+	return OjGrab(x0, y0, w, h)
+}
+
+OjStarsOk() {
+	global OjGeo
+	n := 0
+	for i, x in OjGeo.xs
+		{
+		if (OjStarPx(OjPx(x, OjGeo.y)))
+			n++
+		}
+	return (n >= 9)
+}
+
+; stars light from the left
+OjLit() {
+	global OjGeo
+	n := 0
+	for i, x in OjGeo.xs
+		{
+		if (OjLum(OjPx(x, OjGeo.y)) <= 180)
+			break
+		n++
+		}
+	return n
+}
+
+; the planchette (beige heart) - a token under it is not read (its line cuts through the letter)
+OjHeartX() {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY, OjBandN
+	static at := "", v := -9999
+	; the bar reader and the letter reader both want it - read once per frame
+	if (OjBandN != "" and at = OjBandN)
+		return v
+	at := OjBandN, v := OjHeartRead()
+	return v
+}
+
+OjHeartRead() {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY, OjPl
+	OjCols()
+	c1 := OjPl[1], c2 := OjPl[2]
+	y := Round(OjGeo.y + 0.70 * OjGeo.sp) - OjGY
+	if (y < 0 or y >= OjGH)
+		return -9999
+	x := Round(OjGeo.xs[1] - 2 * OjGeo.sp) - OjGX, x1 := Round(OjGeo.xs[12] + 2 * OjGeo.sp) - OjGX
+	x := (x < 0) ? 0 : x
+	x1 := (x1 > OjGW - 1) ? OjGW - 1 : x1
+	p := OjBits + y * OjGW * 4, sum := 0, n := 0
+	while (x <= x1)
+		{
+		v := NumGet(p + 0, x * 4, "UInt"), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+		if ((Abs(r - c1[1]) <= c1[4] and Abs(g - c1[2]) <= c1[4] and Abs(b - c1[3]) <= c1[4])
+			or (Abs(r - c2[1]) <= c2[4] and Abs(g - c2[2]) <= c2[4] and Abs(b - c2[3]) <= c2[4]))
+			sum += x, n++
+		x += 3
+		}
+	return (n >= 4) ? OjGX + sum / n : -9999
+}
+
+; a token sits in slot k: a neutral white rim on its left and on its right (the bare bar is beige or black)
+OjPresent(k) {
+	global OjGeo
+	sx := OjSlotX(k), yc := OjGeo.y + 2.12 * OjGeo.sp, d := 0.08 * OjGeo.sp
+	return (OjRim(sx - 0.56 * OjGeo.sp, sx - 0.38 * OjGeo.sp, yc, d) and OjRim(sx + 0.38 * OjGeo.sp, sx + 0.56 * OjGeo.sp, yc, d))
+}
+
+OjRim(xa, xb, yc, d) {
+	for i, y in [yc - d, yc, yc + d]
+		{
+		x := Round(xa)
+		while (x <= xb)
+			{
+			v := OjPx(x, y), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+			if ((r + 2 * g + b) // 4 > 140 and Abs(r - b) < 25)
+				return true
+			x++
+			}
+		}
+	return false
+}
+
+; a used token: its small bottom circle turned white
+OjUsed(k) {
+	global OjGeo
+	sx := OjSlotX(k), sy := OjGeo.y + 2.54 * OjGeo.sp, s := 0.03 * OjGeo.sp, t := 0
+	for i, dx in [-s, 0, s]
+		{
+		for j, dy in [-s, 0, s]
+			t += OjLum(OjPx(sx + dx, sy + dy))
+		}
+	return (t / 9 > 190)
+}
+
+; the letter in slot k as a 10x14 coverage grid, read inside a circle a bit smaller than the token's rim
+OjGlyph(k, ByRef cov, ByRef asp) {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY
+	sx := OjSlotX(k) - OjGX, cy := OjGeo.y + 2.12 * OjGeo.sp - OjGY, r := 0.42 * OjGeo.sp
+	x0 := Floor(sx - r), x1 := Floor(sx + r)
+	yt := OjGeo.y + 1.62 * OjGeo.sp - OjGY
+	y0 := Floor((yt > cy - r) ? yt : cy - r), y1 := Floor(cy + r * 0.35)
+	if (x0 < 0 or y0 < 0 or x1 >= OjGW or y1 >= OjGH)
+		return false
+	r2 := r * r
+	VarSetCapacity(pts, (x1 - x0 + 1) * (y1 - y0 + 1) * 4, 0)
+	n := 0, bx0 := 99999, bx1 := -1, by0 := 99999, by1 := -1
+	y := y0
+	while (y < y1)
+		{
+		dy2 := (y - cy) * (y - cy), p := OjBits + y * OjGW * 4, x := x0
+		while (x < x1)
+			{
+			if ((x - sx) * (x - sx) + dy2 <= r2)
+				{
+				v := NumGet(p + 0, x * 4, "UInt")
+				if ((((v >> 16) & 0xFF) + 2 * ((v >> 8) & 0xFF) + (v & 0xFF)) // 4 > 170)
+					{
+					NumPut(x, pts, n * 4, "UShort"), NumPut(y, pts, n * 4 + 2, "UShort"), n++
+					if (x < bx0)
+						bx0 := x
+					if (x > bx1)
+						bx1 := x
+					if (y < by0)
+						by0 := y
+					by1 := y
+					}
+				}
+			x++
+			}
+		y++
+		}
+	if (n < 40 or by1 - by0 + 1 < 0.30 * OjGeo.sp)
+		return false
+	bw := bx1 - bx0 + 1, bh := by1 - by0 + 1
+	grid := []
+	Loop 140
+		grid.Push(0)
+	Loop % n
+		{
+		gx := (NumGet(pts, (A_Index - 1) * 4, "UShort") - bx0) * 10 // bw
+		gy := (NumGet(pts, (A_Index - 1) * 4 + 2, "UShort") - by0) * 14 // bh
+		gx := (gx > 9) ? 9 : gx
+		gy := (gy > 13) ? 13 : gy
+		grid[gy * 10 + gx + 1] += 1
+		}
+	cw := bw / 10 * bh / 14
+	cov := []
+	Loop 140
+		cov.Push((grid[A_Index] / cw > 1) ? 1 : grid[A_Index] / cw)
+	asp := bw / bh
+	return true
+}
+
+; the letter that matches clearly ("" if none or too close to call)
+OjMatch(cov, asp) {
+	global OjTpl
+	OjTplInit()
+	b1 := 99999, b2 := 99999, bl := ""
+	for L, t in OjTpl
+		{
+		d := 40 * Abs(asp - t.a), v := t.v
+		Loop 140
+			d += Abs(cov[A_Index] - v[A_Index])
+		if (d < b1)
+			b2 := b1, b1 := d, bl := L
+		else if (d < b2)
+			b2 := d
+		}
+	return (b1 <= 35 and b2 - b1 >= 5) ? bl : ""
+}
+
+; is the ouija minigame on screen? (cheap once its place is known)
+OjSeen() {
+	global OjGeo, OjLastFind
+	if (OjGeoFits())
+		return (OjGrabBand() and OjStarsOk())
+	if (!OjFindDue())
+		return false
+	return OjFindGeom()
+}
+
+OjClick(k) {
+	global OjGeo, RobloxHwnd, PrecisionDown, PrecisionUpAt, LookDownX, LookDownY
+	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	VarSetCapacity(pt, 8, 0)
+	NumPut(Round(OjSlotX(k)), pt, 0, "Int"), NumPut(Round(OjGeo.y + 1.95 * OjGeo.sp), pt, 4, "Int")
+	DllCall("ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
+	sx := NumGet(pt, 0, "Int"), sy := NumGet(pt, 4, "Int")
+	NumPut(Round(LookDownX), pt, 0, "Int"), NumPut(Round(LookDownY), pt, 4, "Int")
+	DllCall("ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
+	nx := NumGet(pt, 0, "Int"), ny := NumGet(pt, 4, "Int")
+	if (PrecisionDown or GetKeyState("LButton"))
+		{
+		send {lbutton up}
+		PrecisionDown := false
+		PreciseSleep(20)
+		}
+	CoordMode, Mouse, Screen
+	MouseMove, %sx%, %sy%, 0
+	PreciseSleep(TA("ojhover", 25))
+	MouseMove, % sx + 1, % sy, 0
+	PreciseSleep(15)
+	send {lbutton down}
+	PreciseSleep(TA("ojhold", 60))
+	send {lbutton up}
+	PreciseSleep(20)
+	MouseMove, %nx%, %ny%, 0
+	CoordMode, Mouse, Client
+	DllCall("QueryPerformanceCounter", "Int64*", PrecisionUpAt)
+	return true
+}
+
+; one fight frame: read the stars, keep each spot's letter up to date, click the letter that is due
+OjStep() {
+	global OjGeo, OjCache, OjPend, OjMiss, OjClickAt, OjClickLit, OjClickK, OjTry, OjStarsVis, OjStarSeenT, OjNextRd, OjLastFind, OjStarsMissN
+	global SwPanelTxt, SwPanelLast, SwClickSigns, RobloxHwnd
+	static WORD := "GRIMPLANCHET"
+	now := A_TickCount
+	if (!OjGeoFits())
+		{
+		OjStarsVis := false
+		if (!OjFindDue())
+			return
+		if (!OjFindGeom())
+			return
+		}
+	if (!OjGrabBand())
+		return
+	if (!OjStarsOk())
+		{
+		OjStarsVis := false
+		; not there for a while although the fight goes on: the row may have moved - look for it again
+		OjStarsMissN := OjStarsMissN + 1
+		if (OjStarsMissN >= 8 and OjFindDue())
+			OjFindGeom()
+		return
+		}
+	OjStarsMissN := 0
+	OjStarsVis := true
+	OjStarSeenT := now
+	lit := OjLit()
+	SwPanelTxt := lit . "/12 lit" . ((lit < 12) ? ", next " . SubStr(WORD, lit + 1, 1) : "")
+	SwPanelLast := SwPanelTxt
+	if (lit >= 12 or !SwClickSigns)
+		return
+	waiting := false
+	if (OjClickAt)
+		{
+		if (lit > OjClickLit)
+			OjClickAt := 0, OjTry := 0
+		else if (now - OjClickAt < TA("ojwait", 600))
+			waiting := true
+		else
+			OjClickAt := 0
+		}
+	hx := OjHeartX()
+	tsp := OjGeo.sp * 1.3125
+	used := {}
+	budget := 2
+	Loop 12
+		{
+		k := Mod(OjNextRd + A_Index - 2, 12) + 1
+		if (!OjPresent(k))
+			{
+			OjMiss[k] := OjMiss[k] + 1
+			if (OjMiss[k] >= 2)
+				OjCache.Delete(k), OjPend.Delete(k)
+			continue
+			}
+		OjMiss[k] := 0
+		if (OjUsed(k))
+			{
+			used[k] := 1
+			OjCache.Delete(k), OjPend.Delete(k)
+			continue
+			}
+		if (OjCache.HasKey(k) or budget <= 0 or Abs(OjSlotX(k) - hx) < 0.6 * tsp)
+			continue
+		if (!OjGlyph(k, cov, asp))
+			continue
+		budget--
+		L := OjMatch(cov, asp)
+		if (L != "")
+			{
+			; a letter counts once it is read the same way twice
+			if (OjPend[k] = L)
+				OjCache[k] := L
+			OjPend[k] := L
+			}
+		}
+	OjNextRd := Mod(OjNextRd, 12) + 1
+	if (waiting)
+		return
+	tgt := SubStr(WORD, lit + 1, 1)
+	pick := 0
+	for k, L in OjCache
+		{
+		if (L = tgt and !used.HasKey(k))
+			{
+			if (pick)
+				return
+			pick := k
+			}
+		}
+	if (!pick)
+		return
+	if (pick = OjClickK and lit = OjClickLit and OjTry >= 3)
+		{
+		; three clicks did not light its star - read that token again before trying more
+		OjCache.Delete(pick), OjPend.Delete(pick)
+		OjTry := 0
+		return
+		}
+	if (OjClick(pick))
+		{
+		if (pick != OjClickK or lit != OjClickLit)
+			OjTry := 0
+		OjTry := OjTry + 1
+		OjClickK := pick, OjClickLit := lit, OjClickAt := A_TickCount
+		}
+}
+
+; The ouija bar and fish (instead of the Stellarwave ones). The bar is a rounded box whose two thin grey inner rims
+; run its whole length, on a wooden track; tokens, their glow and the planchette's line hide parts of it, so its
+; spot is where it covers the most rim and the least wood. The fish is the planchette (the beige heart).
+OjBarScan(now) {
+	global OjGeo, OjLastFind, OjTipT, MgInPlay, SwFound, SwBarL, SwBarW, SwFishX, SwFishHeld, SwPhase, TooltipX, Tooltip13
+	global SwPanelTxt, OjGeoSeen, OjBarMissN
+	SwFound := false, SwFishX := -1, SwFishHeld := false, SwPhase := 0
+	OjCols()
+	if (!OjGeoFits())
+		{
+		if (SwPanelTxt = "" or InStr(SwPanelTxt, "ouija"))
+			SwPanelTxt := "ouija board not found yet"
+		if (!OjFindDue() or !OjFindGeom())
+			return
+		}
+	if (!OjGrabBand())
+		return
+	; before the fight its stars must show (nothing else on screen counts), during it a frame without them still reads
+	st := OjStarsOk()
+	if (!st and (SwPanelTxt = "" or InStr(SwPanelTxt, "ouija")))
+		SwPanelTxt := "ouija stars not on screen"
+	if (st)
+		OjGeoSeen := true, OjBarMissN := 0
+	else
+		{
+		; no stars where the board was found: during a fight, or if they were never seen there, look for it again
+		OjBarMissN := (OjBarMissN = "") ? 1 : OjBarMissN + 1
+		if ((MgInPlay or !OjGeoSeen) and OjBarMissN >= 4 and OjFindDue())
+			{
+			OjFindGeom()
+			return
+			}
+		}
+	if (!MgInPlay and !st)
+		return
+	hx := OjHeartX()
+	if (hx > -9999)
+		SwFishX := Round(hx)
+	yA := OjRimRow()
+	if (yA >= 0)
+		OjBarFit(yA)
+	if (MgInPlay and now - OjTipT >= 0.25)
+		{
+		OjTipT := now
+		tooltip, % "Ominous Ouija: bar " . (SwFound ? "found" : "not found") . ", planchette " . ((SwFishX >= 0) ? "found" : "not found"), %TooltipX%, %Tooltip13%, 13
+		}
+}
+
+; the bar's upper inner rim row (the lower one is 0.43 star spacings below it), looked for each frame: the board
+; slides up into place at the start of every fight. -1 if fewer than 3 of 25 spots along the track agree
+OjRimRow() {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY, OjRimR, OjRimG, OjRimB, OjRimT
+	t := OjRimT + 4
+	sp := OjGeo.sp, dB := Round(0.4292 * sp), d := Round(0.04 * sp)
+	d := (d < 2) ? 2 : d
+	ya := Round(OjGeo.y + 1.86 * sp) - OjGY, yz := Round(OjGeo.y + 2.06 * sp) - OjGY
+	if (ya - d < 0 or yz + dB + d + 1 >= OjGH)
+		return -1
+	ys := []
+	; looked at on the token spots and halfway between them: with all 12 tokens out, the gaps still show it
+	Loop 25
+		{
+		x := Round(OjGeo.cx + (A_Index - 13) * 0.65625 * sp) - OjGX
+		if (x < 0 or x >= OjGW)
+			continue
+		y := ya
+		while (y <= yz)
+			{
+			v := NumGet(OjBits + 0, (y * OjGW + x) * 4, "UInt")
+			if (Abs(((v >> 16) & 0xFF) - OjRimR) <= t and Abs(((v >> 8) & 0xFF) - OjRimG) <= t and Abs((v & 0xFF) - OjRimB) <= t
+				and OjRimPx(OjBits + ((y + dB) * OjGW + x) * 4, t) and !OjRimPx(OjBits + ((y - d) * OjGW + x) * 4, t)
+				and !OjRimPx(OjBits + ((y + d + 1) * OjGW + x) * 4, t))
+				{
+				ys.Push(y)
+				break
+				}
+			y++
+			}
+		}
+	n := ys.Length()
+	if (n < 3)
+		return -1
+	i := 2
+	while (i <= n)
+		{
+		v := ys[i], j := i - 1
+		while (j >= 1 and ys[j] > v)
+			ys[j + 1] := ys[j], j--
+		ys[j + 1] := v
+		i++
+		}
+	m := ys[(n + 1) // 2], agree := 0
+	for i, v in ys
+		agree += (Abs(v - m) <= 1) ? 1 : 0
+	return (agree >= 3) ? OjGY + m + Floor(0.012 * sp) : -1
+}
+
+; the rims' grey (the Bar color box, 0x959088 for this preset)
+OjRimPx(p, t) {
+	global OjRimR, OjRimG, OjRimB
+	v := NumGet(p + 0, 0, "UInt")
+	return (Abs(((v >> 16) & 0xFF) - OjRimR) <= t and Abs(((v >> 8) & 0xFF) - OjRimG) <= t and Abs((v & 0xFF) - OjRimB) <= t)
+}
+
+; the preset's colours, from the Stellarwave color boxes (they hold the ouija ones while this preset is picked):
+; Bar color = the bar's grey rims, Fish color and Fish head color = the planchette
+OjCols() {
+	global StellarBarColors, StellarBarTol, StellarFishColors, StellarFishTol, StellarHeadColors, StellarHeadTol
+	global OjRimR, OjRimG, OjRimB, OjRimT, OjPl, OjPrmRim
+	static key := "-"
+	k := StellarBarColors . "|" . StellarBarTol . "|" . StellarFishColors . "|" . StellarFishTol . "|" . StellarHeadColors . "|" . StellarHeadTol
+	if (k == key)
+		return
+	key := k
+	c := OjCol(StellarBarColors, 0x959088)
+	OjRimR := (c >> 16) & 0xFF, OjRimG := (c >> 8) & 0xFF, OjRimB := c & 0xFF, OjRimT := OjTol(StellarBarTol, 14)
+	VarSetCapacity(OjPrmRim, 48, 0)
+	PcPrmAt(&OjPrmRim, OjRimR, OjRimG, OjRimB, OjRimT, 0)
+	OjPl := []
+	for i, f in [[StellarFishColors, 0xD4C5A4, StellarFishTol, 40], [StellarHeadColors, 0xE8E1C5, StellarHeadTol, 30]]
+		{
+		c := OjCol(f[1], f[2])
+		OjPl.Push([(c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, OjTol(f[3], f[4])])
+		}
+}
+
+; first colour in a box ("0x959088", "#959088", ...), or the default
+OjCol(s, d) {
+	if (RegExMatch(s, "i)(?:0x|#)?([0-9a-f]{6})(?![0-9a-f])", m))
+		return ("0x" . m1) + 0
+	return d
+}
+
+OjTol(v, d) {
+	if v is not number
+		return d
+	v := Round(v)
+	return (v < 0) ? 0 : ((v > 255) ? 255 : v)
+}
+
+; the bar's spot from the rims on both rim rows (rim), the wood beside it (not bar), everything else unknown.
+; Its length is measured when wood shows right next to both ends, and kept (10.68 star spacings until then)
+OjBarFit(yA) {
+	global OjGeo, OjBits, OjGW, OjGH, OjGX, OjGY, OjBarW, OjBarWH, OjBarRing, OjBarL, SwFound, SwBarL, SwBarW
+	global OjPrmRim, OjRimR, OjRimG, OjRimB, OjRimT
+	sp := OjGeo.sp, yB := yA + Round(0.4292 * sp)
+	if (yA - OjGY < 0 or yB - OjGY >= OjGH)
+		return
+	x0 := Round(OjGeo.cx - 8.2 * sp) - OjGX, x1 := Round(OjGeo.cx + 8.2 * sp) - OjGX
+	x0 := (x0 < 0) ? 0 : x0
+	x1 := (x1 > OjGW - 1) ? OjGW - 1 : x1
+	pa := OjBits + (yA - OjGY) * OjGW * 4, pb := OjBits + (yB - OjGY) * OjGW * 4
+	ra := [], rb := []
+	OjRuns(pa, x0, x1, &OjPrmRim, ra)
+	OjRuns(pb, x0, x1, &OjPrmRim, rb)
+	Rims := [], mn := Round(0.05 * sp)
+	mn := (mn < 3) ? 3 : mn
+	for i, v in OjAnd(ra, rb)
+		{
+		; a few rim-grey pixels can come from the wood's grain
+		if (v[2] - v[1] + 1 >= mn)
+			Rims.Push(v)
+		}
+	; wood: warm (red well above blue) and not too dark, on either rim row
+	st := Round(0.045 * sp)
+	st := (st < 2) ? 2 : st
+	n := (x1 - x0) // st + 1
+	Woods := [], ks := -1, ke := -1
+	Loop % n
+		{
+		x := x0 + (A_Index - 1) * st
+		v := NumGet(pa + 0, x * 4, "UInt"), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+		wd := (r - b >= 16 and r >= 60 and !(Abs(r - OjRimR) <= OjRimT and Abs(g - OjRimG) <= OjRimT and Abs(b - OjRimB) <= OjRimT))
+		if (!wd)
+			{
+			v := NumGet(pb + 0, x * 4, "UInt"), r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
+			wd := (r - b >= 16 and r >= 60 and !(Abs(r - OjRimR) <= OjRimT and Abs(g - OjRimG) <= OjRimT and Abs(b - OjRimB) <= OjRimT))
+			}
+		if (!wd)
+			continue
+		if (ke = x - 1)
+			ke := x + st - 1
+		else
+			{
+			if (ks >= 0)
+				Woods.Push([ks, ke])
+			ks := x, ke := x + st - 1
+			}
+		}
+	if (ks >= 0)
+		Woods.Push([ks, ke])
+	; the bar's rounded ends show its beige inside on the rim rows: wood right next to a rim does not count
+	gk := Round(0.12 * sp)
+	for i, v in Rims
+		{
+		Woods2 := []
+		for j, kv in Woods
+			{
+			if (kv[2] < v[1] - gk or kv[1] > v[2] + gk)
+				Woods2.Push(kv)
+			else
+				{
+				if (kv[1] < v[1] - gk)
+					Woods2.Push([kv[1], v[1] - gk - 1])
+				if (kv[2] > v[2] + gk)
+					Woods2.Push([v[2] + gk + 1, kv[2]])
+				}
+			}
+		Woods := Woods2
+		}
+	; measure: rim runs joined over gaps without wood, the biggest one, with wood right beside both of its ends
+	mr := [], g8 := Round(0.08 * sp)
+	for i, v in Rims
+		{
+		q := mr.Length()
+		if (q and (v[1] - mr[q][2] - 1 <= g8 or !SwCover(Woods, mr[q][2] + 1, v[1] - 1)))
+			mr[q][2] := v[2], mr[q][3] := mr[q][3] + v[2] - v[1] + 1
+		else
+			mr.Push([v[1], v[2], v[2] - v[1] + 1])
+		}
+	bi := 0
+	for i, v in mr
+		{
+		if (!bi or v[3] > mr[bi][3])
+			bi := i
+		}
+	if (bi)
+		{
+		a := mr[bi][1], e := mr[bi][2], wm := e - a + 1, ww := Round(0.45 * sp)
+		if (wm >= 5 * sp and wm <= 14 * sp and SwCover(Woods, a - ww, a - 1) >= 0.5 * ww and !SwCover(Rims, a - ww, a - 1)
+			and SwCover(Woods, e + 1, e + ww) >= 0.5 * ww and !SwCover(Rims, e + 1, e + ww))
+			{
+			if (!IsObject(OjBarRing) or OjBarWH != OjGeo.wh)
+				OjBarRing := [], OjBarW := 0, OjBarWH := OjGeo.wh
+			OjBarRing.Push(wm)
+			if (OjBarRing.Length() > 7)
+				OjBarRing.RemoveAt(1)
+			srt := []
+			for i, v in OjBarRing
+				{
+				j := srt.Length()
+				while (j >= 1 and srt[j] > v)
+					j--
+				srt.InsertAt(j + 1, v)
+				}
+			med := srt[(srt.Length() + 1) // 2], agree := 0
+			for i, v in srt
+				agree += (Abs(v - med) <= 0.015 * med) ? 1 : 0
+			if (agree >= 3)
+				OjBarW := med
+			}
+		}
+	; fit: slide a bar of that length along the track (in steps of st) - 4 per rim pixel inside, -1 per wood pixel
+	BarLen := (OjBarW and OjBarWH = OjGeo.wh) ? OjBarW : Round(10.68 * sp)
+	Rc := [], Kc := []
+	Loop % n
+		Rc.Push(0), Kc.Push(0)
+	for i, v in Rims
+		{
+		c := (v[1] - x0) // st
+		while (c < n and x0 + c * st <= v[2])
+			{
+			ca := x0 + c * st, ce := ca + st - 1
+			Rc[c + 1] := Rc[c + 1] + ((v[2] < ce) ? v[2] : ce) - ((v[1] > ca) ? v[1] : ca) + 1
+			c++
+			}
+		}
+	for i, v in Woods
+		{
+		c := (v[1] - x0) // st
+		while (c < n and x0 + c * st <= v[2])
+			Kc[c + 1] := st, c++
+		}
+	PR := [0], PK := [0]
+	Loop % n
+		PR.Push(PR[A_Index] + Rc[A_Index]), PK.Push(PK[A_Index] + Kc[A_Index])
+	Wc := Round(BarLen / st), m := Round(0.5 * sp / st)
+	prev := (OjBarL > -9999), L := m - Wc, best := "", bL := 0, bE := 0, bR := 0
+	while (L <= n - m)
+		{
+		lo := (L < 0) ? 0 : L, hi := (L + Wc > n) ? n : L + Wc
+		inR := PR[hi + 1] - PR[lo + 1]
+		sc := 4 * inR - (PK[hi + 1] - PK[lo + 1])
+		if (prev)
+			sc -= 0.02 * Abs(OjGX + x0 + L * st - OjBarL)
+		if (best = "" or sc > best + 0.001)
+			best := sc, bL := L, bE := L, bR := inR
+		else if (Abs(sc - best) <= 0.001 and bE = L - 1)
+			bE := L
+		L++
+		}
+	if (bR < sp)
+		return
+	; an end hidden under tokens leaves a stretch of equally good spots: take its middle
+	OjBarL := OjGX + x0 + ((bL + bE) // 2) * st
+	SwFound := true, SwBarL := OjBarL, SwBarW := BarLen
+}
+
+; runs of one colour along a row (machine code search; a = a PcPrmAt block: the colour, then its inverse)
+OjRuns(p, x0, x1, a, rr) {
+	x := x0
+	while (x <= x1 and rr.Length() < 400)
+		{
+		i := PcFindAt(p + x * 4, x1 - x + 1, 4, a)
+		if (i < 0)
+			break
+		s := x + i
+		j := PcFindAt(p + (s + 1) * 4, x1 - s, 4, a + 24)
+		e := (j < 0) ? x1 : s + j
+		rr.Push([s, e])
+		x := e + 1
+		}
+}
+
+; the parts two sorted run lists share
+OjAnd(a, b) {
+	out := [], i := 1, j := 1
+	while (i <= a.Length() and j <= b.Length())
+		{
+		lo := (a[i][1] > b[j][1]) ? a[i][1] : b[j][1]
+		hi := (a[i][2] < b[j][2]) ? a[i][2] : b[j][2]
+		if (hi >= lo)
+			out.Push([lo, hi])
+		if (a[i][2] < b[j][2])
+			i++
+		else
+			j++
+		}
+	return out
+}
+
 SwScan() {
-	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh, SwFrameT
+	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh, SwFrameT, SwPreset
 	global SwFound, SwBarL, SwBarW, SwFishX, SwPhase, SwPhaseT, SwInvalidT, SwUndarkT, SwStarsValid, SwLit, SwLitPrev, SwLastStep, SwK0, SwClicks, SwStop, SwStopWhy, SwGradOk, SwWRing, SwStarStableT, SwLastClick
 	global SwW, SwWMeas, SwMeasN, SwPostT, SwBarHold, SwCleanL, SwCleanW
 	if (SwScanned)
@@ -17702,6 +18783,11 @@ SwScan() {
 		return false
 	now := SwNow()
 	SwFrameT := now
+	if (SwPreset = "Ominous Ouija")
+		{
+		OjBarScan(now)
+		return true
+		}
 	SwStarsRead(now)
 	SwBarScan(now)
 	SwFishScan(now)
@@ -21085,14 +22171,17 @@ SwReactLearn() {
 }
 
 SwPreEnd(why) {
-	global SwPreK, RobloxHwnd, SwParkX, SwParkY, SwDwell, SwPressK
+	global SwPreK, RobloxHwnd, SwParkX, SwParkY, SwDwell, SwPressK, SwParkAt
 	if (SwPressK)
 		SwPressEnd()
 	if (!SwPreK)
 		return
 	SwPreK := 0
 	SwDwell := false
-	if (RobloxHwnd)
+	; the fight is over in passive mode: leave the mouse where it is
+	if (PasIdle())
+		SwParkAt := 0
+	else if (RobloxHwnd)
 		{
 		SwParkSet()
 		CoordMode, Mouse, Screen
@@ -26413,6 +27502,22 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 ; -------------------------------------------------- extra colors (Tryhard Rod, Castbound)
 RodColTip := "Leave empty if this rod already works for you.`n`nOnly for screens where the rod's own detection`nnever picks this up: open the Color Manager,`nPick from screen, and click it in game.`n`nThe rod's own detection still runs - these`nare added to it. Empty = nothing changes."
 RodTolTip := "How closely a pixel must match one of the`nextra colors above. Leave at the default.`n`nHIGHER = more forgiving.`nTOO HIGH = scenery gets mistaken for it."
+; the Stellarwave color boxes hold the picked preset's colours; the other preset's are kept aside.
+; Settings from before this saved the zodiac colours there even with Ominous Ouija picked - move them aside once
+SwColsNormalDef := "0x55446D|26|0xAFDAE8|22|0xFFFFFF|30"
+SwColsOuijaDef := "0x959088|14|0xD4C5A4|40|0xE8E1C5|30"
+SwPresetCur := SwPreset
+if (SwPreset = "Ominous Ouija" and SwColsOuija = "" and (SwColsNormal = "" or InStr(SwColsNormal, "0x959088") = 1))
+	{
+	; once only (the ouija set is stored from then on); an earlier build put the ouija colours in the zodiac slot
+	if (SwColsNormal = "" and InStr(SwColsGet(), "0x959088") != 1)
+		SwColsNormal := SwColsGet()
+	else
+		SwColsNormal := SwColsNormalDef
+	if (InStr(SwColsGet(), "0x959088") != 1)
+		SwColsSet(SwColsOuijaDef)
+	SwColsOuija := SwColsGet()
+	}
 SwColTip := "Filled in with the rod's own color. Change it`nonly if this part is not picked up on your`nscreen: open the Color Manager, Pick from`nscreen, and click it in game.`n`nEmpty the box to go back to the normal color."
 SwTolTip := "How closely a pixel must match the colors`nabove. Leave at the default.`n`nHIGHER = more forgiving.`nTOO HIGH = scenery gets mistaken for it."
 RodColBlockDefs := [ ["trycol", [ ["Extra bar colors","TryhardBarColors","c","Click the bar while the fish is inside it`n(bright red) AND while it is outside (dark red).","e.g. 0x9E0406, 0x37080C"]
@@ -26427,13 +27532,13 @@ RodColBlockDefs := [ ["trycol", [ ["Extra bar colors","TryhardBarColors","c","Cl
 		, ["Sword tolerance","CastboundFishTol","t",""]
 		, ["Extra bar colors","CastboundBarColors","c","Only helps if the bar looks very dark on your`nscreen. Click the bar."]
 		, ["Bar tolerance","CastboundBarTol","t",""] ], "EXTRA COLORS  -  ONLY IF THE BAR OR SWORD IS NOT PICKED UP" ]
-	, ["swcol", [ ["Bar color","StellarBarColors","c","The thin dark purple frame around the bar`n(not the colorful inside). 0x55446D is the`nnormal color.","default 0x55446D"]
+	, ["swcol", [ ["Bar color","StellarBarColors","c","The thin dark purple frame around the bar`n(not the colorful inside). 0x55446D is the`nnormal color.`n`nOminous Ouija: the thin grey rims along`nthe bar, 0x959088.","default 0x55446D"]
 		, ["Bar tolerance","StellarBarTol","t",""]
-		, ["Fish color","StellarFishColors","c","The light blue line of the fish on the bar.`n0xAFDAE8 is the normal color.","default 0xAFDAE8"]
+		, ["Fish color","StellarFishColors","c","The light blue line of the fish on the bar.`n0xAFDAE8 is the normal color.`n`nOminous Ouija: the planchette, 0xD4C5A4.","default 0xAFDAE8"]
 		, ["Fish tolerance","StellarFishTol","t",""]
-		, ["Fish head color","StellarHeadColors","c","The white note head of the fish, just above`nthe bar. 0xFFFFFF is the normal color.","default 0xFFFFFF"]
+		, ["Fish head color","StellarHeadColors","c","The white note head of the fish, just above`nthe bar. 0xFFFFFF is the normal color.`n`nOminous Ouija: the light edge of the`nplanchette, 0xE8E1C5.","default 0xFFFFFF"]
 		, ["Fish head tolerance","StellarHeadTol","t",""] ], "STELLARWAVE COLORS  -  ONLY IF THE BAR OR FISH IS NOT PICKED UP"
-		, "Filled in with the rod's own colors. Empty a box to go back to its normal color.", SwColTip, SwTolTip ] ]
+		, "Filled in with the Preset's own colors - they switch with it. Empty a box for its normal color.", SwColTip, SwTolTip ] ]
 for RcI, RcD in RodColBlockDefs
 	{
 	RcName := RcD[1]
@@ -26515,7 +27620,7 @@ MgAdd("halicol", hQ)
 IconTips[hQ] := "ON - the bar goes for the exclamation mark`nwhen it appears (the harpoon minigame).`n`nOFF - the bar stays on the fish line the whole`ntime and ignores the exclamation mark."
 
 ; ------------------------------------------------------------------- Stellarwave Melody
-MgBlockOpen("stellar", 204, 258)
+MgBlockOpen("stellar", 204, 284)
 Y := 219
 SwChk := SwClickSigns ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwClickSigns %SwChk% gSwClickChanged HwndhC, Click the signs
@@ -26618,6 +27723,20 @@ Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
 IconTips[hQ] := "ON - while passive mode is running, the info text`nand the bar overlay are invisible. The macro still`nworks exactly the same.`n`nStop the macro to see them again."
+Y += RH
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y%Y% w220 h20 +0x200 HwndhC, Preset
+MgAdd("stellar", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+SwPresetChoice := (SwPreset = "Ominous Ouija") ? 2 : 1
+Gui, Add, DropDownList, x%IX% y%Y% w%IW% h100 vSwPreset gSwPresetChanged Choose%SwPresetChoice% HwndhC, Normal|Ominous Ouija
+MgAdd("stellar", hC)
+ThemedCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+MgAdd("stellar", hQ)
+IconTips[hQ] := "Normal - the zodiac signs.`n`nOminous Ouija - the ouija look: letter tokens that`nspell GRIMPLANCHET. Each token's letter is read`nand they are clicked in that order; when the`ntokens move to new spots they are read again.`n`nEach preset has its own colors in the Stellarwave`ncolor boxes below - they switch when you pick`none. Ominous Ouija: the bar's grey rims, and the`nplanchette as the fish."
 
 ; ------------------------------------------------------------------- Requiem reel limits
 MgBlockOpen("reel", 204, 70)
@@ -29547,6 +30666,8 @@ VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any mon
 	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
 	, "Installs check in with the owner when they start (Install ID, keyed or not, version)"
 	, "Miscellaneous tab with Pogo Jump Tech: one hotkey (any key or mouse side button) does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
+	, "Stellarwave preset Ominous Ouija: reads the letter tokens and clicks them in GRIMPLANCHET order"
+	, "Ominous Ouija now finds its own bar and fish (the grey-rimmed bar on the wooden track, the planchette) and starts the minigame"
 	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
@@ -30186,6 +31307,25 @@ SwFastChanged:
 GuiControlGet, SwFastV, 1:, SwFastClicks
 if (!ErrorLevel)
 	SwFastClicks := SwFastV ? true : false
+gosub, QueueAutoSave
+return
+
+SwPresetChanged:
+GuiControlGet, SwPreset, 1:, SwPreset
+if (SwPreset != SwPresetCur)
+	{
+	; keep the colours of the preset left, show the ones of the preset picked (its own defaults the first time)
+	if (SwPresetCur = "Ominous Ouija")
+		SwColsOuija := SwColsGet()
+	else
+		SwColsNormal := SwColsGet()
+	SwColsSet((SwPreset = "Ominous Ouija") ? ((SwColsOuija != "") ? SwColsOuija : SwColsOuijaDef) : ((SwColsNormal != "") ? SwColsNormal : SwColsNormalDef))
+	for SwCi, SwCk in ["StellarBarColors","StellarBarTol","StellarFishColors","StellarFishTol","StellarHeadColors","StellarHeadTol"]
+		GuiControl, 1:, %SwCk%, % %SwCk%
+	gosub, RefreshSwatches
+	SwPresetCur := SwPreset
+	}
+OjReset()
 gosub, QueueAutoSave
 return
 
