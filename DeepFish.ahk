@@ -17946,14 +17946,22 @@ OjGeoFits() {
 
 ; finds the star row: the row with the most star pixels, then 12 tall evenly spaced star spikes on it
 OjFindGeom() {
-	global RobloxHwnd
+	global RobloxHwnd, OjGeo, OjGeoCand, OjGeoCandT
 	static fullT := -999999
 	if (!RobloxHwnd)
 		return false
 	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
 	if (ww < 300 or wh < 300)
 		return false
-	; first a small look where the board sits at the usual UI size (quick), the whole lower screen only now and then
+	; a place found once and waiting to be confirmed, then the last place found: look there first. Without this a
+	; board only the wide look finds (another UI size or window shape) could never be confirmed - the wide look
+	; runs once every 1.5 s, but the second sighting has to come within 0.4 s
+	if (IsObject(OjGeoCand) and A_TickCount - OjGeoCandT < 400 and OjGeoCand.ww = ww and OjGeoCand.wh = wh
+		and OjFindNear(OjGeoCand, ww, wh))
+		return true
+	if (IsObject(OjGeo) and OjGeo.ww = ww and OjGeo.wh = wh and OjFindNear(OjGeo, ww, wh))
+		return true
+	; then a small look where the board sits at the usual UI size (quick), the whole lower screen only now and then
 	sp := 0.0615 * wh
 	gx := Round(ww / 2 - 8.8 * sp)
 	if (gx >= 0 and OjFindIn(gx, Round(0.7389 * wh - 0.9 * sp), Round(17.6 * sp), Round(1.8 * sp), ww, wh))
@@ -17961,10 +17969,24 @@ OjFindGeom() {
 	if (A_TickCount - fullT < 1500)
 		return false
 	fullT := A_TickCount
-	return OjFindIn(Round(ww * 0.05), Round(wh * 0.40), Round(ww * 0.90), Round(wh * 0.55), ww, wh)
+	; the wide look is far wider than the board, so the share of star pixels on its row is judged against a board
+	; of at least 0.6x the usual size, not against the whole width (that asked for 30% of the screen's width)
+	return OjFindIn(Round(ww * 0.05), Round(wh * 0.40), Round(ww * 0.90), Round(wh * 0.55), ww, wh, 0.30 * (0.6 * 17.6 * sp) / 4)
 }
 
-OjFindIn(gx, gy, gw, gh, ww, wh) {
+; a small look round a place found before (its own size, so any UI size)
+OjFindNear(c, ww, wh) {
+	gx := Round(c.cx - 8.8 * c.sp), gy := Round(c.y - 0.9 * c.sp), gw := Round(17.6 * c.sp), gh := Round(1.8 * c.sp)
+	if (gx < 0)
+		gw += gx, gx := 0
+	if (gy < 0)
+		gh += gy, gy := 0
+	if (gx + gw > ww)
+		gw := ww - gx
+	return OjFindIn(gx, gy, gw, gh, ww, wh)
+}
+
+OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 	global OjGeo, OjBits, OjGeoCand, OjGeoCandT, OjGeoSeen
 	if (gy + gh > wh)
 		gh := wh - gy
@@ -17997,7 +18019,9 @@ OjFindIn(gx, gy, gw, gh, ww, wh) {
 		if (best < 0)
 			return false
 		}
-	if (bestN < 0.30 * (gw / 4))
+	if (minN = "" or minN > 0.30 * (gw / 4))
+		minN := 0.30 * (gw / 4)
+	if (bestN < minN)
 		return false
 	dy := Round(wh * 0.028)
 	st := (dy // 15 < 1) ? 1 : dy // 15
