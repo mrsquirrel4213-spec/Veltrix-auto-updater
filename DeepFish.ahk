@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 57
+DFModBuild := 58
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -100,6 +100,7 @@ ProfileFields.Push( ["General","AutoLowerGraphics","true","bool"]
                   , ["General","RestartDelay","1000","num"]
                   , ["General","TimeOffset","0","num"]
                   , ["General","HideOverlay","false","bool"]
+                  , ["General","HideTextAlways","false","bool"]
                   , ["General","PassiveAll","false","bool"]
                   , ["General","PassiveMs","500","num"]
                   , ["General","InfoPanelOn","false","bool"]
@@ -3906,7 +3907,8 @@ CryptHashHex(pData, nData) {
 
 OverlayHideTick:
 OvWant := MacroRunning and (HideOverlay or (SwPassiveHide and ((SwPassive and SpecialRod = "Stellarwave Melody") or PassiveAll)))
-TipWant := OvWant or (InfoPanelOn and MacroRunning)
+; "Hide the text at all times": the in-game text (the start list too) never shows, running or stopped
+TipWant := OvWant or (InfoPanelOn and MacroRunning) or HideTextAlways
 if (TipWant != TipsHidden)
 	{
 	TipsHidden := TipWant ? true : false
@@ -17946,23 +17948,14 @@ OjGeoFits() {
 
 ; finds the star row: the row with the most star pixels, then 12 tall evenly spaced star spikes on it
 OjFindGeom() {
-	global RobloxHwnd, OjGeo, OjGeoCand, OjGeoCandT
+	global RobloxHwnd
 	static fullT := -999999
 	if (!RobloxHwnd)
 		return false
 	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
 	if (ww < 300 or wh < 300)
 		return false
-	; a place found once and waiting to be confirmed, then the last place found: look there first. Without this a
-	; board only the wide look finds (another UI size or window shape) could never be confirmed - the wide look
-	; runs once every 1.5 s, but the second sighting has to come within 0.4 s
-	if (IsObject(OjGeoCand) and A_TickCount - OjGeoCandT < 400 and OjGeoCand.ww = ww and OjGeoCand.wh = wh
-		and OjFindNear(OjGeoCand, ww, wh))
-		return true
-	if (IsObject(OjGeo) and OjGeo.ww = ww and OjGeo.wh = wh and OjFindNear(OjGeo, ww, wh))
-		return true
-	; then a small look where the board sits at the usual UI size (quick), most of the screen only now and then -
-	; a bigger UI puts the board higher and larger
+	; first a small look where the board sits at the usual UI size (quick), the whole lower screen only now and then
 	sp := 0.0615 * wh
 	gx := Round(ww / 2 - 8.8 * sp)
 	if (gx >= 0 and OjFindIn(gx, Round(0.7389 * wh - 0.9 * sp), Round(17.6 * sp), Round(1.8 * sp), ww, wh))
@@ -17970,24 +17963,10 @@ OjFindGeom() {
 	if (A_TickCount - fullT < 1500)
 		return false
 	fullT := A_TickCount
-	; the wide look is far wider than the board, so the share of star pixels on its row is judged against a board
-	; of at least 0.6x the usual size, not against the whole width (that asked for 30% of the screen's width)
-	return OjFindIn(Round(ww * 0.05), Round(wh * 0.15), Round(ww * 0.90), Round(wh * 0.80), ww, wh, 0.30 * (0.6 * 17.6 * sp) / 4)
+	return OjFindIn(Round(ww * 0.05), Round(wh * 0.40), Round(ww * 0.90), Round(wh * 0.55), ww, wh)
 }
 
-; a small look round a place found before (its own size, so any UI size)
-OjFindNear(c, ww, wh) {
-	gx := Round(c.cx - 8.8 * c.sp), gy := Round(c.y - 0.9 * c.sp), gw := Round(17.6 * c.sp), gh := Round(1.8 * c.sp)
-	if (gx < 0)
-		gw += gx, gx := 0
-	if (gy < 0)
-		gh += gy, gy := 0
-	if (gx + gw > ww)
-		gw := ww - gx
-	return OjFindIn(gx, gy, gw, gh, ww, wh)
-}
-
-OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
+OjFindIn(gx, gy, gw, gh, ww, wh) {
 	global OjGeo, OjBits, OjGeoCand, OjGeoCandT, OjGeoSeen
 	if (gy + gh > wh)
 		gh := wh - gy
@@ -18020,9 +17999,7 @@ OjFindIn(gx, gy, gw, gh, ww, wh, minN := "") {
 		if (best < 0)
 			return false
 		}
-	if (minN = "" or minN > 0.30 * (gw / 4))
-		minN := 0.30 * (gw / 4)
-	if (bestN < minN)
+	if (bestN < 0.30 * (gw / 4))
 		return false
 	dy := Round(wh * 0.028)
 	st := (dy // 15 < 1) ? 1 : dy // 15
@@ -26847,7 +26824,7 @@ hC := AddPanel(CARDX, 120, CARDW, 152)
 GeneralCtrls.Push(hC)
 hC := AddPanel(CARDX, 282, CARDW, 168)
 GeneralCtrls.Push(hC)
-hC := AddPanel(CARDX, 460, CARDW, 308)
+hC := AddPanel(CARDX, 460, CARDW, 308 + RH)
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -27016,6 +26993,16 @@ Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
 IconTips[hQ] := "ON - while the macro runs (any rod, any mode), the`ninfo text and the bar overlay are invisible. The`nmacro still works exactly the same.`n`nStop the macro to see them again."
+Y += RH
+Gui, Font, s9 c%ColorText%, Segoe UI
+HtChk := HideTextAlways ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vHideTextAlways %HtChk% gOverlayOptChanged HwndhC, Hide the in-game text at all times
+GeneralCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+GeneralCtrls.Push(hQ)
+IconTips[hQ] := "ON - the text the macro shows over Roblox (the start`nlist with Made By Yato and the keys, Current Task,`nand so on) never shows, also while it is stopped.`nThe keys and the macro work exactly the same.`n`nThe credit stays in this window's title."
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 PaChk := PassiveAll ? "Checked" : ""
