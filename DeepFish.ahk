@@ -58,7 +58,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 58
+DFModBuild := 59
 DFVersion := DFVerName(DFModBuild)
 DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
 DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
@@ -16226,12 +16226,18 @@ RemBarScan() {
 			bB := bP & 0xFF
 			bG := (bP >> 8) & 0xFF
 			bR := (bP >> 16) & 0xFF
+			; two looks: grey while it is on the white fish, and off it a brown that turns deep red the longer
+			; the fish stays out (Departed 0x524738 -> 0x511F27, Living 0x5E4A43 -> 0x5B2E34)
+			bHit := false
 			if (Abs(bR - bG) <= 10 and Abs(bG - bB) <= 10)
 				{
 				bLum := (bR + bG + bB) // 3
-				if (bLum >= bLo and bLum <= bHi)
-					NumPut(NumGet(bHits, bX, "UChar") + 1, bHits, bX, "UChar")
+				bHit := (bLum >= bLo and bLum <= bHi)
 				}
+			else
+				bHit := (bR >= 65 and bR <= 130 and bR - bB >= 20 and bR - bG >= 8 and bG - bB >= -14 and bG - bB <= 18)
+			if (bHit)
+				NumPut(NumGet(bHits, bX, "UChar") + 1, bHits, bX, "UChar")
 			bX++
 			}
 		}
@@ -16392,34 +16398,54 @@ RemembranceScan() {
 		return false
 	RemWhiteX := FishBarLeft + wBestX
 
-	rOff := Round(CaptureW * 0.02)
-	if (rOff < 8)
-		rOff := 8
-	bX := -1
-	bV := 0
-	rx := rOff
-	while (rx < CaptureW - rOff)
+	; the black fish line: truly black (the Living bar's dark grey border is not), a thin run, on most rows
+	bMin := Round(CaptureW * 0.004), bMax := Round(CaptureW * 0.03)
+	bMin := (bMin < 2) ? 2 : bMin
+	bMax := (bMax < 8) ? 8 : bMax
+	VarSetCapacity(bVote, CaptureW, 0)
+	for rI, ry in rRows
 		{
-		if (IsDarkNotch(rx, BarScanRow, rOff))
+		rp := pCaptureBits + ry * CaptureW * 4, rs := -1, rx := 0
+		while (rx <= CaptureW)
 			{
-			rVotes := 0
-			for rI, ry in rRows
+			dk := false
+			if (rx < CaptureW)
 				{
-				if (IsDarkNotch(rx, ry, rOff))
-					rVotes++
+				v := NumGet(rp + 0, rx * 4, "UInt")
+				dk := ((v & 0xFF) <= 24 and ((v >> 8) & 0xFF) <= 24 and ((v >> 16) & 0xFF) <= 24)
 				}
-			if (rVotes >= 3 and rVotes > bV)
+			if (dk)
+				rs := (rs < 0) ? rx : rs
+			else if (rs >= 0)
 				{
-				bV := rVotes
-				bX := rx
+				if (rx - rs >= bMin and rx - rs <= bMax and rs > 0 and rx < CaptureW)
+					NumPut(NumGet(bVote, (rs + rx - 1) // 2, "UChar") + 1, bVote, (rs + rx - 1) // 2, "UChar")
+				rs := -1
 				}
+			rx++
 			}
+		}
+	bX := -1, bV := 0, rx := 0
+	while (rx < CaptureW)
+		{
+		; the centres from different rows can be a pixel or two apart
+		vt := 0, k := rx - 2
+		while (k <= rx + 2)
+			{
+			if (k >= 0 and k < CaptureW)
+				vt += NumGet(bVote, k, "UChar")
+			k++
+			}
+		if (vt >= 3 and vt > bV)
+			bV := vt, bX := rx
 		rx++
 		}
 	if (bX >= 0)
 		RemBlackX := FishBarLeft + bX
+	RemTrackEnds(rRows[3])
 
 	RemFound := true
+	RemBarScan()
 	RemTargetX := RemAimX(RemWhiteX, RemBlackX)
 	return true
 }
@@ -16445,34 +16471,59 @@ RemWhiteAt(hx, hy, hr, hg, hb, htol) {
 	return false
 }
 
+; where the bar's middle should go: on the white fish, as long as the bar never touches the black fish line. The
+; bar stays on its own side of the black line (its own middle decides which), never closer than a safe gap - a
+; white fish past the line is waited for at that gap. It only crosses (to the middle of the other side) when the
+; line has pushed it into the track's end with no room left
 RemAimX(wx, bx) {
-	global RunWidth, RemembranceMode
-	rHalf := RunWidth / 2
-	if (rHalf < 4 or bx < 0)
+	global RunWidth, RemembranceMode, RemBarFound, RemBarL, RemBarW, RemTrkL, RemTrkR, TrackLeft, TrackRight
+	w := (RemBarFound and RemBarW > 0) ? RemBarW : RunWidth
+	h := w / 2
+	c := (RemBarFound and RemBarW > 0) ? RemBarL + h : wx
+	if (c < 0)
+		return -1
+	if (wx < 0)
+		wx := c
+	if (h < 4 or bx < 0)
 		return wx
-	rDep := (RemembranceMode = "Departed")
-	rClear := rHalf + (rDep ? (RunWidth * 0.15) : (RunWidth * 0.06))
-	if (Abs(bx - wx) > rClear + rHalf)
-		return wx
-	if (bx > wx)
+	tl := (RemTrkL > 0) ? RemTrkL : TrackLeft
+	tr := (RemTrkR > 0) ? RemTrkR : TrackRight
+	; room kept from the line, wider in Departed
+	m := w * ((RemembranceMode = "Departed") ? 0.35 : 0.25)
+	m := (m < 10) ? 10 : m
+	loL := tl + h, hiL := bx - h - m
+	loR := bx + h + m, hiR := tr - h
+	if (c <= bx)
 		{
-		rAim := bx - rClear
-		if (!rDep)
+		if (hiL >= loL)
+			return (wx > hiL) ? hiL : ((wx < loL) ? loL : wx)
+		return (hiR >= loR) ? (loR + hiR) / 2 : loL
+		}
+	if (hiR >= loR)
+		return (wx < loR) ? loR : ((wx > hiR) ? hiR : wx)
+	return (hiL >= loL) ? (loL + hiL) / 2 : hiR
+}
+
+; the ends of the track (its grey, darker in Departed) on one row, in window x
+RemTrackEnds(y) {
+	global pCaptureBits, CaptureW, CaptureH, FishBarLeft, RemembranceMode, RemTrkL, RemTrkR
+	RemTrkL := -1, RemTrkR := -1
+	if (y < 0 or y >= CaptureH)
+		return
+	t := (RemembranceMode = "Departed") ? 40 : 116
+	p := pCaptureBits + y * CaptureW * 4, a := -1, e := -1, x := 0
+	while (x < CaptureW)
+		{
+		v := NumGet(p + 0, x * 4, "UInt"), b := v & 0xFF, g := (v >> 8) & 0xFF, r := (v >> 16) & 0xFF
+		if (Abs(r - t) <= 14 and Abs(g - t) <= 14 and Abs(b - t) <= 14)
 			{
-			rLo := wx - rHalf + 2
-			if (rAim < rLo)
-				rAim := rLo
+			a := (a < 0) ? x : a
+			e := x
 			}
-		return rAim
+		x++
 		}
-	rAim := bx + rClear
-	if (!rDep)
-		{
-		rHi := wx + rHalf - 2
-		if (rAim > rHi)
-			rAim := rHi
-		}
-	return rAim
+	if (a >= 0 and e - a >= CaptureW * 0.3)
+		RemTrkL := FishBarLeft + a, RemTrkR := FishBarLeft + e
 }
 
 HalibutBarScan() {
@@ -27795,7 +27846,7 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("remem", hQ)
-IconTips[hQ] := "Which state the rod is in.`n`nBoth states put a second, BLACK fish line on the`nbar, and you want to stay off it.`n`nLIVING - sitting on both lines PAUSES progress,`nso the bar still takes the white line when the two`nare too close to separate.`n`nDEPARTED - sitting on both LOSES progress, so the`nbar keeps clear of the black line even if it has to`ngive up the white one for a moment."
+IconTips[hQ] := "Which state the rod is in (Living = light grey bar,`nDeparted = dark bar). It sets the bar colors.`n`nIn both, the bar NEVER touches the black fish line:`nit follows the white line but stops a safe gap`nbefore the black one, and stays on its own side.`nIt only crosses when the black line has pushed it`ninto the end of the track. Departed keeps a`nwider gap."
 Y += RH
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y%Y% w%TXW% h20 +0x200 HwndhL, Switching state re-fills the bar colors - they differ between the two.
@@ -30680,6 +30731,8 @@ VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any mon
 	, "Miscellaneous tab with Pogo Jump Tech: one hotkey (any key or mouse side button) does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
 	, "Stellarwave preset Ominous Ouija: reads the letter tokens and clicks them in GRIMPLANCHET order"
 	, "Ominous Ouija now finds its own bar and fish (the grey-rimmed bar on the wooden track, the planchette) and starts the minigame"
+	, "Remembrance (Living and Departed): the bar never touches the black fish line - it keeps a safe gap on its own side"
+	, "Option to hide the in-game text at all times"
 	, "Minor changes / bug fixes"]])
 VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
 	, "Old Max sign speed engine is back, Signs before bar is back"
