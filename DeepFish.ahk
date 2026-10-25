@@ -1,5 +1,7 @@
 ﻿#SingleInstance Force
 #MaxThreadsPerHotkey 2
+; every screen grab goes through this: VeltrixNative.dll's vx_blt once it loaded (VxNativeInit), else BitBlt
+global VxBlt := "BitBlt"
 
 VxBaseVersion := "1.1.7"
 FsExtraCount := 0
@@ -23,8 +25,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 66
-; for copies from before the rename (their updater looks for these): DFModBuild := 66
+VxBuild := 67
+; for copies from before the rename (their updater looks for these): DFModBuild := 67
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -240,6 +242,16 @@ if (A_ScriptName != "Veltrix.ahk" and !FileExist(A_ScriptDir . "\Veltrix.ahk"))
 	}
 gosub, EnsureConfigFiles
 gosub, LoadSettingsFile
+IniRead, NativeCapture, %SettingsFile%, Capture, Native, 1
+NativeCapture := (NativeCapture = "0") ? 0 : 1
+if (NativeCapture)
+	VxNativeInit()
+IniRead, DbgOn, %SettingsFile%, Debug, On, 0
+IniRead, DbgFps, %SettingsFile%, Debug, ScanFps, 1
+IniRead, DbgBar, %SettingsFile%, Debug, BarPositions, 1
+DbgOn := (DbgOn = "1") ? 1 : 0
+DbgFps := (DbgFps = "0") ? 0 : 1
+DbgBar := (DbgBar = "0") ? 0 : 1
 gosub, LoadActiveProfile
 ; leftover: the copy kept while the last update was put in place
 FileDelete, %A_ScriptFullPath%.bak
@@ -3908,7 +3920,7 @@ PerfectAcquireGreen() {
 		}
 
 	hSD2 := DllCall("GetDC", "Ptr", 0, "Ptr")
-	DllCall("BitBlt", "Ptr", hPCFullDC, "Int", 0, "Int", 0, "Int", w, "Int", h
+	DllCall(VxBlt, "Ptr", hPCFullDC, "Int", 0, "Int", 0, "Int", w, "Int", h
 		, "Ptr", hSD2, "Int", WindowLeft, "Int", WindowTop + PCSearchTop, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hSD2)
 
@@ -4025,7 +4037,7 @@ PerfectTrackFrame() {
 
 	hSD2 := DllCall("GetDC", "Ptr", 0, "Ptr")
 	DllCall("QueryPerformanceCounter", "Int64*", PCCapT)
-	DllCall("BitBlt", "Ptr", hPCColDC, "Int", 0, "Int", 0, "Int", w, "Int", h
+	DllCall(VxBlt, "Ptr", hPCColDC, "Int", 0, "Int", 0, "Int", w, "Int", h
 		, "Ptr", hSD2, "Int", WindowLeft + sx, "Int", WindowTop + sy, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hSD2)
 
@@ -4263,7 +4275,7 @@ TwigPrompt(ByRef lcx, ByRef rcx, ByRef labY) {
 		TwigH := h
 		}
 	hSD2 := DllCall("GetDC", "Ptr", 0, "Ptr")
-	DllCall("BitBlt", "Ptr", hTwigDC, "Int", 0, "Int", 0, "Int", w, "Int", h
+	DllCall(VxBlt, "Ptr", hTwigDC, "Int", 0, "Int", 0, "Int", w, "Int", h
 		, "Ptr", hSD2, "Int", WindowLeft + x0, "Int", WindowTop + y0, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hSD2)
 
@@ -4481,7 +4493,7 @@ PerfectAcquireGreenAhk() {
 		}
 
 	hSD2 := DllCall("GetDC", "Ptr", 0, "Ptr")
-	DllCall("BitBlt", "Ptr", hPCFullDC, "Int", 0, "Int", 0, "Int", w, "Int", h
+	DllCall(VxBlt, "Ptr", hPCFullDC, "Int", 0, "Int", 0, "Int", w, "Int", h
 		, "Ptr", hSD2, "Int", WindowLeft, "Int", WindowTop + PCSearchTop, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hSD2)
 
@@ -4662,7 +4674,7 @@ PerfectTrackFrameAhk() {
 
 	hSD2 := DllCall("GetDC", "Ptr", 0, "Ptr")
 	DllCall("QueryPerformanceCounter", "Int64*", PCCapT)
-	DllCall("BitBlt", "Ptr", hPCColDC, "Int", 0, "Int", 0, "Int", w, "Int", h
+	DllCall(VxBlt, "Ptr", hPCColDC, "Int", 0, "Int", 0, "Int", w, "Int", h
 		, "Ptr", hSD2, "Int", WindowLeft + sx, "Int", WindowTop + sy, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hSD2)
 
@@ -5379,7 +5391,9 @@ if (Mod(HudTickN, 30) = 0)
 return
 
 MoveHudFish(wx) {
-	global HudBuilt, HudFishTgt, HudFishCur
+	global HudBuilt, HudFishTgt, HudFishCur, VxDbgFish, VxDbgFishT
+	if (wx >= 0)
+		VxDbgFish := wx, VxDbgFishT := A_TickCount
 	if (!HudBuilt or wx < 0)
 		return
 	HudFishTgt := wx
@@ -5440,6 +5454,9 @@ MoveHudBarSpan(l, w) {
 
 MoveHudBarC(wx) {
 	global HudBuilt, HudBarTgt, HudBarCur, FishBarLeft, FishBarRight, RunWidth, WhiteBarSize, TrackLeft, TrackRight
+	global VxDbgBarC, VxDbgBarW, VxDbgBarT
+	if (wx >= 0)
+		VxDbgBarC := wx, VxDbgBarW := HudBarW(), VxDbgBarT := A_TickCount
 	if (!HudBuilt or wx < 0)
 		return
 	bw := HudBarW()
@@ -5493,7 +5510,7 @@ CaptureNoteRegion() {
 	if (!hNoteMemDC)
 		return
 	RobloxClientRect(RobloxHwnd, nwx, nwy)
-	DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
+	DllCall(VxBlt, "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
 		, "Ptr", hNoteScreenDC, "Int", nwx + NoteOriginX, "Int", nwy + NoteOriginY, "UInt", 0x00CC0020)
 }
 
@@ -6208,16 +6225,18 @@ CapUnionDC(w, h) {
 }
 
 CaptureStrip() {
+	global VxScanN
 	global hCaptureMemDC, hCaptureScreenDC, CaptureW, CaptureH, FishBarLeft, FishBarTop, RobloxHwnd
 	global hNoteMemDC, NoteW, NoteH, NoteFullH, NoteTop
 	global pNoteBits, pCaptureBits, pCaptureOwn
 	global NoteIndep, NoteOriginX, NoteOriginY, NoteNeeded
 	global NoteFresh, NoteBlitAt, NoteRefreshMs, QpcFreq, NoteLockX, CapExtra, SwMaxSigns, SpecialRod, hCapUnionDC
+	VxScanN += 1
 	RobloxClientRect(RobloxHwnd, cwx, cwy)
 	if (!NoteNeeded)
 		{
 		pCaptureBits := pCaptureOwn
-		DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
+		DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
 			, "Ptr", hCaptureScreenDC, "Int", cwx + Round(FishBarLeft), "Int", cwy + Round(FishBarTop) - 18, "UInt", 0x00CC0020)
 		return
 		}
@@ -6228,10 +6247,10 @@ CaptureStrip() {
 			{
 			NoteFresh := true
 			NoteBlitAt := NoteNowT
-			DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
+			DllCall(VxBlt, "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
 				, "Ptr", hCaptureScreenDC, "Int", cwx + NoteOriginX, "Int", cwy + NoteOriginY, "UInt", 0x00CC0020)
 			pCaptureBits := pCaptureOwn
-			DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
+			DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
 				, "Ptr", hNoteMemDC, "Int", Round(FishBarLeft) - NoteOriginX, "Int", Round(FishBarTop) - 18 - NoteOriginY, "UInt", 0x00CC0020)
 			return
 			}
@@ -6251,36 +6270,36 @@ CaptureStrip() {
 			uh := ((ny + NoteFullH > by + bh) ? ny + NoteFullH : by + bh) - uy
 			if (uw * uh <= 4 * (NoteW * NoteFullH + CaptureW * bh) and CapUnionDC(uw, uh))
 				{
-				DllCall("BitBlt", "Ptr", hCapUnionDC, "Int", 0, "Int", 0, "Int", uw, "Int", uh, "Ptr", hCaptureScreenDC, "Int", ux, "Int", uy, "UInt", 0x00CC0020)
-				DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH, "Ptr", hCapUnionDC, "Int", nx - ux, "Int", ny - uy, "UInt", 0x00CC0020)
+				DllCall(VxBlt, "Ptr", hCapUnionDC, "Int", 0, "Int", 0, "Int", uw, "Int", uh, "Ptr", hCaptureScreenDC, "Int", ux, "Int", uy, "UInt", 0x00CC0020)
+				DllCall(VxBlt, "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH, "Ptr", hCapUnionDC, "Int", nx - ux, "Int", ny - uy, "UInt", 0x00CC0020)
 				pCaptureBits := pCaptureOwn
-				DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", bh, "Ptr", hCapUnionDC, "Int", bx - ux, "Int", by - uy, "UInt", 0x00CC0020)
+				DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", bh, "Ptr", hCapUnionDC, "Int", bx - ux, "Int", by - uy, "UInt", 0x00CC0020)
 				return
 				}
-			DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
+			DllCall(VxBlt, "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
 				, "Ptr", hCaptureScreenDC, "Int", cwx + NoteOriginX, "Int", cwy + NoteOriginY, "UInt", 0x00CC0020)
 			}
 		pCaptureBits := pCaptureOwn
-		DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
+		DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
 			, "Ptr", hCaptureScreenDC, "Int", cwx + Round(FishBarLeft), "Int", cwy + Round(FishBarTop) - 18, "UInt", 0x00CC0020)
 		return
 		}
 	if (hNoteMemDC and NoteFullH > CaptureH)
 		{
-		DllCall("BitBlt", "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
+		DllCall(VxBlt, "Ptr", hNoteMemDC, "Int", 0, "Int", 0, "Int", NoteW, "Int", NoteFullH
 			, "Ptr", hCaptureScreenDC, "Int", cwx + Round(FishBarLeft), "Int", cwy + Round(NoteTop), "UInt", 0x00CC0020)
 		if (NoteW = CaptureW and pNoteBits)
 			pCaptureBits := pNoteBits + (NoteH * NoteW * 4)
 		else
 			{
 			pCaptureBits := pCaptureOwn
-			DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38
+			DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38
 				, "Ptr", hNoteMemDC, "Int", 0, "Int", NoteH - 18, "UInt", 0x00CC0020)
 			}
 		return
 		}
 	pCaptureBits := pCaptureOwn
-	DllCall("BitBlt", "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
+	DllCall(VxBlt, "Ptr", hCaptureMemDC, "Int", 0, "Int", 0, "Int", CaptureW, "Int", CaptureH + 38 + CapExtra
 		, "Ptr", hCaptureScreenDC, "Int", cwx + Round(FishBarLeft), "Int", cwy + Round(FishBarTop) - 18, "UInt", 0x00CC0020)
 }
 
@@ -6576,7 +6595,7 @@ GreenCornerPresent() {
 	if (!hUiGrnDC or !pUiGrnBits)
 		return false
 	RobloxClientRect(RobloxHwnd, cwx, cwy, cww, cwh)
-	DllCall("BitBlt", "Ptr", hUiGrnDC, "Int", 0, "Int", 0, "Int", UiGrnW, "Int", UiGrnH
+	DllCall(VxBlt, "Ptr", hUiGrnDC, "Int", 0, "Int", 0, "Int", UiGrnW, "Int", UiGrnH
 		, "Ptr", hCaptureScreenDC, "Int", cwx, "Int", cwy + Round(cwh * 0.90), "UInt", 0x00CC0020)
 	cnt := 0
 	y := 0
@@ -6642,9 +6661,8 @@ BarLostLim() {
 
 ; the version shown everywhere comes from the build number: 43 = 2.0, 44 = 2.01, 45 = 2.02 ...
 VxVerName(b) {
-	; the shown version: the release (build 65) is 1.0, every publish after it counts up 1.1, 1.2, ...
-	b := Round(b)
-	return (b <= 65) ? "1.0" : "1." . (b - 65)
+	; the shown version - set by hand (it does not count up with the build number)
+	return "1.0"
 }
 
 Tm(ms) {
@@ -11418,7 +11436,7 @@ TotemCaptureStrip() {
 	if (!hTotemMemDC or !RobloxHwnd)
 		return false
 	RobloxClientRect(RobloxHwnd, twx, twy)
-	DllCall("BitBlt", "Ptr", hTotemMemDC, "Int", 0, "Int", 0, "Int", TotemW, "Int", TotemH
+	DllCall(VxBlt, "Ptr", hTotemMemDC, "Int", 0, "Int", 0, "Int", TotemW, "Int", TotemH
 		, "Ptr", hTotemScreenDC, "Int", twx + TotemX0, "Int", twy + TotemY0, "UInt", 0x00CC0020)
 	return true
 }
@@ -11459,7 +11477,7 @@ KbGrab(x, y, w, h, ByRef hdcM, ByRef hbm, ByRef old) {
 		return 0
 		}
 	old := DllCall("SelectObject", "Ptr", hdcM, "Ptr", hbm, "Ptr")
-	DllCall("BitBlt", "Ptr", hdcM, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", x, "Int", y, "UInt", 0x00CC0020)
+	DllCall(VxBlt, "Ptr", hdcM, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", x, "Int", y, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
 	return pBits
 }
@@ -11995,7 +12013,7 @@ KbLineCheck(ByRef miss, ByRef tot) {
 		return -1
 		}
 	old := DllCall("SelectObject", "Ptr", hdcM, "Ptr", hbm, "Ptr")
-	DllCall("BitBlt", "Ptr", hdcM, "Int", 0, "Int", 0, "Int", 1, "Int", w, "Ptr", hdcS, "Int", wx + Round(KeeperLineX), "Int", wy + y1, "UInt", 0x00CC0020)
+	DllCall(VxBlt, "Ptr", hdcM, "Int", 0, "Int", 0, "Int", 1, "Int", w, "Ptr", hdcS, "Int", wx + Round(KeeperLineX), "Int", wy + y1, "UInt", 0x00CC0020)
 	Loop % w
 		{
 		px := NumGet(pBits + 0, (A_Index - 1) * 4, "UInt")
@@ -12478,7 +12496,7 @@ AqGrab() {
 	if (!AqRegion() or !RobloxHwnd)
 		return false
 	RobloxClientRect(RobloxHwnd, awx, awy)
-	DllCall("BitBlt", "Ptr", hAqMemDC, "Int", 0, "Int", 0, "Int", AqW, "Int", AqH
+	DllCall(VxBlt, "Ptr", hAqMemDC, "Int", 0, "Int", 0, "Int", AqW, "Int", AqH
 		, "Ptr", hAqScreenDC, "Int", awx + AqX0, "Int", awy + AqY0, "UInt", 0x00CC0020)
 	return true
 }
@@ -16987,7 +17005,7 @@ OjGrab(x, y, w, h) {
 		OjDW := w, OjDH := h
 		}
 	hdcS := DllCall("GetDC", "Ptr", 0, "Ptr")
-	DllCall("BitBlt", "Ptr", OjDC, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", wx + x, "Int", wy + y, "UInt", 0x00CC0020)
+	DllCall(VxBlt, "Ptr", OjDC, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", wx + x, "Int", wy + y, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
 	OjBits := OjOwnBits, OjGW := w, OjGH := h, OjGX := x, OjGY := y
 	OjBandN := (OjBandN = "") ? 1 : OjBandN + 1, OjBandKey := ""
@@ -19630,7 +19648,7 @@ SwGuessStars() {
 		}
 	RobloxClientRect(RobloxHwnd, wx, wy)
 	hdcS := DllCall("GetDC", "Ptr", 0, "Ptr")
-	DllCall("BitBlt", "Ptr", hdcM, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", wx + x0, "Int", wy + y0, "UInt", 0x00CC0020)
+	DllCall(VxBlt, "Ptr", hdcM, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hdcS, "Int", wx + x0, "Int", wy + y0, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
 	lr := (lc >> 16) & 0xFF, lg := (lc >> 8) & 0xFF, lb := lc & 0xFF
 	ur := (uc >> 16) & 0xFF, ug := (uc >> 8) & 0xFF, ub := uc & 0xFF
@@ -24094,6 +24112,7 @@ CreditsCtrls := []
 ProfCtrls := []
 ProfPosX := []
 ChangelogCtrls := []
+DebugCtrls := []
 ProfPosY := []
 VxKeyCtrls := {}
 VxKeyH := {}
@@ -24329,6 +24348,7 @@ SetTimer, HeaderStatsTick, 1000
 HideHelpIcons()
 RoundExtras()
 SetTimer, InfoPanelTick, 250
+gosub, DbgApply
 gosub, RefreshHints
 SetTimer, FishScanTick, 450
 SetTimer, VxCheckForUpdate, -1200
@@ -24390,6 +24410,11 @@ else if (NeedSection = "Misc")
 	{
 	gosub, BuildMiscSection
 	NewLists := [MiscCtrls]
+	}
+else if (NeedSection = "Debug")
+	{
+	gosub, BuildDebugSection
+	NewLists := [DebugCtrls]
 	}
 else if (NeedSection = "Changelog")
 	{
@@ -25935,7 +25960,7 @@ BuildGeneralSection:
 
 hC := AddPanel(CARDX, 120, CARDW, 180)
 GeneralCtrls.Push(hC)
-hC := AddPanel(CARDX, 460, CARDW, 308 + RH)
+hC := AddPanel(CARDX, 460, CARDW, 308 + 2 * RH)
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -26095,6 +26120,16 @@ Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
 IconTips[hQ] := "ON - the macro does NOT cast or shake, for ANY rod.`nAfter you press Start it just watches your screen`nand plays the minigame whenever it shows up, then`ngoes back to watching. You cast and shake yourself.`n`nKeeperbound recharge, totems and aquarium still run`nbetween fish.`n`nOFF - normal: the macro casts and shakes too."
+Y += RH
+Gui, Font, s9 c%ColorText%, Segoe UI
+NcChk := NativeCapture ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vNativeCapture %NcChk% gNativeCaptureChanged HwndhC, Fast capture
+GeneralCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+GeneralCtrls.Push(hQ)
+IconTips[hQ] := "ON (default) - Veltrix reads the screen from the graphics card's own copy of it (DirectX),`nabout 10x faster than asking Windows for it, so it reacts sooner and steadier.`nEach screen is checked against the old way first - if they do not match it keeps`nusing the old way by itself.`n`nOFF - always the old way."
 Y += RH
 Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Passive scan (ms):
 GeneralCtrls.Push(hL)
@@ -28638,6 +28673,24 @@ Gui, Add, Text, x642 y533 w86 h28 Center +0x100 +0x200 gChangelogOpen HwndhC, Op
 MiscCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
 RoundCtrl(hC, 86, 28, 7)
+
+; ---- Debug: On, and Open for what it shows
+hC := AddPanel(CARDX, 584, CARDW, 54)
+MiscCtrls.Push(hC)
+Gui, Font, s10 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y601 w240 h20 HwndhC, Debug
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+DbOnChk := DbgOn ? "Checked" : ""
+Gui, Add, CheckBox, x572 y601 w58 h20 c%ColorText% vDbgOn %DbOnChk% gDbgOnChanged HwndhC, On
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x642 y597 w86 h28 Center +0x100 +0x200 gDbgOpen HwndhC, Open
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(hC, 86, 28, 7)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 return
 
@@ -29362,6 +29415,7 @@ ShowList(ShakeCtrls, TargetSection = "Shake" or (UiMerge and OnCast))
 ShowList(UtilCtrls, OnUtil)
 ShowList(MiscCtrls, TargetSection = "Misc")
 ShowList(ChangelogCtrls, TargetSection = "Changelog")
+ShowList(DebugCtrls, TargetSection = "Debug")
 if (IsObject(ClDetailCtrls))
 	{
 	for ClDi, ClDl in ClDetailCtrls
@@ -30484,7 +30538,7 @@ NumPut(32, FrzBMI, 14, "UShort")
 NumPut(0, FrzBMI, 16, "UInt")
 hFullBM := DllCall("CreateDIBSection", "Ptr", hFrzScreenDC, "Ptr", &FrzBMI, "UInt", 0, "Ptr*", pFullBits, "Ptr", 0, "UInt", 0, "Ptr")
 DllCall("SelectObject", "Ptr", hFullMemDC, "Ptr", hFullBM)
-DllCall("BitBlt", "Ptr", hFullMemDC, "Int", 0, "Int", 0, "Int", FrzVW, "Int", FrzVH
+DllCall(VxBlt, "Ptr", hFullMemDC, "Int", 0, "Int", 0, "Int", FrzVW, "Int", FrzVH
 	, "Ptr", hFrzScreenDC, "Int", FrzVX, "Int", FrzVY, "UInt", 0x00CC0020)
 DllCall("ReleaseDC", "Ptr", 0, "Ptr", hFrzScreenDC)
 Gui, 1:Show, NoActivate
@@ -30756,7 +30810,7 @@ FreezePaintLoupe(sx, sy, force := false) {
 	DllCall("SelectObject", "Ptr", hLoupeMem, "Ptr", oldFont)
 
 	hdc := DllCall("GetDC", "Ptr", hLoupeGui, "Ptr")
-	DllCall("BitBlt", "Ptr", hdc, "Int", 0, "Int", 0, "Int", LoupeW, "Int", LoupeH
+	DllCall(VxBlt, "Ptr", hdc, "Int", 0, "Int", 0, "Int", LoupeW, "Int", LoupeH
 		, "Ptr", hLoupeMem, "Int", 0, "Int", 0, "UInt", 0x00CC0020)
 	DllCall("ReleaseDC", "Ptr", hLoupeGui, "Ptr", hdc)
 
@@ -31080,8 +31134,7 @@ ProfPut(h, x, y) {
 ; the changelog (Extra > Changelog), newest first: [version, [on the changelog page], [on its details page]]
 VxChangelog() {
 	c := []
-	c.Push(["v1.0", ["Released"], ["Released"
-		, "Auto update never updates your install while it is fishing - it waits until you stop the macro and updates at the next check (every 10 minutes)"]])
+	c.Push(["v1.0", ["Released"], ["Released"]])
 	return c
 }
 
@@ -31145,6 +31198,501 @@ VxClCards(lst, y, title, lines, openIdx) {
 		}
 	return y
 }
+
+;---- VeltrixNative.dll ----------------------------------------------------------------------------------
+; Fast capture: the DLL (64-bit, built from native\vx_native.c) is written next to the script and loaded.
+; Its vx_blt has BitBlt's exact signature - a grab of the screen into a 32-bit bitmap comes from the graphics
+; card's copy of the desktop (DXGI Desktop Duplication), everything else (and anything it is not sure about)
+; goes to BitBlt. Without it every grab is BitBlt, as before.
+VxNativeInit() {
+	global VxNatMod, VxNatEnable, VxNatStats
+	if (VxNatMod)
+		return true
+	if (A_PtrSize != 8)
+		return false
+	f := A_ScriptDir . "\VeltrixNative.dll"
+	b64 := VxNativeB64()
+	n := 0
+	DllCall("crypt32\CryptStringToBinaryW", "Str", b64, "UInt", 0, "UInt", 1, "Ptr", 0, "UInt*", n, "Ptr", 0, "Ptr", 0)
+	if (!n)
+		return false
+	VarSetCapacity(bin, n, 0)
+	DllCall("crypt32\CryptStringToBinaryW", "Str", b64, "UInt", 0, "UInt", 1, "Ptr", &bin, "UInt*", n, "Ptr", 0, "Ptr", 0)
+	crc := DllCall("ntdll\RtlComputeCrc32", "UInt", 0, "Ptr", &bin, "UInt", n, "UInt")
+	; written only when the file there is not this one (one still in use by a closing copy cannot be written yet)
+	Loop, 4
+		{
+		same := false
+		FileGetSize, have, %f%
+		if (!ErrorLevel and have = n)
+			{
+			h := FileOpen(f, "r")
+			if (IsObject(h))
+				{
+				VarSetCapacity(cur, n, 0)
+				h.RawRead(cur, n)
+				h.Close()
+				same := (DllCall("ntdll\RtlComputeCrc32", "UInt", 0, "Ptr", &cur, "UInt", n, "UInt") = crc)
+				}
+			}
+		if (same)
+			break
+		h := FileOpen(f, "w")
+		if (IsObject(h))
+			{
+			h.RawWrite(bin, n)
+			h.Close()
+			same := true
+			break
+			}
+		Sleep, 300
+		}
+	if (!same)
+		return false
+	VxNatMod := DllCall("LoadLibrary", "Str", f, "Ptr")
+	if (!VxNatMod)
+		return false
+	p := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_blt", "Ptr")
+	VxNatEnable := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_enable", "Ptr")
+	VxNatStats := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_stats", "Ptr")
+	if (!p or !VxNatEnable)
+		{
+		DllCall("FreeLibrary", "Ptr", VxNatMod)
+		VxNatMod := 0
+		return false
+		}
+	VxBlt := p
+	return true
+}
+
+NativeCaptureChanged:
+GuiControlGet, NativeCapture, 1:, NativeCapture
+NativeCapture := NativeCapture ? 1 : 0
+IniWrite, %NativeCapture%, %SettingsFile%, Capture, Native
+if (NativeCapture and !VxNatMod)
+	VxNativeInit()
+if (VxNatEnable)
+	DllCall(VxNatEnable, "Int", NativeCapture)
+return
+
+; the DLL (base64)
+VxNativeB64() {
+nd1 =
+(Join
+TVp4AAEAAAAEAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+eAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuJAAA
+UEUAAGSGBAAtSt5qAAAAAAAAAADwACIgCwIOAAAWAAAADAAAAAAAAPAWAAAAEAAAAAAAgAEAAAAAEAAA
+AAIAAAYAAAAAAAAABgAAAAAAAAAAYAAAAAQAAAAAAAACAGABAAAQAAAAAAAAEAAAAAAAAAAAEAAAAAAA
+ABAAAAAAAAAAAAAAEAAAAIAwAAByAAAA9DAAAIwAAAAAAAAAAAAAAABQAACEAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJgyAAAYAQAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAACmFQAAABAAAAAWAAAABAAAAAAAAAAAAAAAAAAA
+IAAAYC5yZGF0YQAA0AYAAAAwAAAACAAAABoAAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAAEQDAAAAQAAA
+AAIAAAAiAAAAAAAAAAAAAAAAAABAAADALnBkYXRhAACEAAAAAFAAAAACAAAAJAAAAAAAAAAAAAAAAAAA
+QAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+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
+)
+nd2 =
+(Join
+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
+AAAAAOg0AAAAAAAA/DQAAAAAAAAaNQAAAAAAACw1AAAAAAAAPDUAAAAAAABMNQAAAAAAAFg1AAAAAAAA
+ajUAAAAAAAB6NQAAAAAAAAAAAAAAAAAAjDUAAAAAAAAAAAAAAAAAAAAAR2V0UHJvY2Vzc0hlYXAAAAAA
+R2V0VGlja0NvdW50AAAAAEhlYXBBbGxvYwAAAEhlYXBGcmVlAAAAAFF1ZXJ5UGVyZm9ybWFuY2VDb3Vu
+dGVyAAAARDNEMTFDcmVhdGVEZXZpY2UAAABDcmVhdGVEWEdJRmFjdG9yeTEAAAAAQml0Qmx0AAAAAENy
+ZWF0ZUNvbXBhdGlibGVEQwAAAABDcmVhdGVESUJTZWN0aW9uAAAAAERlbGV0ZURDAAAAAERlbGV0ZU9i
+amVjdAAAAABHZGlGbHVzaAAAAABHZXRDdXJyZW50T2JqZWN0AAAAAEdldE9iamVjdEEAAAAAR2V0T2Jq
+ZWN0VHlwZQAAAFNlbGVjdE9iamVjdAAAAABFbnVtV2luZG93cwAAAEdldEFuY2VzdG9yAAAAR2V0RGVz
+a3RvcFdpbmRvdwAAAABHZXRMYXllcmVkV2luZG93QXR0cmlidXRlcwAAAABHZXRXaW5kb3dMb25nVwAA
+AABHZXRXaW5kb3dSZWN0AAAASW50ZXJzZWN0UmVjdAAAAElzSWNvbmljAAAAAElzV2luZG93VmlzaWJs
+ZQAAAFdpbmRvd0Zyb21EQwAAAABXaW5kb3dGcm9tUG9pbnQAAABEd21HZXRXaW5kb3dBdHRyaWJ1dGUA
+S0VSTkVMMzIuZGxsAGQzZDExLmRsbABkeGdpLmRsbABHREkzMi5kbGwAVVNFUjMyLmRsbABkd21hcGku
+ZGxsAAEbC4UbAxMBHwAMMAtwCmAJwAfQBeAD8AFQAAABBAIFBAMBUAEdDDUdaAAAGHgBABOIAgANAwhi
+BDADcAJgAVABCgMlCgMFMgFQAAABDQYlDQMIQgQwA3ACYAFQARsLhRsDEwEdAAwwC3AKYAnAB9AF4APw
+AVAAAAERCFURAwyiCDAHcAZgBeAD8AFQASANhSBoCwAbAxMBGQAMMAtwCmAJwAfQBeAD8AFQAAABEweF
+EwMLARMABDADcAJgAVAAAAEbC4UbAxMBFwAMMAtwCmAJwAfQBeAD8AFQAAABDQZVDQMIogQwA3ACYAFQ
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAEAAAD/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAFkUAADkNQAAYBQAAHMUAAAANgAA
+gBQAAOUWAAAINgAA8BYAABkXAAAkNgAAIBcAAA0YAAAwNgAAEBgAAMEaAABANgAA0BoAAIsbAABcNgAA
+kBsAAIkeAABwNgAAkB4AABwhAACQNgAAICEAAJkkAACkNgAAoCQAAIolAADANgAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+)
+nd3 =
+(Join
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAA=
+)
+	return nd1 . nd2 . nd3
+}
+
+;---- Debug (Extra > Debug): scanning FPS and the bar's LEFT / RIGHT / LINE markers ---------------------------
+; Both only show while the macro runs. The markers sit in a band right above the strip the macro reads, so they
+; never cover what it looks at (and Fast capture stays on).
+
+DbgOnChanged:
+GuiControlGet, DbgOn, 1:, DbgOn
+DbgOn := DbgOn ? 1 : 0
+IniWrite, %DbgOn%, %SettingsFile%, Debug, On
+gosub, DbgApply
+return
+
+DbgOptChanged:
+GuiControlGet, DbgFps, 1:, DbgFps
+GuiControlGet, DbgBar, 1:, DbgBar
+DbgFps := DbgFps ? 1 : 0
+DbgBar := DbgBar ? 1 : 0
+IniWrite, %DbgFps%, %SettingsFile%, Debug, ScanFps
+IniWrite, %DbgBar%, %SettingsFile%, Debug, BarPositions
+gosub, DbgApply
+return
+
+DbgApply:
+if (DbgOn and (DbgFps or DbgBar))
+	SetTimer, VxDebugTickL, 33
+else
+	{
+	SetTimer, VxDebugTickL, Off
+	VxDbgFpsShow("")
+	VxDbgBarsShow(-1, -1, -1)
+	}
+return
+
+DbgOpen:
+TargetSection := "Debug"
+gosub, ShowSection
+return
+
+VxDebugTickL:
+VxDebugTick()
+return
+
+VxDebugTick() {
+	global DbgOn, DbgFps, DbgBar, MacroRunning, RobloxHwnd, VxScanN
+	global VxDbgFish, VxDbgFishT, VxDbgBarC, VxDbgBarW, VxDbgBarT
+	static fpsT := 0, fpsN := 0, fps := 0
+	if (!DbgOn or !MacroRunning or !RobloxHwnd or !WinExist("ahk_id " . RobloxHwnd))
+		{
+		VxDbgFpsShow("")
+		VxDbgBarsShow(-1, -1, -1)
+		fpsT := 0, fps := 0
+		return
+		}
+	RobloxClientRect(RobloxHwnd, cx, cy)
+	; reads of the bar per second, counted over half a second
+	now := A_TickCount
+	if (!fpsT)
+		fpsT := now, fpsN := VxScanN
+	else if (now - fpsT >= 500)
+		{
+		fps := Round((VxScanN - fpsN) * 1000 / (now - fpsT))
+		fpsT := now, fpsN := VxScanN
+		}
+	s := A_ScreenDPI / 96
+	VxDbgFpsShow(DbgFps ? fps . " FPS" : "", cx + Round(14 * s), cy + Round(14 * s))
+	if (!DbgBar)
+		{
+		VxDbgBarsShow(-1, -1, -1)
+		return
+		}
+	; positions older than a quarter second are gone (no minigame now)
+	bl := -1, br := -1, fx := -1
+	if (VxDbgBarT and now - VxDbgBarT < 250 and VxDbgBarW > 0)
+		bl := VxDbgBarC - VxDbgBarW / 2, br := VxDbgBarC + VxDbgBarW / 2
+	if (VxDbgFishT and now - VxDbgFishT < 250)
+		fx := VxDbgFish
+	VxDbgBarsShow(bl, br, fx, cx, cy)
+}
+
+; the scanning FPS, a small box at the top left of Roblox ("" hides it)
+VxDbgFpsShow(t, x := 0, y := 0) {
+	global VxDbgFW, VxDbgFT, ColorText, SpecialBrushes, hBrushBG, ColorTextBGR, ColorBG
+	static last := "", lastPos := ""
+	if (t = "")
+		{
+		if (VxDbgFW and last != "")
+			Gui, VxDbgF:Hide
+		last := "", lastPos := ""
+		return
+		}
+	if (!VxDbgFW)
+		{
+		Gui, VxDbgF:New, +AlwaysOnTop -Caption +ToolWindow +E0x20 +HwndVxDbgFW
+		Gui, VxDbgF:Color, %ColorBG%
+		Gui, VxDbgF:Margin, 10, 5
+		Gui, VxDbgF:Font, s11 Bold cE8ECEF, Segoe UI
+		Gui, VxDbgF:Add, Text, w90 h20 +0x80 HwndVxDbgFT, 000 FPS
+		SpecialBrushes[VxDbgFT] := {brush: hBrushBG, text: 0xEFECE8}
+		Gui, 1:Default
+		}
+	if (!(t == last))
+		{
+		last := t
+		GuiControl, VxDbgF:, %VxDbgFT%, %t%
+		}
+	pos := x . "," . y
+	if (pos != lastPos)
+		{
+		lastPos := pos
+		Gui, VxDbgF:Show, x%x% y%y% NoActivate AutoSize
+		; see-through a little (layered, so the macro's screen reads never see it)
+		WinSet, Transparent, 230, ahk_id %VxDbgFW%
+		}
+}
+
+; the LEFT / RIGHT / LINE markers (client x positions, -1 = not there); all -1 hides them
+VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0) {
+	global VxDbgBW, FishBarTop, TrackLeft, TrackRight
+	static dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, sw := 0, sh := 0, shown := false, lastKey := ""
+	static fam := 0, font := 0, fmt := 0
+	if (bl < 0 and br < 0 and fx < 0)
+		{
+		if (shown)
+			Gui, VxDbgB:Hide
+		shown := false, lastKey := ""
+		return
+		}
+	if (!HudGdipStart())
+		return
+	s := A_ScreenDPI / 96
+	pad := Round(60 * s)
+	bandH := Round(40 * s)
+	labH := Round(18 * s)
+	W := Round(TrackRight - TrackLeft) + 2 * pad
+	if (W < 80)
+		W := 80
+	H := bandH
+	ox := cx + Round(TrackLeft) - pad
+	; the band ends right where the macro's strip starts (18 px above the bar)
+	oy := cy + Round(FishBarTop) - 18 - H
+	key := Round(bl) . "|" . Round(br) . "|" . Round(fx) . "|" . ox . "|" . oy . "|" . W
+	if (shown and key == lastKey)
+		return
+	lastKey := key
+	if (!VxDbgBW)
+		{
+		Gui, VxDbgB:New, +AlwaysOnTop -Caption +ToolWindow +E0x80020 +HwndVxDbgBW
+		Gui, 1:Default
+		}
+	if (!g or sw != W or sh != H)
+		{
+		if (g)
+			DllCall("gdiplus\GdipDeleteGraphics", "Ptr", g), DllCall("gdiplus\GdipDisposeImage", "Ptr", bmp)
+		if (dc)
+			DllCall("SelectObject", "Ptr", dc, "Ptr", obm), DllCall("DeleteObject", "Ptr", hbm), DllCall("DeleteDC", "Ptr", dc)
+		VarSetCapacity(bi, 40, 0)
+		NumPut(40, bi, 0, "UInt"), NumPut(W, bi, 4, "Int"), NumPut(-H, bi, 8, "Int"), NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+		dc := DllCall("CreateCompatibleDC", "Ptr", 0, "Ptr")
+		hbm := DllCall("CreateDIBSection", "Ptr", dc, "Ptr", &bi, "UInt", 0, "Ptr*", bits, "Ptr", 0, "UInt", 0, "Ptr")
+		obm := DllCall("SelectObject", "Ptr", dc, "Ptr", hbm, "Ptr")
+		DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", W, "Int", H, "Int", W * 4, "Int", 0xE200B, "Ptr", bits, "Ptr*", bmp)
+		DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", bmp, "Ptr*", g)
+		DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", g, "Int", 4)
+		DllCall("gdiplus\GdipSetTextRenderingHint", "Ptr", g, "Int", 4)
+		sw := W, sh := H
+		}
+	if (!font)
+		{
+		DllCall("gdiplus\GdipCreateFontFamilyFromName", "WStr", "Segoe UI", "Ptr", 0, "Ptr*", fam)
+		DllCall("gdiplus\GdipCreateFont", "Ptr", fam, "Float", 11.5 * s, "Int", 1, "Int", 2, "Ptr*", font)
+		DllCall("gdiplus\GdipCreateStringFormat", "Int", 0x1000, "Int", 0, "Ptr*", fmt)
+		DllCall("gdiplus\GdipSetStringFormatAlign", "Ptr", fmt, "Int", 1)
+		DllCall("gdiplus\GdipSetStringFormatLineAlign", "Ptr", fmt, "Int", 1)
+		}
+	DllCall("gdiplus\GdipGraphicsClear", "Ptr", g, "UInt", 0x00000000)
+	for i, mk in [[bl, "LEFT", 0xFF5AA9FF], [br, "RIGHT", 0xFF5AA9FF], [fx, "LINE", 0xFFFFFFFF]]
+		{
+		if (mk[1] < 0)
+			continue
+		lx := mk[1] - (TrackLeft - pad)
+		; the line, from under the label down to the bar
+		DllCall("gdiplus\GdipCreateSolidFill", "UInt", mk[3], "Ptr*", brl)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", g, "Ptr", brl, "Float", lx - 1.5 * s, "Float", labH + 2 * s, "Float", 3 * s, "Float", H - labH - 2 * s)
+		; the label: its text on a dark pill
+		VarSetCapacity(lay, 16, 0), VarSetCapacity(bnd, 16, 0)
+		NumPut(0, lay, 0, "Float"), NumPut(0, lay, 4, "Float"), NumPut(400, lay, 8, "Float"), NumPut(labH, lay, 12, "Float")
+		DllCall("gdiplus\GdipMeasureString", "Ptr", g, "WStr", mk[2], "Int", -1, "Ptr", font, "Ptr", &lay, "Ptr", fmt, "Ptr", &bnd, "Int*", cp, "Int*", ln)
+		tw := NumGet(bnd, 8, "Float") + 10 * s
+		px := lx - tw / 2
+		DllCall("gdiplus\GdipCreateSolidFill", "UInt", 0xD90B0F14, "Ptr*", brb)
+		DllCall("gdiplus\GdipFillRectangle", "Ptr", g, "Ptr", brb, "Float", px, "Float", 0, "Float", tw, "Float", labH)
+		NumPut(px, lay, 0, "Float"), NumPut(0, lay, 4, "Float"), NumPut(tw, lay, 8, "Float"), NumPut(labH, lay, 12, "Float")
+		DllCall("gdiplus\GdipDrawString", "Ptr", g, "WStr", mk[2], "Int", -1, "Ptr", font, "Ptr", &lay, "Ptr", fmt, "Ptr", brl)
+		DllCall("gdiplus\GdipDeleteBrush", "Ptr", brb)
+		DllCall("gdiplus\GdipDeleteBrush", "Ptr", brl)
+		}
+	DllCall("gdiplus\GdipFlush", "Ptr", g, "Int", 0)
+	if (!shown)
+		{
+		Gui, VxDbgB:Show, NoActivate x%ox% y%oy% w%W% h%H%
+		shown := true
+		}
+	VarSetCapacity(sz, 8, 0), NumPut(W, sz, 0, "Int"), NumPut(H, sz, 4, "Int")
+	VarSetCapacity(pt, 8, 0), NumPut(ox, pt, 0, "Int"), NumPut(oy, pt, 4, "Int")
+	VarSetCapacity(src, 8, 0)
+	VarSetCapacity(bf, 4, 0), NumPut(0, bf, 0, "UChar"), NumPut(0, bf, 1, "UChar"), NumPut(255, bf, 2, "UChar"), NumPut(1, bf, 3, "UChar")
+	DllCall("UpdateLayeredWindow", "Ptr", VxDbgBW, "Ptr", 0, "Ptr", &pt, "Ptr", &sz, "Ptr", dc, "Ptr", &src, "UInt", 0, "Ptr", &bf, "UInt", 2)
+}
+
+; the Debug page (Extra > Debug > Open)
+BuildDebugSection:
+Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gChangelogBack HwndhC, <  Extra
+DebugCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
+hC := AddPanel(CARDX, 148, CARDW, 150)
+DebugCtrls.Push(hC)
+Gui, Font, s10 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y160 w300 h18 HwndhC, Debug
+DebugCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+DbChk := DbgFps ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y190 w300 h20 c%ColorText% vDbgFps %DbChk% gDbgOptChanged HwndhC, Scanning FPS
+DebugCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y190 w16 h20 Center +0x100 +0x200 HwndhQ, ?
+DebugCtrls.Push(hQ)
+IconTips[hQ] := "How many times a second the macro reads the bar,`nin a small box at the top left of Roblox."
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+DbChk := DbgBar ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y220 w300 h20 c%ColorText% vDbgBar %DbChk% gDbgOptChanged HwndhC, Bar positions
+DebugCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y220 w16 h20 Center +0x100 +0x200 HwndhQ, ?
+DebugCtrls.Push(hQ)
+IconTips[hQ] := "Where the macro sees the bar: a line at its LEFT and RIGHT side`nand one at the fish (LINE), each labelled, just above the bar."
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y252 w%TXW% h34 HwndhC, They show while the macro runs, with Debug on (Extra). The markers sit just above the bar, so they never cover what the macro reads.
+DebugCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+return
 
 ;@@VELTRIX-PANEL-BEGIN
 ;====================================================================================================;
@@ -31592,7 +32140,7 @@ UiStyle(h, v) {
 }
 
 UiNavTitle(sec) {
-	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", ChangelogDetail: "Changelog", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
+	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", ChangelogDetail: "Changelog", Debug: "Debug", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
 		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry"}
 	return t.HasKey(sec) ? t[sec] : sec
 }
@@ -31691,7 +32239,7 @@ UiNavSec(sec) {
 		return "Utilities"
 	if (sec = "Advanced")
 		return "General"
-	if (sec = "Changelog" or sec = "ChangelogDetail")
+	if (sec = "Changelog" or sec = "ChangelogDetail" or sec = "Debug")
 		return "Misc"
 	if (sec = "Minigame")
 		return "Home"
