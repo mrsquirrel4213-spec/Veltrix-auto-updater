@@ -1,39 +1,4 @@
-﻿;====================================================================================================;
-;
-;   DeepFish BETA
-;   Copyright (c) 2026 Yato. All rights reserved.
-;
-;   YOU MAY:
-;     - Use this macro for your own personal use.
-;     - Read the source and reuse PARTS of it in your own projects, provided that "Yato" is
-;       credited visibly somewhere in that project's user interface.
-;
-;   YOU MAY NOT:
-;     - Redistribute this macro, modified or unmodified, in whole or in substantial part.
-;     - Publish a modified build of it, or present it as your own work.
-;     - Remove, hide or alter the credits shown in the About tab.
-;     - Sell it, or put it behind payment, subscription or paid access of any kind.
-;
-;   PORTIONS FROM OTHER PROJECTS
-;     Precision/Lines mode's control method (PD steering with velocity tracking and stopping
-;     distance) is adapted from IRUS IDIOTPROOF, IRUS COMET by AsphaltCake.
-;       Source:  https://www.youtube.com/@AsphaltCake
-;     Those portions remain subject to AsphaltCake's own terms, which permit sharing
-;     modifications with attribution. The restrictions above apply to Yato's original work
-;     and cannot and do not override AsphaltCake's terms for their part.
-;
-;     Changes made to that method in this macro: reimplemented in AutoHotkey v1; driven by
-;     this macro's own GDI capture and color-calibration code; extended with an arrow-based
-;     fallback for when the bar itself is not visible.
-;
-;   NO WARRANTY
-;     Provided "as is", without warranty of any kind. Automating a game may breach its rules.
-;     You use this at your own risk, and the author accepts no responsibility for any
-;     consequence to your account.
-;
-;====================================================================================================;
-
-#SingleInstance Force
+﻿#SingleInstance Force
 #MaxThreadsPerHotkey 2
 
 VxBaseVersion := "1.1.7"
@@ -58,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 60
-; for copies from before the rename (their updater looks for these): DFModBuild := 60
+VxBuild := 61
+; for copies from before the rename (their updater looks for these): DFModBuild := 61
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
