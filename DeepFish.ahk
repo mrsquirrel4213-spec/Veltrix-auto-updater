@@ -23,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 64
-; for copies from before the rename (their updater looks for these): DFModBuild := 64
+VxBuild := 65
+; for copies from before the rename (their updater looks for these): DFModBuild := 65
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -6642,9 +6642,9 @@ BarLostLim() {
 
 ; the version shown everywhere comes from the build number: 43 = 2.0, 44 = 2.01, 45 = 2.02 ...
 VxVerName(b) {
-	; the shown version: the release (build 60) is 1.0, every publish after it counts up 1.1, 1.2, ...
+	; the shown version: the release (build 65) is 1.0, every publish after it counts up 1.1, 1.2, ...
 	b := Round(b)
-	return (b <= 60) ? "1.0" : "1." . (b - 60)
+	return (b <= 65) ? "1.0" : "1." . (b - 65)
 }
 
 Tm(ms) {
@@ -24218,7 +24218,7 @@ for i, d in [["ProfileNew", "hTipNew", "➕", "New profile"], ["ProfileDuplicate
 
 Gui, Font, s9 Norm c%ColorText%, Segoe UI
 autoChk := GuiAutoSave ? "Checked" : ""
-AsX := CARDX + CARDW - 16 - 84 - 96
+AsX := CARDX + CARDW - 16 - 84 - 124
 Gui, Add, CheckBox, x%AsX% y152 w90 h20 c%ColorText% vGuiAutoSave %autoChk% gToggleAutoSave HwndhTipAuto, Auto-save
 SpecialBrushes[hTipAuto] := {brush: hBrushCard, text: ColorTextBGR}
 IconTips[hTipAuto] := "Save automatically whenever a setting changes"
@@ -24395,6 +24395,8 @@ else if (NeedSection = "Changelog")
 	{
 	gosub, BuildChangelogSection
 	NewLists := [ChangelogCtrls]
+	for ClDi, ClDl in ClDetailCtrls
+		NewLists.Push(ClDl)
 	}
 else if (NeedSection = "Aquarium")
 	{
@@ -25931,7 +25933,7 @@ return
 
 BuildGeneralSection:
 
-hC := AddPanel(CARDX, 120, CARDW, 152)
+hC := AddPanel(CARDX, 120, CARDW, 180)
 GeneralCtrls.Push(hC)
 hC := AddPanel(CARDX, 460, CARDW, 308 + RH)
 GeneralCtrls.Push(hC)
@@ -27061,20 +27063,14 @@ return
 
 BuildUtilitiesSection:
 
-Gui, Font, s13 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w%CARDW% h30 HwndhUH, Tools
-UtilCtrls.Push(hUH)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y152 w%CARDW% h18 HwndhUS, Extras that run alongside fishing. Turn one on and open it to set it up.
-UtilCtrls.Push(hUS)
-SpecialBrushes[hUS] := {brush: hBrushBG, text: ColorMutedBGR}
 
 UtilRowDefs := [ ["Auto Totem","UtilTotemOn","UtilTotemToggle","UtilOpenTotem"]
 	, ["Auto Aquarium","UtilAquariumOn","UtilAquariumToggle","UtilOpenAquarium"]
 	, ["Auto Keeperbound Recharge","UtilKeeperOn","UtilKeeperToggle","UtilOpenKeeper"]
 	, ["Stellarwave Auto Retry","UtilGuessOn","UtilGuessToggle","UtilOpenGuess"] ]
 
-UtilRowY := 180
+UtilRowY := 120
 for i, d in UtilRowDefs
 	{
 	lbl := d[1]
@@ -27112,7 +27108,7 @@ for i, d in UtilRowDefs
 
 UtilNoteY := UtilRowY + 4
 Gui, Font, s8 c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y%UtilNoteY% w%CARDW% h48 HwndhC, More add-ons will appear here as they are added.`nAuto Totem only works in a private server.`nTotem and Aquarium both turn camera mode off - it hides the UI they read.
+Gui, Add, Text, x%CARDX% y%UtilNoteY% w%CARDW% h64 HwndhC, Extras that run alongside fishing. Turn one on and open it to set it up.`nMore add-ons will appear here as they are added.`nAuto Totem only works in a private server.`nTotem and Aquarium both turn camera mode off - it hides the UI they read.
 UtilCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 Gui, Font, s9 c%ColorMuted%, Segoe UI
@@ -28655,58 +28651,33 @@ TargetSection := "Misc"
 gosub, ShowSection
 return
 
-; the changelog page: a card per version, a line each - a long version goes on in a second card (the panel
-; leaves out anything taller than 400)
+; Open on a version: its details page
+ChangelogDetailOpen:
+ClDetailIdx := SubStr(A_GuiControl, 7) + 0
+TargetSection := "ChangelogDetail"
+gosub, ShowSection
+return
+
+; the changelog page: a card per version with Open; every version's details page is made here too
+; (ShowSection shows the one that was opened)
 BuildChangelogSection:
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gChangelogBack HwndhC, <  Extra
 ChangelogCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 ClNotes := VxChangelog()
+ClDetailCtrls := []
 ClY := 148
 for ClI, ClV in ClNotes
 	{
-	ClGroups := [[]]
-	ClGh := 22
-	for ClJ, ClLn in ClV[2]
-		{
-		ClH := Ceil((StrLen(ClLn) + 3) / 76) * 16
-		if (ClGh + ClH + 2 > 350)
-			{
-			ClGroups.Push([])
-			ClGh := 0
-			}
-		ClGroups[ClGroups.Length()].Push([ClLn, ClH])
-		ClGh += ClH + 2
-		}
-	for ClG, ClGrp in ClGroups
-		{
-		ClIn := (ClG = 1) ? 22 : 0
-		for ClJ, ClP in ClGrp
-			ClIn += ClP[2] + 2
-		ClCardH := 12 + ClIn + 10
-		hC := AddPanel(CARDX, ClY, CARDW, ClCardH)
-		ChangelogCtrls.Push(hC)
-		ClTy := ClY + 12
-		if (ClG = 1)
-			{
-			Gui, Font, s10 Bold c%ColorText%, Segoe UI
-			Gui, Add, Text, x%CX% y%ClTy% w%TXW% h18 +0x80 HwndhC, % ClV[1]
-			ChangelogCtrls.Push(hC)
-			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
-			ClTy += 22
-			}
-		Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-		for ClJ, ClP in ClGrp
-			{
-			ClH := ClP[2]
-			Gui, Add, Text, x%CX% y%ClTy% w%TXW% h%ClH% +0x80 HwndhC, % ClP[1]
-			ChangelogCtrls.Push(hC)
-			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
-			ClTy += ClH + 2
-			}
-		ClY += ClCardH + 10
-		}
+	ClY := VxClCards(ChangelogCtrls, ClY, ClV[1], ClV[2], ClI)
+	ClD := []
+	Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
+	Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gChangelogOpen HwndhC, <  Changelog
+	ClD.Push(hC)
+	SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
+	VxClCards(ClD, 148, ClV[1], ClV[3], 0)
+	ClDetailCtrls.Push(ClD)
 	}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 return
@@ -29391,6 +29362,11 @@ ShowList(ShakeCtrls, TargetSection = "Shake" or (UiMerge and OnCast))
 ShowList(UtilCtrls, OnUtil)
 ShowList(MiscCtrls, TargetSection = "Misc")
 ShowList(ChangelogCtrls, TargetSection = "Changelog")
+if (IsObject(ClDetailCtrls))
+	{
+	for ClDi, ClDl in ClDetailCtrls
+		ShowList(ClDl, TargetSection = "ChangelogDetail" and ClDi = ClDetailIdx)
+	}
 
 ; ---- Minigame: two faces, Setup and the Color Manager ----
 GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabSetup
@@ -31101,11 +31077,73 @@ ProfPut(h, x, y) {
 	ProfPosY.Push(y - 120)
 }
 
-; the changelog page (Extra > Changelog), newest first: [version, [notes]]
+; the changelog (Extra > Changelog), newest first: [version, [on the changelog page], [on its details page]]
 VxChangelog() {
 	c := []
-	c.Push(["v1.0", ["Released"]])
+	c.Push(["v1.0", ["Released"], ["Released"
+		, "Auto update never updates your install while it is fishing - it waits until you stop the macro and updates at the next check (every 10 minutes)"]])
 	return c
+}
+
+; one version's card(s) into lst from y: its title, Open (openIdx > 0) and a line per note; a long one goes on in
+; a second card (the panel leaves out anything taller than 400). Returns the y below it.
+VxClCards(lst, y, title, lines, openIdx) {
+	global
+	local groups, gh, j, ln, lh, g, grp, inH, cardH, ty, p, hC, bY
+	groups := [[]]
+	gh := 22
+	for j, ln in lines
+		{
+		lh := Ceil((StrLen(ln) + 3) / 76) * 16
+		if (gh + lh + 2 > 350)
+			{
+			groups.Push([])
+			gh := 0
+			}
+		groups[groups.Length()].Push([ln, lh])
+		gh += lh + 2
+		}
+	for g, grp in groups
+		{
+		inH := (g = 1) ? 22 : 0
+		for j, p in grp
+			inH += p[2] + 2
+		cardH := 12 + inH + 10
+		if (g = 1 and openIdx and cardH < 54)
+			cardH := 54
+		hC := AddPanel(CARDX, y, CARDW, cardH)
+		lst.Push(hC)
+		ty := y + 12
+		if (g = 1)
+			{
+			Gui, Font, s10 Bold c%ColorText%, Segoe UI
+			Gui, Add, Text, x%CX% y%ty% w400 h18 +0x80 HwndhC, %title%
+			lst.Push(hC)
+			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+			if (openIdx)
+				{
+				bY := y + 13
+				Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+				Gui, Add, Text, x642 y%bY% w86 h28 Center +0x100 +0x200 vClOpen%openIdx% gChangelogDetailOpen HwndhC, Open
+				lst.Push(hC)
+				SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+				RoundCtrl(hC, 86, 28, 7)
+				}
+			ty += 22
+			}
+		Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+		for j, p in grp
+			{
+			lh := p[2]
+			ln := p[1]
+			Gui, Add, Text, x%CX% y%ty% w%TXW% h%lh% +0x80 HwndhC, %ln%
+			lst.Push(hC)
+			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+			ty += lh + 2
+			}
+		y += cardH + 10
+		}
+	return y
 }
 
 ;@@VELTRIX-PANEL-BEGIN
@@ -31449,7 +31487,7 @@ UiSwatch(h) {
 }
 
 UiItemJson(h, k) {
-	global UiBrushHex, SpecialBrushes, IconTips, TOPH, hBrushCard, hBrushBG, hBrushPanel, UiGrp, hIpBox, hIpMon
+	global UiBrushHex, SpecialBrushes, IconTips, TOPH, hBrushCard, hBrushBG, hBrushPanel, UiGrp, hIpBox, hIpMon, ColorAccent
 	UiPos(h, x, y, w, ht)
 	j := "{""h"":" . h . ",""k"":" . UiJ(k) . ",""x"":" . x . ",""y"":" . y . ",""w"":" . w . ",""ht"":" . ht . ",""g"":" . (UiGrp.HasKey(h) ? UiGrp[h] : 0)
 	if (y < TOPH)
@@ -31458,8 +31496,8 @@ UiItemJson(h, k) {
 	if (k = "card" or k = "line")
 		return j . "}"
 	if (k = "box")
-		return j . ",""bgc"":" . UiJ(UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : "")
-			. ((hIpBox and h = hIpBox and hIpMon) ? ",""drag"":""" . hIpMon . """" : "") . "}"
+		return j . ",""bgc"":" . UiJ((hIpBox and h = hIpBox) ? ColorAccent : (UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : ""))
+			. ((hIpBox and h = hIpBox and hIpMon) ? ",""drag"":""" . (hIpMon + 0) . """" : "") . "}"
 	; font: size in px and bold
 	hf := DllCall("SendMessage", "Ptr", h, "UInt", 0x31, "Ptr", 0, "Ptr", 0, "Ptr")
 	if (hf)
@@ -31566,7 +31604,7 @@ UiStyle(h, v) {
 }
 
 UiNavTitle(sec) {
-	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
+	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", ChangelogDetail: "Changelog", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
 		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry"}
 	return t.HasKey(sec) ? t[sec] : sec
 }
@@ -31665,7 +31703,7 @@ UiNavSec(sec) {
 		return "Utilities"
 	if (sec = "Advanced")
 		return "General"
-	if (sec = "Changelog")
+	if (sec = "Changelog" or sec = "ChangelogDetail")
 		return "Misc"
 	if (sec = "Minigame")
 		return "Home"
