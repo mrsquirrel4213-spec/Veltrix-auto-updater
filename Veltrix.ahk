@@ -23,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 61
-; for copies from before the rename (their updater looks for these): DFModBuild := 61
+VxBuild := 62
+; for copies from before the rename (their updater looks for these): DFModBuild := 62
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -26131,7 +26131,7 @@ return
 ; the credit line (one small line under Setup)
 BuildCreditsSection:
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y840 w%TXW% h16 HwndhC, Based on DeepFish by Yato  ·  Reel control by AsphaltCake
+Gui, Add, Text, x%CX% y840 w%TXW% h16 HwndhC, hai :3
 CreditsCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
