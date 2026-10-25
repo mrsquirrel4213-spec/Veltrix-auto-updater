@@ -23,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 62
-; for copies from before the rename (their updater looks for these): DFModBuild := 62
+VxBuild := 63
+; for copies from before the rename (their updater looks for these): DFModBuild := 63
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -59,7 +59,7 @@ ProfileFields.Push( ["General","RestartDelay","1000","num"]
                   , ["General","HideTextAlways","false","bool"]
                   , ["General","PassiveAll","false","bool"]
                   , ["General","PassiveMs","500","num"]
-                  , ["General","InfoPanelOn","false","bool"]
+                  , ["General","InfoPanelOn","true","bool"]
                   , ["General","FishScanOn","false","bool"]
                   , ["General","InfoPanelX","0.02","num"]
                   , ["General","InfoPanelY","0.35","num"]
@@ -656,22 +656,19 @@ Tooltip20 := (WindowHeight/2)+(20*10)
 if (DetTesting)
 	goto CalcTipsDone
 
-tooltip, Runtime: 0h 0m 0s, %TooltipX%, %Tooltip2%, 2
-
-
+VxTip(2, "Runtime: 0h 0m 0s")
 if (DetTesting)
 	goto CalcTipsDone
 gosub, RefreshHints
 
-tooltip, Navigation Key: "%NavigationKey%", %TooltipX%, %Tooltip14%, 14
-
+VxTip(14, "Navigation Key: """ . NavigationKey . """")
 if (ShakeMode == "Disabled")
 	{
-	tooltip, Shake Mode: "Disabled", %TooltipX%, %Tooltip16%, 16
+	VxTip(16, "Shake Mode: ""Disabled""")
 	}
 else
 	{
-	tooltip, Shake Mode: "Navigation", %TooltipX%, %Tooltip16%, 16
+	VxTip(16, "Shake Mode: ""Navigation""")
 	}
 CalcTipsDone:
 return
@@ -694,16 +691,14 @@ if (runtimeM >= 60)
 
 if WinActive("ahk_id " . RobloxHwnd)
 	{
-	RunDbg := MacroRunning ? "Y" : "N"
-	KeyDbg := HotkeysArmed ? "armed" : "OFF"
-	tooltip, Runtime: %runtimeH%h %runtimeM%m %runtimeS%s | Running:%RunDbg% Keys:%KeyDbg%, %TooltipX%, %Tooltip2%, 2
+	VxTip(2, "Runtime: " . runtimeH . "h " . runtimeM . "m " . runtimeS . "s")
 	gosub, RefreshHints
 	}
 else if (PasIdle())
 	{
 	; passive mode waiting for a minigame: you can be in another window - nothing is pressed until one shows up,
 	; then Roblox is brought back to play it
-	tooltip, Runtime: %runtimeH%h %runtimeM%m %runtimeS%s | Passive - Roblox is in the background, %TooltipX%, %Tooltip2%, 2
+	VxTip(2, "Runtime: " . runtimeH . "h " . runtimeM . "m " . runtimeS . "s | Passive - Roblox is in the background")
 	}
 else
 	{
@@ -721,7 +716,7 @@ else
 			gosub, ResolveRoblox
 			if (!RobloxHwnd)
 				{
-				tooltip, Waiting for the Roblox window to come back..., %TooltipX%, %Tooltip2%, 2
+				VxTip(2, "Waiting for the Roblox window to come back...")
 				Sleep, % Tm(TA("winback", 1000))
 				continue
 				}
@@ -729,7 +724,7 @@ else
 		WinActivate, ahk_id %RobloxHwnd%
 		WinWaitActive, ahk_id %RobloxHwnd%, , 1
 		PausedMs := PausedMs + 100
-		tooltip, Reclaiming focus - Roblox was not in front, %TooltipX%, %Tooltip2%, 2
+		VxTip(2, "Reclaiming focus - Roblox was not in front")
 		if (!WinActive("ahk_id " . RobloxHwnd))
 			Sleep, % Tm(TA("winfocus", 100))
 		}
@@ -926,13 +921,12 @@ settimer, runtime, 1000
 
 gosub, RefreshHints
 
-tooltip, , , , 6
-tooltip, , , , 10
-tooltip, , , , 11
-tooltip, , , , 12
-tooltip, , , , 14
-tooltip, , , , 16
-
+VxTip(6, "")
+VxTip(10, "")
+VxTip(11, "")
+VxTip(12, "")
+VxTip(14, "")
+VxTip(16, "")
 RestartMacro:
 
 if (!MacroRunning)
@@ -1077,8 +1071,7 @@ if (AquariumAuto and !AqBusy and (AqNextTick = 0 or A_TickCount >= AqNextTick))
 if (!MacroRunning)
 	goto Idle
 
-tooltip, , , , 9
-
+VxTip(9, "")
 if (!MacroRunning)
 	goto Idle
 
@@ -1092,7 +1085,7 @@ gosub, LmMaybeSwitch
 
 if (RodSlotKey != "" and (ForceReEquip or (UnstickAfter > 0 and CastFailCount >= UnstickAfter)))
 	{
-	tooltip, Current Task: Re-equipping Rod (stuck bobber), %TooltipX%, %Tooltip7%, 7
+	VxTip(7, "Current Task: Re-equipping Rod (stuck bobber)")
 	send {lbutton up}
 	send {rbutton up}
 	Sleep, % Tm(TA("reeq1", 120))
@@ -1113,7 +1106,7 @@ if (RodSlotKey != "" and (ForceReEquip or (UnstickAfter > 0 and CastFailCount >=
 gosub, TotemMaybeRun
 if (!MacroRunning)
 	goto Idle
-tooltip, Current Task: Casting Rod, %TooltipX%, %Tooltip7%, 7
+VxTip(7, "Current Task: Casting Rod")
 CastHolding := true
 if (CastMode = "Perfect")
 	{
@@ -1135,7 +1128,7 @@ else
 		{
 		Loop % ScN - 1
 			{
-			tooltip, Action: Cast %A_Index%/%ScN% (%HoldRodCastDuration%ms), %TooltipX%, %Tooltip8%, 8
+			VxTip(8, "Action: Cast " . A_Index . "/" . ScN . " (" . HoldRodCastDuration . "ms)")
 			send {lbutton down}
 			Sleep, %HoldRodCastDuration%
 			send {lbutton up}
@@ -1144,7 +1137,7 @@ else
 			}
 		}
 	send {lbutton down}
-	tooltip, Action: Casting For %HoldRodCastDuration%ms, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Casting For " . HoldRodCastDuration . "ms")
 	CastSeen := false
 	if (SmartCast)
 		{
@@ -1177,7 +1170,7 @@ else
 		if (CastMissN <= 2)
 			{
 			CastHolding := false
-			tooltip, Action: Cast did not go through - recasting (%CastMissN%/2), %TooltipX%, %Tooltip8%, 8
+			VxTip(8, "Action: Cast did not go through - recasting (" . CastMissN . "/2)")
 			Sleep, % Tm(TA("castretry", 150))
 			if (CastMissN = 2 and RodSlotKey != "")
 				ForceReEquip := true
@@ -1190,7 +1183,7 @@ else
 CastHolding := false
 if (!MacroRunning)
 	goto Idle
-tooltip, Action: Waiting For Bobber (%WaitForBobberDelay%ms), %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Waiting For Bobber (" . WaitForBobberDelay . "ms)")
 KbPreT0 := A_TickCount
 KbPreWait := Tm(WaitForBobberDelay)
 ; read the Keeperbound power bar now, while the bobber flies - so the end of the fight never waits on it
@@ -1227,9 +1220,9 @@ if (WinActive("ahk_id " . RobloxHwnd))
 	send {lbutton up}
 	send {rbutton up}
 	}
-tooltip, Current Task: Passive - watching for the minigame, %TooltipX%, %Tooltip7%, 7
-tooltip, , , , 8
-tooltip, , , , 10
+VxTip(7, "Current Task: Passive - watching for the minigame")
+VxTip(8, "")
+VxTip(10, "")
 MgInPlay := false
 if (SpecialRod = "Stellarwave Melody")
 	SwFightReset()
@@ -1256,7 +1249,7 @@ Loop
 		PasSeen := ManiaVisible() ? PasSeen + 1 : 0
 		if (PasSeen >= 2)
 			{
-			tooltip, , , , 7
+			VxTip(7, "")
 			gosub, PasFocus
 			goto BarMinigame
 			}
@@ -1270,7 +1263,7 @@ Loop
 		{
 		if (FishLineVisible() or BarPresent())
 			{
-			tooltip, , , , 7
+			VxTip(7, "")
 			gosub, PasFocus
 			goto BarMinigame
 			}
@@ -1282,7 +1275,7 @@ Loop
 				gosub, CaptureFishBar
 				if (FishLineVisible() or BarPresent())
 					{
-					tooltip, , , , 7
+					VxTip(7, "")
 					gosub, PasFocus
 					goto BarMinigame
 					}
@@ -1307,7 +1300,7 @@ return
 
 NavigationShakeFailsafe:
 NavigationFailsafeCount++
-tooltip, Failsafe: %NavigationFailsafeCount%/%NavigationShakeFailsafe%, %TooltipX%, %Tooltip10%, 10
+VxTip(10, "Failsafe: " . NavigationFailsafeCount . "/" . NavigationShakeFailsafe)
 if (NavigationFailsafeCount >= NavigationShakeFailsafe)
 	{
 	settimer, NavigationShakeFailsafe, off
@@ -1318,11 +1311,9 @@ return
 
 NavigationShakeMode:
 
-tooltip, Current Task: Shaking, %TooltipX%, %Tooltip7%, 7
-tooltip, Attempt Count: 0, %TooltipX%, %Tooltip8%, 8
-
-tooltip, Failsafe: 0/%NavigationShakeFailsafe%, %TooltipX%, %Tooltip10%, 10
-
+VxTip(7, "Current Task: Shaking")
+VxTip(8, "Attempt Count: 0")
+VxTip(10, "Failsafe: 0/" . NavigationShakeFailsafe)
 MgInPlay := false
 if (SpecialRod = "Tranquility")
 	TqResetAll()
@@ -1340,7 +1331,7 @@ if (!MacroRunning)
 	goto Idle
 if (ForceReset == true)
 	{
-	tooltip, , , , 10
+	VxTip(10, "")
 	goto RestartMacro
 	}
 Sleep, % Tm(NavigationSpamDelay)
@@ -1374,7 +1365,7 @@ else
 	if (!MinigameHit)
 		UiPhantomT := 0
 	NavigationCounter++
-	tooltip, Attempt Count: %NavigationCounter%, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Attempt Count: " . NavigationCounter)
 	sleep 1
 	send {enter}
 	goto NavigationShakeModeRedo
@@ -1409,7 +1400,7 @@ if (TwigLastCheck and ((TwigNow - TwigLastCheck) / QpcFreq) < 0.30)
 TwigLastCheck := TwigNow
 if (!TwigPrompt(TwigLX, TwigRX, TwigLabY))
 	return
-tooltip, Action: Splitbranch Twig - choosing a fish, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Splitbranch Twig - choosing a fish")
 MouseGetPos, TwigSaveX, TwigSaveY
 TwigIconY := Round(WindowHeight * 0.493)
 for TwigI, TwigT in [[TwigLX, TwigIconY], [TwigRX, TwigIconY], [TwigLX, TwigLabY], [TwigRX, TwigLabY]]
@@ -1434,7 +1425,7 @@ return
 BarCalculationFailsafe:
 BarCalcFailsafeCounter++
 BarCalcLimit := BarCalculationFailsafe
-tooltip, Failsafe: %BarCalcFailsafeCounter%/%BarCalcLimit%, %TooltipX%, %Tooltip10%, 10
+VxTip(10, "Failsafe: " . BarCalcFailsafeCounter . "/" . BarCalcLimit)
 if (BarCalcFailsafeCounter >= BarCalcLimit)
 	{
 	settimer, BarCalculationFailsafe, off
@@ -1462,9 +1453,9 @@ HudWMed := 0
 CastFailCount := 0
 if (SpecialRod = "Tranquility")
 	{
-	tooltip, Current Task: Playing Notes, %TooltipX%, %Tooltip7%, 7
-	tooltip, , , , 8
-	tooltip, , , , 10
+	VxTip(7, "Current Task: Playing Notes")
+	VxTip(8, "")
+	VxTip(10, "")
 	ForceReset := false
 	MinigameLost := 0
 	DllCall("QueryPerformanceCounter", "Int64*", TqNowC)
@@ -1472,10 +1463,9 @@ if (SpecialRod = "Tranquility")
 	goto BarMinigame2
 	}
 
-tooltip, Current Task: Calculating Bar Size, %TooltipX%, %Tooltip7%, 7
-tooltip, Bar Size: Not Found, %TooltipX%, %Tooltip8%, 8
-tooltip, Failsafe: 0/%BarCalculationFailsafe%, %TooltipX%, %Tooltip10%, 10
-
+VxTip(7, "Current Task: Calculating Bar Size")
+VxTip(8, "Bar Size: Not Found")
+VxTip(10, "Failsafe: 0/" . BarCalculationFailsafe)
 ForceReset := false
 BarCalcFailsafeCounter := 0
 MgFightMode := false
@@ -1485,8 +1475,7 @@ PasLastSeen := A_TickCount
 if (!PasNow)
 	settimer, BarCalculationFailsafe, 1000
 else
-	tooltip, Failsafe: off (passive), %TooltipX%, %Tooltip10%, 10
-
+	VxTip(10, "Failsafe: off (passive)")
 if (SpecialRod = "Noiseform")
 	{
 	NoiseWCal := 0
@@ -1534,7 +1523,7 @@ if (SpecialRod = "Splitbranch Twig")
 	gosub, TwigMaybePick
 if (ForceReset == true)
 	{
-	tooltip, , , , 10
+	VxTip(10, "")
 	goto RestartMacro
 	}
 gosub, CaptureFishBar
@@ -1544,7 +1533,7 @@ if (PasNow)
 		PasLastSeen := A_TickCount
 	else if (A_TickCount - PasLastSeen > TA("passivelost", 3000))
 		{
-		tooltip, , , , 10
+		VxTip(10, "")
 		goto RestartMacro
 		}
 	}
@@ -1587,10 +1576,8 @@ MgFightMode := true
 BarCalcFailsafeCounter := 0
 MgCastCharged := false
 UiEdgeStart()
-tooltip, Current Task: Playing Bar Minigame, %TooltipX%, %Tooltip7%, 7
-tooltip, Bar Size: %WhiteBarSize%, %TooltipX%, %Tooltip8%, 8
-
-
+VxTip(7, "Current Task: Playing Bar Minigame")
+VxTip(8, "Bar Size: " . WhiteBarSize)
 MgLastSig := -1
 MgStaticN := 0
 BarSizeBadN := 0
@@ -1860,7 +1847,7 @@ if (SpecialRod = "Lullaby")
 		Sleep, % Tm(TA("lullhold", 20))
 		send {lbutton up}
 		LullClicks := LullClicks + 1
-		tooltip, Lullaby: %LullSecN% light sector(s)`, hits %LullClicks% (last #%LullHitSec%), %TooltipX%, %Tooltip9%, 9
+		VxTip(9, "Lullaby: " . LullSecN . " light sector(s), hits " . LullClicks . " (last #" . LullHitSec . ")")
 		}
 	if (LullActive)
 		{
@@ -1888,7 +1875,7 @@ if (SpecialRod = "Tranquility")
 			{
 			CastFailCount++
 			ForceReEquip := true
-			tooltip, , , , 10
+			VxTip(10, "")
 			goto RestartMacro
 			}
 		goto BarMinigameOver
@@ -2126,7 +2113,7 @@ if (SpecialRod = "Pinions Aria")
 		else
 			PnTipTxt .= "?"
 		PnTipTxt .= "  |  " . PnWhy
-		tooltip, %PnTipTxt%, %TooltipX%, %Tooltip13%, 13
+		VxTip(13, PnTipTxt)
 		}
 	}
 else if (NoteAt >= 0)
@@ -2640,13 +2627,13 @@ if (MgCastCharged)
 		ForceReEquip := true
 	}
 
-tooltip, Current Task: Restarting, %TooltipX%, %Tooltip7%, 7
-tooltip, , , , 8
-tooltip, , , , 10
-tooltip, , , , 11
-tooltip, , , , 12
-tooltip, , , , 13
-tooltip, , , , 15
+VxTip(7, "Current Task: Restarting")
+VxTip(8, "")
+VxTip(10, "")
+VxTip(11, "")
+VxTip(12, "")
+VxTip(13, "")
+VxTip(15, "")
 gosub, HideHud
 if (AdaptiveCast)
 	{
@@ -2668,10 +2655,10 @@ if (AdaptiveCast)
 		Sleep, 15
 		}
 	if (AcMs < 0)
-		tooltip, Action: Casting right away (%AcMs%ms - early), %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Casting right away (" . AcMs . "ms - early)")
 	else
 		{
-		tooltip, Action: Casting %AcMs%ms after the minigame closed, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Casting " . AcMs . "ms after the minigame closed")
 		Sleep, % Tm(AcMs)
 		}
 	}
@@ -2693,13 +2680,13 @@ KbRelicOn := false
 MouseGetPos, KbSaveX, KbSaveY
 send {lbutton up}
 send {rbutton up}
-tooltip, Current Task: Keeperbound Recharge, %TooltipX%, %Tooltip7%, 7
+VxTip(7, "Current Task: Keeperbound Recharge")
 KbPreV := KeeperPreDelay
 if KbPreV is number
 	{
 	if (KbPreV > 0)
 		{
-		tooltip, Action: Waiting %KbPreV% ms before recharging, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Waiting " . KbPreV . " ms before recharging")
 		Sleep, % Tm(KbPreV)
 		}
 	}
@@ -2711,7 +2698,7 @@ if (MgOnScreen or MgInPlay)
 	KbOcrCatches := 9999
 	KbLastResult := "postponed - a minigame was on screen"
 	KbStatus := "postponed"
-	tooltip, , , , 8
+	VxTip(8, "")
 	KbBusy := false
 	return
 	}
@@ -2742,11 +2729,11 @@ KbStatus := "recharging"
 
 if (KbManual)
 	{
-	tooltip, Action: Open Inventory, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Open Inventory")
 	KbKey(KeeperInvKey)
 	Sleep, % Tm(KeeperOpenDelay)
 
-	tooltip, Action: Equip Relic, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Equip Relic")
 	KbKey(KeeperRelicKey)
 	KbRelicOn := true
 	Sleep, % Tm(KeeperStepDelay)
@@ -2759,10 +2746,10 @@ if (KbManual)
 	while (KbI < KbWant and MacroRunning)
 		{
 		KbI++
-		tooltip, Action: Enchant Rod, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Enchant Rod")
 		KbTapSaved(KbEx, KbEy)
 		Sleep, % Tm(KeeperStepDelay)
-		tooltip, Action: Confirm, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Confirm")
 		KbTapSaved(KbCx, KbCy)
 		Sleep, % Tm(KeeperStepDelay)
 		KbRecharged++
@@ -2774,7 +2761,7 @@ if (KbManual)
 	}
 
 ; ---- no saved positions: find the buttons instead ------------------------------------------
-tooltip, Action: Open Inventory, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Open Inventory")
 if (!KbWaitFor("enchant", KbEx, KbEy, TA("kbinv1", 700)))
 	{
 	KbKey(KeeperInvKey)
@@ -2789,7 +2776,7 @@ if (!KbWaitFor("enchant", KbEx, KbEy, TA("kbinv1", 700)))
 		}
 	}
 
-tooltip, Action: Equip Relic, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Equip Relic")
 KbKey(KeeperRelicKey)
 KbRelicOn := true
 Sleep, % Tm(KeeperStepDelay)
@@ -2800,7 +2787,7 @@ Loop
 	KbGuard++
 	if (KbGuard > 24 or !MacroRunning or KbRecharged >= KbWant)
 		break
-	tooltip, Action: Enchant Rod, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Enchant Rod")
 	; remember how the Enchant button looks once the inventory has settled - closing is then checked with
 	; one pixel instead of screen searches
 	if (KbOpenCol < 0)
@@ -2812,7 +2799,7 @@ Loop
 		break
 		}
 	Sleep, % Tm(TA("kbconfirm", 120))
-	tooltip, Action: Confirm, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Confirm")
 	KbTap(KbCx, KbCy)
 	Sleep, % Tm(KeeperStepDelay)
 	if (!KbGone("confirm", TA("kbgone", 3000)))
@@ -2828,7 +2815,7 @@ else
 	KbLastResult := "recharged " . KbRecharged . " of " . KbWant
 
 KeeperBail:
-tooltip, Action: Close Inventory, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Close Inventory")
 KbClosed := false
 KbFcOk := KbSpot("enchant", KbFx, KbFy)
 if (!KbFcOk and KbEx != "" and KbEx >= 0)
@@ -2882,7 +2869,7 @@ if (!KbClosed)
 ; nothing), so only switch back when the relic was taken out
 if (KbRelicOn)
 	{
-	tooltip, Action: Select Rod, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Select Rod")
 	if (RodSlotKey != "")
 		{
 		KbBarWas := KbBarShown()
@@ -2911,7 +2898,7 @@ if (KbRelicOn)
 		}
 	}
 MouseMove, KbSaveX, KbSaveY
-tooltip, , , , 8
+VxTip(8, "")
 KbStatus := (KbRecharged > 0) ? "done" : "failed"
 KbCatches := 0
 KbOcrCatches := 0
@@ -2954,9 +2941,8 @@ AqStatus := "opening"
 MouseGetPos, AqSaveX, AqSaveY
 send {lbutton up}
 send {rbutton up}
-tooltip, Current Task: Auto Aquarium, %TooltipX%, %Tooltip7%, 7
-tooltip, Action: Open Aquariums, %TooltipX%, %Tooltip8%, 8
-
+VxTip(7, "Current Task: Auto Aquarium")
+VxTip(8, "Action: Open Aquariums")
 if (RobloxHwnd)
 	{
 	WinActivate, ahk_id %RobloxHwnd%
@@ -2976,7 +2962,7 @@ if (!AqPanelSure())
 	AqLastResult := "could not find the fish food panel"
 	AqStatus := "failed"
 	MouseMove, AqSaveX, AqSaveY
-	tooltip, , , , 8
+	VxTip(8, "")
 	AqNextTick := A_TickCount + (Round(AquariumEveryMin) * 60000)
 	AqBusy := false
 	SetBatchLines, -1
@@ -2988,7 +2974,7 @@ AqCap := Round(AquariumFoodCount)
 if (AqCap < 10)
 	AqCap := 10
 
-tooltip, Action: Scroll To Start, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Scroll To Start")
 AqMeasurePitch()
 
 AqUseOnly := false
@@ -2996,26 +2982,26 @@ gosub, AquariumSweep
 
 if (AqBuys > 0 and MacroRunning)
 	{
-	tooltip, Action: Use New Fish Food, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Use New Fish Food")
 	AqUseOnly := true
 	gosub, AquariumSweep
 	}
 
-tooltip, Action: Back To Start, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Back To Start")
 AqScrollHome()
 
 AqLastResult := "bought " . AqBuys . ", used " . AqUses
 AqStatus := "done"
 
 AquariumClose:
-tooltip, Action: Close Aquariums, %TooltipX%, %Tooltip8%, 8
+VxTip(8, "Action: Close Aquariums")
 if (AqPanelSure())
 	{
 	AqTap(AqNavX, AqNavY)
 	AqWaitPanel(0)
 	}
 MouseMove, AqSaveX, AqSaveY
-tooltip, , , , 8
+VxTip(8, "")
 AqNextTick := A_TickCount + (Round(AquariumEveryMin) * 60000)
 AqBusy := false
 SetBatchLines, -1
@@ -3056,7 +3042,7 @@ Loop
 		AqOldX.Push(AqBtnCX[AqI])
 		AqI++
 		}
-	tooltip, Action: Next Fish Food, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Next Fish Food")
 	if (!AqWheel(AqStep, 1))
 		break
 	if (AqScan() < 1)
@@ -3134,12 +3120,12 @@ while (AqI <= AqLstN)
 	AqDone++
 	if (AqKind = "buy")
 		{
-		tooltip, Action: Buy Fish Food, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Buy Fish Food")
 		AqBuys++
 		}
 	else
 		{
-		tooltip, Action: Use Fish Food, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Use Fish Food")
 		AqUses++
 		}
 	AqTap(AqCx, AqCy)
@@ -3155,7 +3141,7 @@ return
 StopSweep:
 StopSweepTicks++
 Loop, 10
-	tooltip, , , , % A_Index + 6
+	VxTip(A_Index + 6, "")
 gosub, HideHud
 if (StopSweepTicks >= 60)
 	{
@@ -3192,17 +3178,17 @@ send {lbutton up}
 send {rbutton up}
 send {shift up}
 
-tooltip, , , , 6
-tooltip, , , , 7
-tooltip, , , , 8
-tooltip, , , , 9
-tooltip, , , , 10
-tooltip, , , , 11
-tooltip, , , , 12
-tooltip, , , , 13
-tooltip, , , , 14
-tooltip, , , , 15
-tooltip, , , , 16
+VxTip(6, "")
+VxTip(7, "")
+VxTip(8, "")
+VxTip(9, "")
+VxTip(10, "")
+VxTip(11, "")
+VxTip(12, "")
+VxTip(13, "")
+VxTip(14, "")
+VxTip(15, "")
+VxTip(16, "")
 gosub, HideHud
 gosub, RefreshHints
 
@@ -3213,18 +3199,9 @@ return
 RefreshHints:
 if (DetTesting)
 	return
-if (MacroRunning)
-	{
-	tooltip, Press "%StartStopKey%" to Stop, %TooltipX%, %Tooltip4%, 4
-	tooltip, Press "%ReloadKey%" to Reload, %TooltipX%, %Tooltip5%, 5
-	tooltip, , , , 6
-	}
-else
-	{
-	tooltip, Press "%StartStopKey%" to Start, %TooltipX%, %Tooltip4%, 4
-	tooltip, Press "%ReloadKey%" to Reload, %TooltipX%, %Tooltip5%, 5
-	tooltip, Press "%ExitKey%" to Exit, %TooltipX%, %Tooltip6%, 6
-	}
+VxTip(4, (MacroRunning ? "Stop" : "Start") . ": " . VxKeyName(StartStopKey))
+VxTip(5, "Reload: " . VxKeyName(ReloadKey))
+VxTip(6, MacroRunning ? "" : "Exit: " . VxKeyName(ExitKey))
 return
 
 ;====================================================================================================;
@@ -3247,6 +3224,14 @@ if !FileExist(SettingsFile)
 	IniWrite, 0, %SettingsFile%, GUI, KeepOpen
 	IniWrite, 0, %SettingsFile%, GUI, AutoSave
 	IniWrite, 0, %SettingsFile%, Meta, FirstRunDone
+	}
+; the info panel is where the macro shows everything now: switched on once in every profile
+IniRead, VxIpMig, %SettingsFile%, Meta, InfoPanelAll, 0
+if (VxIpMig != 1)
+	{
+	Loop, Files, %ProfilesDir%\*.ini
+		IniWrite, true, %A_LoopFileFullPath%, General, InfoPanelOn
+	IniWrite, 1, %SettingsFile%, Meta, InfoPanelAll
 	}
 
 return
@@ -3579,37 +3564,6 @@ ProfFieldOk(type, ByRef val) {
 	return true
 }
 
-MgShareFields() {
-	global ProfileFields
-	static Cached := ""
-	if (IsObject(Cached))
-		return Cached
-	Cached := []
-	for i, f in ProfileFields
-		{
-		if (f[1] = "Minigame" or f[1] = "Tuning" or f[2] = "FishBarColorTolerance")
-			Cached.Push(f)
-		}
-	return Cached
-}
-
-MgShareHash(txt) {
-	h := 2166136261
-	Loop, Parse, txt
-		{
-		h := h ^ Asc(A_LoopField)
-		h := (h * 16777619) & 0xFFFFFFFF
-		}
-	return Format("{:04X}", (h ^ (h >> 16)) & 0xFFFF)
-}
-
-MgShareSig() {
-	sig := ""
-	for i, f in MgShareFields()
-		sig .= f[2] . ","
-	return MgShareHash(sig)
-}
-
 BuildDefaultProfile:
 
 for i, f in ProfileFields
@@ -3728,7 +3682,7 @@ PCCapT := PCStart
 PerfectCastLoop:
 if (!MacroRunning)
 	{
-	tooltip, , , , 8
+	VxTip(8, "")
 	gosub, HideCastHud
 	return
 	}
@@ -3736,7 +3690,7 @@ DllCall("QueryPerformanceCounter", "Int64*", PCNow)
 PCElapsed := (PCNow - PCStart) / QpcFreq
 if (PCElapsed > PerfectFailTimeout)
 	{
-	tooltip, Action: Perfect cast timed out - released, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Perfect cast timed out - released")
 	gosub, HideCastHud
 	return
 	}
@@ -3746,7 +3700,7 @@ if (PCGreenY < 0)
 	PCVerifyOff := (PCElapsed > 1.5)
 	if (!PerfectAcquireGreen())
 		{
-		tooltip, Action: Looking for cast bar, %TooltipX%, %Tooltip8%, 8
+		VxTip(8, "Action: Looking for cast bar")
 		goto PerfectCastLoop
 		}
 	PCLostCount := 0
@@ -3767,7 +3721,7 @@ if (PCState = 0)
 PCLostCount := 0
 if (PCState = 1)
 	{
-	tooltip, Action: Perfect cast - bar empty`, waiting, %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Perfect cast - bar empty, waiting")
 	goto PerfectCastLoop
 	}
 
@@ -3894,7 +3848,7 @@ if ((PCCapT - PCTipT) / QpcFreq >= 0.12)
 	PCGateDbg := PCReachedBottom ? "armed" : "arming"
 	if (PCCycles < PCWaitN)
 		PCGateDbg := "watching swing " . (PCCycles + 1) . "/" . PCWaitN
-	tooltip, Action: Perfect %PCFillDbg%`% / %PCThreshold%`% (%PCGateDbg%), %TooltipX%, %Tooltip8%, 8
+	VxTip(8, "Action: Perfect " . PCFillDbg . "% / " . PCThreshold . "% (" . PCGateDbg . ")")
 	}
 
 PCLastFill := PCFill
@@ -9573,7 +9527,7 @@ if (!TotemPreDone)
 	if (TotemLastCheck and (A_TickCount - TotemLastCheck) < (TotemPollSec * 1000))
 		return
 	; not read during the last bobber wait (it was too short) - one read here
-	tooltip, Current Task: Checking Totems, %TooltipX%, %Tooltip7%, 7
+	VxTip(7, "Current Task: Checking Totems")
 	gosub, TotemAssess
 	}
 TotemPreDone := false
@@ -9581,8 +9535,8 @@ TotemPreDone := false
 if (TotemPending = "")
 	return
 TotemPending := ""
-tooltip, Current Task: Checking Totems, %TooltipX%, %Tooltip7%, 7
-tooltip, , , , 8
+VxTip(7, "Current Task: Checking Totems")
+VxTip(8, "")
 if (WhLastCatchTick)
 	{
 	TotemSinceCatch := A_TickCount - WhLastCatchTick
@@ -9760,7 +9714,7 @@ if (TotemAssessOnly)
 	TotemPending := TotemNext
 	goto TotemDone
 	}
-tooltip, Current Task: Totem - %TotemNext%, %TooltipX%, %Tooltip7%, 7
+VxTip(7, "Current Task: Totem - " . TotemNext)
 send {%TotemNextKey%}
 Sleep, % Tm(TA("totemkey", 300))
 click
@@ -9777,7 +9731,7 @@ if (TotemNext = "Sundial")
 		Sleep, % Tm(1000)
 		TotemWaited := TotemWaited + 1000
 		TotemWaitS := TotemWaited // 1000
-		tooltip, Current Task: Totem - waiting for %TotemWantTime% (%TotemWaitS%s), %TooltipX%, %Tooltip7%, 7
+		VxTip(7, "Current Task: Totem - waiting for " . TotemWantTime . " (" . TotemWaitS . "s)")
 		if (!TotemCaptureStrip())
 			continue
 		TotemReadState()
@@ -17610,7 +17564,7 @@ OjBarScan(now) {
 	if (MgInPlay and now - OjTipT >= 0.25)
 		{
 		OjTipT := now
-		tooltip, % "Ominous Ouija: bar " . (SwFound ? "found" : "not found") . ", planchette " . ((SwFishX >= 0) ? "found" : "not found"), %TooltipX%, %Tooltip13%, 13
+		VxTip(13, "Ominous Ouija: bar " . (SwFound ? "found" : "not found") . ", planchette " . ((SwFishX >= 0) ? "found" : "not found"))
 		}
 }
 
@@ -21733,7 +21687,7 @@ SwTip(now) {
 		SwPanelLast := SwLit . "/12 lit" . ((SwLit < 12) ? ", next " . SwZodiac(SwLit) : "")
 		SwPanelTxt := SwPanelLast
 		}
-	tooltip, %txt%, %TooltipX%, %Tooltip13%, 13
+	VxTip(13, txt)
 }
 
 ; short, plain reason for the info panel
@@ -23508,7 +23462,7 @@ EnsureBrush(ByRef hBrush, hexColor) {
 }
 
 WM_CTLCOLOREDIT(wParam, lParam, msg, hwnd) {
-	global hBrushInput, ColorInputBGR, ColorInput, hMgCodeBox, hBrushWhite
+	global hBrushInput, ColorInputBGR, ColorInput, hBrushWhite
 	DllCall("SetBkMode", "Ptr", wParam, "Int", 1)
 	DllCall("SetTextColor", "Ptr", wParam, "UInt", 0xFFFFFF)
 	DllCall("SetBkColor", "Ptr", wParam, "UInt", ColorInputBGR)
@@ -23850,12 +23804,6 @@ ScrollBy(delta) {
 ;====================================================================================================;
 ;====================================================================================================;
 
-MgCodeCue(txt) {
-	global hMgCodeBox
-	if (hMgCodeBox)
-		DllCall("SendMessage", "Ptr", hMgCodeBox, "UInt", 0x1501, "Ptr", 1, "WStr", txt)
-}
-
 MgBlockOpen(name, cardY, h) {
 	global MgBlocks, MgAllCtrls, CARDX, CARDW
 	hc := AddPanel(CARDX, cardY, CARDW, h)
@@ -23880,7 +23828,7 @@ MgAdd(name, h) {
 }
 
 LayoutMinigame() {
-	global MgBlocks, MgVisible, SpecialRod, ControlMode, CARDX, MiniTop
+	global MgBlocks, MgVisible, SpecialRod, ControlMode, CARDX, MiniTop, ProfCtrls, ProfPosX, ProfPosY, ProfCardH
 	MgVisible := {}
 	vis := ["mode"]
 	if (SpecialRod = "Halibut Harpoon")
@@ -23909,6 +23857,13 @@ LayoutMinigame() {
 	vis.Push("precrules")
 	vis.Push("detcheck")
 	y := MiniTop
+	; the profile card first
+	if (IsObject(ProfCtrls) and ProfCtrls.Length())
+		{
+		for i, h in ProfCtrls
+			SetBase(h, ProfPosX[i], y + ProfPosY[i])
+		y += ProfCardH + 10
+		}
 	for i, nm in vis
 		{
 		b := MgBlocks[nm]
@@ -24136,6 +24091,12 @@ OnMessage(0x138, "WM_CTLCOLORSTATIC")
 
 GeneralCtrls := []
 CreditsCtrls := []
+ProfCtrls := []
+ProfPosX := []
+ChangelogCtrls := []
+ProfPosY := []
+VxKeyCtrls := {}
+VxKeyH := {}
 HomeCtrls := []
 CastCtrls := []
 NormalCastCtrls := []
@@ -24224,20 +24185,20 @@ SpecialBrushes[hRunStatus] := {brush: hBrushPanel, text: ColorMutedBGR}
 RoundCtrl(hRunStatus, 90, 26, 13)
 
 
-;---- Profile tools: they live in a card at the top of General -----------------------------------------
-; (made here in General's design coordinates, then handed to General so they move with it)
+;---- Profile tools: a card at the top of the minigame setup (Reel tab) ------------------------------
+; (made here in design coordinates; LayoutMinigame puts them above the minigame cards)
 
-ProfCardH := 94
+ProfCardH := 66
 hC := AddPanel(CARDX, 120, CARDW, ProfCardH)
-GeneralCtrls.Push(hC)
+ProfPut(hC, CARDX, 120)
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y130 w200 h16 HwndhProfIcon, PROFILE
 SpecialBrushes[hProfIcon] := {brush: hBrushCard, text: ColorMutedBGR}
-GeneralCtrls.Push(hProfIcon)
+ProfPut(hProfIcon, CX, 130)
 Gui, Font, s9 c%ColorText%, Segoe UI
 Gui, Add, DropDownList, x%CX% y150 w170 h240 vProfileSelect gProfileSelect HwndhProfileSelect
 ThemedCtrls.Push(hProfileSelect)
-GeneralCtrls.Push(hProfileSelect)
+ProfPut(hProfileSelect, CX, 150)
 gosub, RefreshProfileList
 
 PfX := CX + 178
@@ -24251,7 +24212,7 @@ for i, d in [["ProfileNew", "hTipNew", "➕", "New profile"], ["ProfileDuplicate
 	SpecialBrushes[hPf] := {brush: hBrushBorder, text: ColorTextBGR}
 	RoundCtrl(hPf, 30, 26, 7)
 	IconTips[hPf] := d[4]
-	GeneralCtrls.Push(hPf)
+	ProfPut(hPf, PfX, 149)
 	PfX += 34
 	}
 
@@ -24261,30 +24222,15 @@ AsX := CARDX + CARDW - 16 - 84 - 96
 Gui, Add, CheckBox, x%AsX% y152 w90 h20 c%ColorText% vGuiAutoSave %autoChk% gToggleAutoSave HwndhTipAuto, Auto-save
 SpecialBrushes[hTipAuto] := {brush: hBrushCard, text: ColorTextBGR}
 IconTips[hTipAuto] := "Save automatically whenever a setting changes"
-GeneralCtrls.Push(hTipAuto)
+ProfPut(hTipAuto, AsX, 152)
 SvX := CARDX + CARDW - 16 - 84
 Gui, Font, s9 Bold, Segoe UI
 Gui, Add, Text, x%SvX% y148 w84 h28 Center +0x100 +0x200 vSaveStatusText gSaveSettings HwndhTipSave, 💾 Save
 SpecialBrushes[hTipSave] := {brush: hBrushAccent, text: 0x101010}
 RoundCtrl(hTipSave, 84, 28, 8)
 IconTips[hTipSave] := "Save settings to current profile"
-GeneralCtrls.Push(hTipSave)
-
-Gui, Font, s9 c%ColorText%, Segoe UI
-Gui, Add, Text, x%CX% y181 w30 h26 Center +0x100 +0x200 gMgCopyCode HwndhTipCopy, 📋
-SpecialBrushes[hTipCopy] := {brush: hBrushBorder, text: ColorTextBGR}
-RoundCtrl(hTipCopy, 30, 26, 7)
-IconTips[hTipCopy] := "Copy your Minigame settings as a code"
-GeneralCtrls.Push(hTipCopy)
-CbX := CX + 38
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Edit, x%CbX% y182 w260 h24 -Multi vMgCodeBox gMgCodeBoxChanged HwndhMgCodeBox
-ThemedCtrls.Push(hMgCodeBox)
-GeneralCtrls.Push(hMgCodeBox)
-MgCodeBoxPrevLen := 0
-MgCodeCue("Paste a minigame code here")
-IconTips[hMgCodeBox] := "Paste a Minigame settings code someone sent you.`nIt is applied and saved as soon as you paste it."
-GenProfN := GeneralCtrls.Length()
+ProfPut(hTipSave, SvX, 148)
+GenProfN := 0
 
 Gui, Font, s9 c%ColorAccent%, Segoe UI
 
@@ -24354,7 +24300,6 @@ if (GuiAlwaysOnTop)
 
 RoundCtrl(hStartStopBtnHwnd, 84, 30, 9)
 ThemeCtl(hProfileSelect)
-ThemeCtl(hMgCodeBox)
 darkAttr := 1
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 20, "Int*", darkAttr, "Int", 4)
 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", GuiHwnd, "Int", 19, "Int*", darkAttr, "Int", 4)
@@ -24383,7 +24328,8 @@ Gui, Show, w%WINW% h%WINH%, Veltrix
 SetTimer, HeaderStatsTick, 1000
 HideHelpIcons()
 RoundExtras()
-SetTimer, InfoPanelTick, 500
+SetTimer, InfoPanelTick, 250
+gosub, RefreshHints
 SetTimer, FishScanTick, 450
 SetTimer, VxCheckForUpdate, -1200
 SetTimer, OverlayHideTick, 250
@@ -24428,7 +24374,7 @@ else if (NeedSection = "Minigame")
 	{
 	gosub, BuildMinigameSection
 	gosub, BuildColorManagerSection
-	NewLists := [MgAllCtrls, CMCtrls]
+	NewLists := [MgAllCtrls, CMCtrls, ProfCtrls]
 	}
 else if (NeedSection = "Utilities")
 	{
@@ -24444,6 +24390,11 @@ else if (NeedSection = "Misc")
 	{
 	gosub, BuildMiscSection
 	NewLists := [MiscCtrls]
+	}
+else if (NeedSection = "Changelog")
+	{
+	gosub, BuildChangelogSection
+	NewLists := [ChangelogCtrls]
 	}
 else if (NeedSection = "Aquarium")
 	{
@@ -24792,7 +24743,8 @@ return
 ;---- the floating info panel ------------------------------------------------------------------------
 
 InfoPanelTick:
-if (!InfoPanelOn or OverlayHidden)
+IpOn := ((InfoPanelOn and !HideTextAlways) or (VxIpDragT and A_TickCount - VxIpDragT < 2000))
+if (!IpOn or OverlayHidden)
 	{
 	if (IpShown)
 		{
@@ -24801,14 +24753,12 @@ if (!InfoPanelOn or OverlayHidden)
 		}
 	return
 	}
-; the Signs row only exists for Stellarwave - rebuild when the rod changes
-if (hInfoP and IpHasSw != (SpecialRod = "Stellarwave Melody"))
+; rows that come and go with the rod and the fish scanner: the window is made again when they change
+if (hInfoP and (IpHasSw != (SpecialRod = "Stellarwave Melody") or IpHasFs != (FishScanOn ? 1 : 0)))
 	{
 	Gui, InfoP:Destroy
 	hInfoP := 0
 	IpShown := false
-	Loop 12
-		IpLast%A_Index% := ""
 	}
 if (!hInfoP)
 	{
@@ -24819,51 +24769,127 @@ if (!hInfoP)
 	Gui, InfoP:Add, Text, x14 y10 w200 h20 HwndhIpT, Veltrix
 	SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
 	IpHasSw := (SpecialRod = "Stellarwave Melody")
+	IpHasFs := FishScanOn ? 1 : 0
 	IpRows := ["Rod", "Phase", "Caught", "Per hour", "Session", "Rod power"]
 	if (IpHasSw)
 		IpRows.Push("Signs")
-	if (FishScanOn)
+	if (IpHasFs)
 		IpRows.Push("Fish seen", "Last fish", "Last value", "Session value")
-	IpW := IpHasSw ? 320 : (FishScanOn ? 300 : 246)
-	IpVw := IpW - 106
+	IpFixN := IpRows.Length()
+	IpStMax := 15
 	IpY := 36
-	for i, nm in IpRows
+	Loop, % IpFixN + IpStMax
 		{
+		if (A_Index = IpFixN + 1)
+			{
+			Gui, InfoP:Add, Text, x14 y%IpY% w200 h1 HwndhIpDiv
+			SpecialBrushes[hIpDiv] := {brush: hBrushBorder, text: ColorTextBGR}
+			IpY += 9
+			IpStY := IpY
+			}
+		IpLab%A_Index% := (A_Index <= IpFixN) ? IpRows[A_Index] : ""
+		IpTxt%A_Index% := ""
+		IpVw%A_Index% := 0
 		Gui, InfoP:Font, s9 Norm c%ColorMuted%, Segoe UI
-		Gui, InfoP:Add, Text, x14 y%IpY% w86 h18 HwndhIpT, %nm%
-		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorMutedBGR}
+		Gui, InfoP:Add, Text, x14 y%IpY% w104 h18 +0x80 HwndhIpL, % IpLab%A_Index%
+		IpLabH%A_Index% := hIpL
+		SpecialBrushes[hIpL] := {brush: hBrushCard, text: ColorMutedBGR}
 		Gui, InfoP:Font, s9 Norm c%ColorText%, Segoe UI
-		Gui, InfoP:Add, Text, x92 y%IpY% w%IpVw% h18 Right vIpVal%i% HwndhIpT, ---
-		SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
+		Gui, InfoP:Add, Text, x124 y%IpY% w100 h18 +0x4080 HwndhIpV
+		IpValH%A_Index% := hIpV
+		SpecialBrushes[hIpV] := {brush: hBrushCard, text: ColorTextBGR}
 		IpY += 20
 		}
-	IpH := IpY + 8
-	Gui, InfoP:Show, Hide w%IpW% h%IpH%, Veltrix Info
+	IpCurW := 0, IpCurH := 0, IpCurN := -1
+	Gui, InfoP:Show, Hide w246 h120, Veltrix Info
 	DetectHiddenWindows, On
-	WinGetPos, , , IpPw, IpPh, ahk_id %hInfoP%
-	IpRad := Round(28 * ((GuiRoundMul = "") ? 1 : GuiRoundMul))
-	if (IpRad > 1)
-		WinSet, Region, % "0-0 w" . IpPw . " h" . IpPh . " R" . IpRad . "-" . IpRad, ahk_id %hInfoP%
 	WinSet, Transparent, 236, ahk_id %hInfoP%
 	Gui, 1:Default
 	}
 gosub, HomeCompute
-IpNew := [HmV4, HmV1, HmV5, HmV6, HmV7, HmV8]
+IpL := IpRows.Clone()
+IpV := [HmV4, HmV1, HmV5, HmV6, HmV7, HmV8]
 if (IpHasSw)
-	IpNew.Push((SwPanelTxt = "") ? "waiting for signs" : SwPanelTxt)
-if (FishScanOn)
+	IpV.Push((SwPanelTxt = "") ? "waiting for signs" : SwPanelTxt)
+if (IpHasFs)
 	{
-	IpNew.Push(FsCount . "")
-	IpNew.Push((FsLastName = "") ? "---" : FsLastName . "  " . FsLastKg . "kg")
-	IpNew.Push((FsLastName = "") ? "---" : ((FsLastVal < 0) ? "unknown fish" : FsMoney(FsLastVal) . " C$"))
-	IpNew.Push(FsMoney(FsTotal) . " C$")
+	IpV.Push(FsCount . "")
+	IpV.Push((FsLastName = "") ? "---" : FsLastName . "  " . FsLastKg . "kg")
+	IpV.Push((FsLastName = "") ? "---" : ((FsLastVal < 0) ? "unknown fish" : FsMoney(FsLastVal) . " C$"))
+	IpV.Push(FsMoney(FsTotal) . " C$")
 	}
-for i, v in IpNew
+; everything else the macro has to say (runtime, task, action, failsafe, keys ...) - a row each, in this order
+if (IsObject(VxTips))
 	{
-	if (IpLast%i% != v)
+	for IpI, IpId in [1, 2, 7, 8, 9, 10, 11, 12, 13, 15, 14, 16, 4, 5, 6]
 		{
-		IpLast%i% := v
-		GuiControl, InfoP:, IpVal%i%, %v%
+		if (!VxTips.HasKey(IpId) or IpL.Length() >= IpFixN + IpStMax)
+			continue
+		IpS := VxTips[IpId]
+		IpP := InStr(IpS, ": ")
+		IpL.Push(IpP ? SubStr(IpS, 1, IpP - 1) : "")
+		IpV.Push(IpP ? SubStr(IpS, IpP + 2) : IpS)
+		}
+	}
+IpTot := IpL.Length()
+IpRe := (IpTot != IpCurN)
+Loop, %IpTot%
+	{
+	if (!(IpLab%A_Index% == IpL[A_Index]))
+		{
+		IpLab%A_Index% := IpL[A_Index]
+		GuiControl, InfoP:, % IpLabH%A_Index%, % IpL[A_Index]
+		IpRe := true
+		}
+	if (!(IpTxt%A_Index% == IpV[A_Index]))
+		{
+		IpTxt%A_Index% := IpV[A_Index]
+		GuiControl, InfoP:, % IpValH%A_Index%, % IpV[A_Index]
+		IpVw%A_Index% := IpTextW(IpValH%A_Index%, IpV[A_Index])
+		IpRe := true
+		}
+	}
+if (IpRe)
+	{
+	IpNeed := 246
+	Loop, %IpTot%
+		{
+		IpNeedI := (IpLab%A_Index% = "") ? 28 + IpVw%A_Index% : 138 + IpVw%A_Index%
+		if (IpNeedI > IpNeed)
+			IpNeed := IpNeedI
+		}
+	IpNewW := Ceil(IpNeed / 20) * 20
+	if (IpNewW > 620)
+		IpNewW := 620
+	; while fishing it only grows, so it does not jump about with every new line
+	if (MacroRunning and IpNewW < IpCurW)
+		IpNewW := IpCurW
+	Loop, %IpTot%
+		{
+		if (IpLab%A_Index% = "")
+			GuiControl, InfoP:Move, % IpValH%A_Index%, % "x14 w" . (IpNewW - 28)
+		else
+			{
+			IpVx := IpNewW - 14 - IpVw%A_Index%
+			if (IpVx < 124)
+				IpVx := 124
+			GuiControl, InfoP:Move, % IpValH%A_Index%, % "x" . IpVx . " w" . (IpNewW - 14 - IpVx)
+			}
+		}
+	GuiControl, InfoP:Move, %hIpDiv%, % "w" . (IpNewW - 28)
+	IpNewH := (IpTot > IpFixN) ? IpStY + (IpTot - IpFixN) * 20 + 6 : 36 + IpFixN * 20 + 6
+	IpCurN := IpTot
+	if (IpNewW != IpCurW or IpNewH != IpCurH)
+		{
+		IpCurW := IpNewW
+		IpCurH := IpNewH
+		Gui, InfoP:Show, % (IpShown ? "NoActivate" : "Hide") . " w" . IpNewW . " h" . IpNewH
+		DetectHiddenWindows, On
+		WinGetPos, , , IpPw, IpPh, ahk_id %hInfoP%
+		IpRad := Round(28 * ((GuiRoundMul = "") ? 1 : GuiRoundMul))
+		if (IpRad > 1)
+			WinSet, Region, % "0-0 w" . IpPw . " h" . IpPh . " R" . IpRad . "-" . IpRad, ahk_id %hInfoP%
+		IpLastX := ""
 		}
 	}
 InfoMonGet(ImL, ImT, ImW, ImH)
@@ -25832,9 +25858,9 @@ else if (A_GuiControl = "DashScan")
 	FishScanOn := DashOn
 	if (FishScanOn and !FileExist(A_ScriptDir . "\FischFishData.txt"))
 		{
-		ToolTip, Downloading the fish value list ...
+		VxTip(1, "Downloading the fish value list ...")
 		FsLoadData()
-		ToolTip
+		VxTip(1, "")
 		if (!FileExist(A_ScriptDir . "\FischFishData.txt"))
 			MsgBox, 0x40030, Veltrix - Fish Scanner, Could not download the fish value list from Fischipedia right now. It will try again by itself while the macro runs.
 		}
@@ -25927,7 +25953,9 @@ for i, d in GeneralHotDefs
 	val := d[3]
 	Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, %lbl%:
 	GeneralCtrls.Push(hL)
-	Gui, Add, Hotkey, x%IX% y%Y% w%IW% h20 v%var% HwndhC, %val%
+	Gui, Add, Edit, x%IX% y%Y% w%IW% h20 v%var% -Multi HwndhC, %val%
+	VxKeyCtrls[hC] := var
+	VxKeyH[var] := hC
 	GeneralCtrls.Push(hC)
 	ThemedCtrls.Push(hC)
 	Y += RH
@@ -26193,10 +26221,10 @@ Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSmartCast %SmartCastChk% g
 NormalCastCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
 ScnX := CX + 152
-Gui, Add, Edit, x%ScnX% y%Y% w40 h20 vSmartCastN gQueueAutoSave Number Limit2 HwndhC, %SmartCastN%
+Gui, Add, Edit, x%ScnX% y%Y% w56 h20 vSmartCastN gQueueAutoSave Number Limit2 HwndhC, %SmartCastN%
 NormalCastCtrls.Push(hC)
 IconTips[hC] := "How many casts in a row (1-10).`nEach cast holds for the Cast hold time, then it`nwaits Cast hold + 50 ms before the next one."
-ScnX := CX + 198
+ScnX := CX + 214
 Gui, Add, Text, x%ScnX% y%Y% w100 h20 +0x200 HwndhC, in a row
 NormalCastCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -26327,8 +26355,6 @@ BuildShakeSection:
 
 hC := AddPanel(CARDX, 120, CARDW, 88)
 ShakeCtrls.Push(hC)
-hC := AddPanel(CARDX, 218, CARDW, 192)
-ShakeCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y130 w%TXW% h16 HwndhL, MODE
@@ -26350,30 +26376,6 @@ Gui, Add, Edit, x%IX% y%Y% w%IW% h20 vNavigationKey HwndhC, %NavigationKey%
 ShakeCtrls.Push(hC)
 ThemedCtrls.Push(hC)
 
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y228 w%TXW% h16 HwndhL, SEARCH AREA
-ShakeCtrls.Push(hL)
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
-Y := 250
-ShakeAreaDefs := [ ["Navigation failsafe (s)","NavigationShakeFailsafe"]
-                 , ["Navigation spam (ms)","NavigationSpamDelay"]
-                 , ["Area left (%)","ShakeAreaLeftPct"]
-                 , ["Area right (%)","ShakeAreaRightPct"]
-                 , ["Area top (%)","ShakeAreaTopPct"]
-                 , ["Area bottom (%)","ShakeAreaBottomPct"] ]
-for i, d in ShakeAreaDefs
-	{
-	lbl := d[1]
-	var := d[2]
-	Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, %lbl%:
-	ShakeCtrls.Push(hL)
-	EdOpt := TmNumOpt(var)
-	Gui, Add, Edit, x%IX% y%Y% w%IW% h20 v%var% gQueueAutoSave HwndhC %EdOpt%, % %var%
-	ShakeCtrls.Push(hC)
-	ThemedCtrls.Push(hC)
-	Y += RH
-	}
 
 return
 
@@ -27430,10 +27432,10 @@ Loop
 	GUWas := GUNow
 	MouseGetPos, GMx, GMy
 	GTip := (GPts.Length() = 0) ? "Press U on the CENTER of star 1 (far LEFT star)" : "Now press U on the CENTER of star 12 (far RIGHT star)"
-	ToolTip, %GTip%`nThe 10 in between are filled in evenly`nEsc to cancel, % GMx + 26, % GMy + 30, 20
+	VxPickTip(GTip . "`nThe 10 in between are filled in evenly`nEsc to cancel", GMx + 26, GMy + 30)
 	Sleep 20
 	}
-ToolTip, , , , 20
+VxPickTip("")
 CoordMode, Mouse, Client
 CoordMode, ToolTip, Relative
 if (!GCancel)
@@ -27489,10 +27491,10 @@ Loop
 		}
 	MouseGetPos, GMx, GMy
 	PixelGetColor, GHov, %GMx%, %GMy%, RGB
-	ToolTip, % "Press U on the CENTER of a" . ((SwGuessWhat = "lit") ? " LIT (done)" : "n UNLIT (not done)") . " star`nColor under the mouse: " . GHov . "`nEsc to cancel", % GMx + 26, % GMy + 30, 20
+	VxPickTip("Press U on the CENTER of a" . ((SwGuessWhat = "lit") ? " LIT (done)" : "n UNLIT (not done)") . " star`nColor under the mouse: " . GHov . "`nEsc to cancel", GMx + 26, GMy + 30)
 	Sleep 30
 	}
-ToolTip, , , , 20
+VxPickTip("")
 CoordMode, Mouse, Client
 CoordMode, Pixel, Client
 CoordMode, ToolTip, Relative
@@ -28010,10 +28012,10 @@ Loop
 		break
 		}
 	MouseGetPos, KbMx, KbMy
-	ToolTip, %KbPickMsg%, % KbMx + 26, % KbMy + 30, 20
+	VxPickTip(KbPickMsg, KbMx + 26, KbMy + 30)
 	Sleep, % Tm(25)
 	}
-ToolTip, , , , 20
+VxPickTip("")
 CoordMode, Mouse, Client
 CoordMode, ToolTip, Relative
 if (!KbPickCancel)
@@ -28295,9 +28297,9 @@ Loop
 	Gui, KbLine:Show, x%KbShowX% y%KbLy1% w3 h%KbLh% NoActivate
 	KbTipX := KbLx + 18
 	if (KbLock)
-		ToolTip, % "Move the mouse down to the BOTTOM of the bar`nand press U again (the cursor is locked to the line)", %KbTipX%, %KbLy1%, 20
+		VxPickTip("Move the mouse down to the BOTTOM of the bar`nand press U again (the cursor is locked to the line)", KbTipX, KbLy1)
 	else
-		ToolTip, % "Power line: " . KbLh . " px tall`nDrag the line to move it`nDrag its top or bottom end to make it taller / shorter`nU - press on the top of the bar, then U again on the bottom`nArrow keys - nudge it (Shift = 10 px)`nEnter - save     Esc - cancel", %KbTipX%, %KbLy1%, 20
+		VxPickTip("Power line: " . KbLh . " px tall`nDrag the line to move it`nDrag its top or bottom end to make it taller / shorter`nU - press on the top of the bar, then U again on the bottom`nArrow keys - nudge it (Shift = 10 px)`nEnter - save     Esc - cancel", KbTipX, KbLy1)
 	Sleep 15
 	}
 DllCall("ClipCursor", "Ptr", 0)
@@ -28310,7 +28312,7 @@ for i, kn in KbLineKeys
 	}
 PickHeld := {}
 Gui, KbLine:Destroy
-ToolTip, , , , 20
+VxPickTip("")
 CoordMode, Mouse, Client
 CoordMode, ToolTip, Relative
 if (KbLineSave)
@@ -28359,10 +28361,10 @@ Loop
 		}
 	MouseGetPos, KbMx, KbMy
 	PixelGetColor, KbHov, %KbMx%, %KbMy%, RGB
-	ToolTip, Press U over the FILLED part of the power bar (not the text)`nColor under the mouse: %KbHov%`nEsc to cancel, % KbMx + 26, % KbMy + 30, 20
+	VxPickTip("Press U over the FILLED part of the power bar (not the text)`nColor under the mouse: " . KbHov . "`nEsc to cancel", KbMx + 26, KbMy + 30)
 	Sleep 30
 	}
-ToolTip, , , , 20
+VxPickTip("")
 CoordMode, Mouse, Client
 CoordMode, Pixel, Client
 CoordMode, ToolTip, Relative
@@ -28627,6 +28629,86 @@ Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y%PjY% w%TXW% h18 vPogoStatus HwndhC, % PogoStatusText()
 MiscCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+
+; ---- Changelog: opened from here, like the Tools pages
+hC := AddPanel(CARDX, 520, CARDW, 54)
+MiscCtrls.Push(hC)
+Gui, Font, s10 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y537 w240 h20 HwndhC, Changelog
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x642 y533 w86 h28 Center +0x100 +0x200 gChangelogOpen HwndhC, Open
+MiscCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(hC, 86, 28, 7)
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+return
+
+ChangelogOpen:
+TargetSection := "Changelog"
+gosub, ShowSection
+return
+
+ChangelogBack:
+TargetSection := "Misc"
+gosub, ShowSection
+return
+
+; the changelog page: a card per version, a line each - a long version goes on in a second card (the panel
+; leaves out anything taller than 400)
+BuildChangelogSection:
+Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gChangelogBack HwndhC, <  Extra
+ChangelogCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
+ClNotes := VxChangelog()
+ClY := 148
+for ClI, ClV in ClNotes
+	{
+	ClGroups := [[]]
+	ClGh := 22
+	for ClJ, ClLn in ClV[2]
+		{
+		ClH := Ceil((StrLen(ClLn) + 3) / 76) * 16
+		if (ClGh + ClH + 2 > 350)
+			{
+			ClGroups.Push([])
+			ClGh := 0
+			}
+		ClGroups[ClGroups.Length()].Push([ClLn, ClH])
+		ClGh += ClH + 2
+		}
+	for ClG, ClGrp in ClGroups
+		{
+		ClIn := (ClG = 1) ? 22 : 0
+		for ClJ, ClP in ClGrp
+			ClIn += ClP[2] + 2
+		ClCardH := 12 + ClIn + 10
+		hC := AddPanel(CARDX, ClY, CARDW, ClCardH)
+		ChangelogCtrls.Push(hC)
+		ClTy := ClY + 12
+		if (ClG = 1)
+			{
+			Gui, Font, s10 Bold c%ColorText%, Segoe UI
+			Gui, Add, Text, x%CX% y%ClTy% w%TXW% h18 +0x80 HwndhC, % ClV[1]
+			ChangelogCtrls.Push(hC)
+			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+			ClTy += 22
+			}
+		Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+		for ClJ, ClP in ClGrp
+			{
+			ClH := ClP[2]
+			Gui, Add, Text, x%CX% y%ClTy% w%TXW% h%ClH% +0x80 HwndhC, % ClP[1]
+			ChangelogCtrls.Push(hC)
+			SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
+			ClTy += ClH + 2
+			}
+		ClY += ClCardH + 10
+		}
+	}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 return
 
 PogoOnChanged:
@@ -28872,7 +28954,7 @@ LmStep := (LmStep = "" or LmStep < 1 or LmStep >= LmOrd.Length()) ? 1 : LmStep +
 LmM := LmOrd[LmStep]
 LmSecs := LmNums(LmEvery)
 LmS := LmSecs.Length() ? LmSecs[Mod(LmStep - 1, LmSecs.Length()) + 1] : 60
-tooltip, Current Task: Lullaby - switching to mode %LmM%, %TooltipX%, %Tooltip7%, 7
+VxTip(7, "Current Task: Lullaby - switching to mode " . LmM)
 if (LmClickMode(LmPos%LmM%))
 	LmNextT := A_TickCount + LmS * 1000, LmLastM := LmM, ForceReEquip := (RodSlotKey != "")
 else
@@ -29266,8 +29348,6 @@ if (UiOn)
 		TargetSection := "Home"
 	else if (TargetSection = "Shake")
 		TargetSection := "Cast"
-	else if (TargetSection = "Misc")
-		TargetSection := "General"
 	}
 UiMerge := UiOn ? true : false
 if (GuiHwnd)
@@ -29276,7 +29356,7 @@ NeedSection := TargetSection
 gosub, EnsureSection
 if (UiMerge)
 	{
-	NeedSection := (TargetSection = "Home") ? "Minigame" : ((TargetSection = "Cast") ? "Shake" : ((TargetSection = "General") ? "Misc" : ""))
+	NeedSection := (TargetSection = "Home") ? "Minigame" : ((TargetSection = "Cast") ? "Shake" : "")
 	if (NeedSection != "")
 		gosub, EnsureSection
 	}
@@ -29309,13 +29389,15 @@ ShowList(NormalCastCtrls, OnCast and CastMode = "Normal")
 ShowList(PerfectCastCtrls, OnCast and CastMode != "Normal")
 ShowList(ShakeCtrls, TargetSection = "Shake" or (UiMerge and OnCast))
 ShowList(UtilCtrls, OnUtil)
-ShowList(MiscCtrls, TargetSection = "Misc" or (UiMerge and TargetSection = "General"))
+ShowList(MiscCtrls, TargetSection = "Misc")
+ShowList(ChangelogCtrls, TargetSection = "Changelog")
 
 ; ---- Minigame: two faces, Setup and the Color Manager ----
 GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabSetup
 GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabColors
 if (OnSetup)
 	LayoutMinigame()
+ShowList(ProfCtrls, OnSetup)
 for nm, b in MgBlocks
 	{
 	MgOn := (OnSetup and MgVisible.HasKey(nm))
@@ -29433,7 +29515,7 @@ if (DetTesting)
 	GuiControl, 1:, DetTestBtn, ▶  Test detection
 	GuiControl, 1:, DetTestOut, Test stopped.
 	Loop, 20
-		tooltip, , , , %A_Index%
+		VxTip(A_Index, "")
 	return
 	}
 if (MacroRunning)
@@ -29443,7 +29525,7 @@ if (MacroRunning)
 	}
 DetTesting := true
 Loop, 20
-	tooltip, , , , %A_Index%
+	VxTip(A_Index, "")
 GuiControl, 1:, DetTestBtn, ⏹  Stop test
 SetTimer, DetTestTick, 250
 return
@@ -29455,7 +29537,7 @@ if (!DetTesting or TargetSection != "Minigame" or MacroRunning)
 	SetTimer, DetTestTick, Off
 	GuiControl, 1:, DetTestBtn, ▶  Test detection
 	Loop, 20
-		tooltip, , , , %A_Index%
+		VxTip(A_Index, "")
 	return
 	}
 gosub, ResolveRoblox
@@ -29821,113 +29903,6 @@ return
 ;====================================================================================================;
 ;====================================================================================================;
 
-MgCopyCode:
-
-Gui, 1:Submit, NoHide
-MgShareBad := ""
-MgShareOut := "VX1;" . MgShareSig()
-for MgShareI, MgShareF in MgShareFields()
-	{
-	MgShareK := MgShareF[2]
-	MgShareV := %MgShareK%
-	if (InStr(MgShareV, ";"))
-		MgShareBad .= MgShareK . "`n"
-	MgShareOut .= ";" . MgShareV
-	}
-if (MgShareBad != "")
-	{
-	msgbox, 4144, Veltrix, A settings code cannot hold a semicolon, and these fields contain one:`n`n%MgShareBad%`nTake the semicolons out, then copy again.
-	return
-	}
-MgShareOut .= ";" . MgShareHash(MgShareOut)
-clipboard := MgShareOut
-MgCodeCue("✅ Code copied to clipboard")
-settimer, MgShareStatusClear, -4000
-return
-
-;====================================================================================================;
-
-MgCodeBoxChanged:
-GuiControlGet, MgShareIn, 1:, MgCodeBox
-MgCodeBoxLen := StrLen(MgShareIn)
-MgCodeBoxJump := MgCodeBoxLen - MgCodeBoxPrevLen
-MgCodeBoxPrevLen := MgCodeBoxLen
-if (MgCodeBoxLen = 0 or MgCodeBoxJump < 10)
-	return
-gosub, MgApplyCode
-MgCodeBoxPrevLen := 0
-GuiControl, 1:, MgCodeBox,
-return
-
-;====================================================================================================;
-
-MgApplyCode:
-
-MgShareIn := StrReplace(MgShareIn, "`r", "")
-MgShareIn := StrReplace(MgShareIn, "`n", "")
-MgShareIn := StrReplace(MgShareIn, "`t", "")
-MgShareIn := Trim(MgShareIn)
-MgShareFlds := MgShareFields()
-MgShareParts := StrSplit(MgShareIn, ";")
-MgShareErr := ""
-if (MgShareIn = "")
-	MgShareErr := "That box is empty. Copy a settings code first, then paste it into the box."
-else if (MgShareParts.MaxIndex() < 3 or MgShareParts[1] != "VX1")
-	MgShareErr := "That is not a Veltrix settings code. A code starts with VX1 and is one long line of text."
-else if (MgShareParts.MaxIndex() != MgShareFlds.MaxIndex() + 3 or MgShareParts[2] != MgShareSig())
-	MgShareErr := "That code was made by a different version of Veltrix, so it cannot be read safely. Ask for a code from someone on this version."
-else
-	{
-	MgShareChk := MgShareParts[MgShareParts.MaxIndex()]
-	MgShareBody := SubStr(MgShareIn, 1, StrLen(MgShareIn) - StrLen(MgShareChk) - 1)
-	if (MgShareChk != MgShareHash(MgShareBody))
-		MgShareErr := "That code is damaged or was cut short. Copy the whole thing again and make sure nothing is missing."
-	}
-
-if (MgShareErr = "")
-	{
-	MgShareBad := ""
-	for MgShareI, MgShareF in MgShareFlds
-		{
-		MgShareV := MgShareParts[MgShareI + 2]
-		if (!ProfFieldOk(MgShareF[4], MgShareV))
-			MgShareBad .= MgShareF[2] . "`n"
-		MgShareNew%MgShareI% := MgShareV
-		}
-	if (MgShareBad != "")
-		MgShareErr := "That code holds values this version does not accept, so nothing was changed:`n`n" . MgShareBad
-	}
-
-if (MgShareErr != "")
-	{
-	msgbox, 4144, Veltrix, %MgShareErr%
-	return
-	}
-
-for MgShareI, MgShareF in MgShareFlds
-	{
-	MgShareK := MgShareF[2]
-	%MgShareK% := MgShareNew%MgShareI%
-	}
-
-gosub, AstraMigrateColours
-gosub, RefreshGuiFields
-gosub, RefreshControlModes
-gosub, CMRefresh
-gosub, ShowSection
-gosub, SaveSettings
-MgCodeCue("✅ Code applied and saved")
-settimer, MgShareStatusClear, -5000
-return
-
-;====================================================================================================;
-
-MgShareStatusClear:
-MgCodeCue("Paste minigame code here")
-return
-
-;====================================================================================================;
-
 MgRestoreDefaults:
 MgDefAlso := {FishBarColorTolerance: 1, PerfectGreenColor: 1, PerfectWhiteColor: 1}
 for i, f in ProfileFields
@@ -30020,24 +29995,13 @@ for i, f in ProfileFields
 	IniWrite, %val%, %DstFile%, %sec%, %key%
 	}
 
-HotkeyState := HotkeysArmed ? "On" : "Off"
-if (StartStopKeyCtrl != StartStopKey)
+; a key typed into a key box (classic window) is checked and armed here
+for VxKv, VxKh in VxKeyH
 	{
-	Hotkey, % "$" . StartStopKey, , Off
-	StartStopKey := StartStopKeyCtrl
-	Hotkey, % "$" . StartStopKey, HotkeyToggle, %HotkeyState%
-	}
-if (ReloadKeyCtrl != ReloadKey)
-	{
-	Hotkey, % "$" . ReloadKey, , Off
-	ReloadKey := ReloadKeyCtrl
-	Hotkey, % "$" . ReloadKey, HotkeyReload, %HotkeyState%
-	}
-if (ExitKeyCtrl != ExitKey)
-	{
-	Hotkey, % "$" . ExitKey, , Off
-	ExitKey := ExitKeyCtrl
-	Hotkey, % "$" . ExitKey, HotkeyExit, %HotkeyState%
+	GuiControlGet, VxKt, 1:, %VxKh%
+	VxKt := Trim(VxKt)
+	if (VxKt != "")
+		VxSetKey(VxKh, VxKt)
 	}
 IniWrite, %StartStopKey%, %SettingsFile%, Hotkeys, StartStop
 IniWrite, %ReloadKey%, %SettingsFile%, Hotkeys, Reload
@@ -30961,6 +30925,189 @@ return
 
 ;@@V1-PHASE1
 ;@@V1-PHASE2
+;---- What the macro has to say goes to the info panel (no tooltips on screen) ---------------------------
+
+; one row of the info panel: n is its slot (1 download, 2 runtime, 4-6 keys, 7 task, 8 action, 10 failsafe,
+; 13 rod specials, 14 navigation key, 16 shake mode ...), "" takes it away
+VxTip(n, t := "") {
+	global VxTips
+	if (!IsObject(VxTips))
+		VxTips := {}
+	if (t = "")
+		{
+		if (VxTips.HasKey(n))
+			VxTips.Delete(n)
+		; 3 and 17-20 are still real tooltips (window hints, color pickers)
+		if (n = 3 or n >= 17)
+			ToolTip, , , , %n%
+		return
+		}
+	VxTips[n] := t
+}
+
+; a hotkey as people say it: ^+F4 -> Ctrl + Shift + F4, XButton1 -> Mouse back
+VxKeyName(k) {
+	pre := ""
+	while (StrLen(k) > 1 and InStr("^!+#", SubStr(k, 1, 1)))
+		{
+		c := SubStr(k, 1, 1)
+		pre .= (c = "^") ? "Ctrl + " : ((c = "!") ? "Alt + " : ((c = "+") ? "Shift + " : "Win + "))
+		k := SubStr(k, 2)
+		}
+	n := {XButton1: "Mouse back", XButton2: "Mouse forward", MButton: "Middle mouse", RButton: "Right mouse", WheelUp: "Wheel up", WheelDown: "Wheel down"}[k]
+	if (n = "")
+		n := (StrLen(k) = 1) ? Format("{:U}", k) : k
+	return pre . n
+}
+
+; a new Start/Stop, Reload or Exit key (h = its key box): checked, armed like the old one, saved
+VxSetKey(h, k) {
+	global
+	local var, cur, other, lbl, st, iniKey
+	var := VxKeyCtrls[h]
+	if (var = "" or k = "")
+		return false
+	cur := (var = "StartStopKeyCtrl") ? StartStopKey : ((var = "ReloadKeyCtrl") ? ReloadKey : ExitKey)
+	if (k = cur)
+		{
+		GuiControl, 1:, %h%, %cur%
+		return true
+		}
+	other := ""
+	if (var != "StartStopKeyCtrl" and k = StartStopKey)
+		other := "Start/Stop"
+	else if (var != "ReloadKeyCtrl" and k = ReloadKey)
+		other := "Reload"
+	else if (var != "ExitKeyCtrl" and k = ExitKey)
+		other := "Exit"
+	else if (k = "F9")
+		other := "picking colors (F9)"
+	else if (PogoOn and k = PogoHotkey)
+		other := "the Pogo Jump Tech"
+	else if (k = "LButton")
+		other := "clicking"
+	if (other != "")
+		{
+		MsgBox, 4144, Veltrix, % VxKeyName(k) . " is already used for " . other . ". Pick another key."
+		GuiControl, 1:, %h%, %cur%
+		return false
+		}
+	lbl := (var = "StartStopKeyCtrl") ? "HotkeyToggle" : ((var = "ReloadKeyCtrl") ? "HotkeyReload" : "HotkeyExit")
+	st := (var = "StartStopKeyCtrl") ? (HotkeysArmed ? "On" : "Off") : (RunKeysArmed ? "On" : "Off")
+	Hotkey, % "$" . k, %lbl%, UseErrorLevel %st%
+	if (ErrorLevel)
+		{
+		MsgBox, 4144, Veltrix, % """" . k . """ cannot be used as a hotkey. Pick another key."
+		GuiControl, 1:, %h%, %cur%
+		return false
+		}
+	Hotkey, % "$" . cur, , UseErrorLevel Off
+	if (var = "StartStopKeyCtrl")
+		StartStopKey := k, iniKey := "StartStop"
+	else if (var = "ReloadKeyCtrl")
+		ReloadKey := k, iniKey := "Reload"
+	else
+		ExitKey := k, iniKey := "Exit"
+	%var% := k
+	GuiControl, 1:, %h%, %k%
+	IniWrite, %k%, %SettingsFile%, Hotkeys, %iniKey%
+	gosub, RefreshHints
+	return true
+}
+
+; a key box was clicked in the panel: the next key or mouse button becomes that key (Esc cancels)
+VxKeyCapture:
+if (VxCapBusy or PogoCapturing or !VxCapNext)
+	return
+VxCapBusy := true
+VxCapH := VxCapNext
+VxCapNext := 0
+VxCapK := PogoCapture()
+if (VxCapK != "")
+	VxSetKey(VxCapH, VxCapK)
+GuiControlGet, VxCapV, 1:, %VxCapH%
+UiSend(7, "{""h"":" . VxCapH . ",""v"":" . UiJ(VxCapV) . "}")
+VxCapBusy := false
+return
+
+; the color-pick hints follow the mouse: a small box in Veltrix's colors at x, y (screen pixels); "" hides it
+VxPickTip(t, x := 0, y := 0) {
+	global ColorCard, ColorText, ColorTextBGR, hBrushCard, SpecialBrushes, VxPkW, VxPkT
+	static last := "", lastT := "", tw := 0, th := 0, pad := 0
+	if (t = "")
+		{
+		if (VxPkW)
+			Gui, VxPick:Hide
+		last := ""
+		return
+		}
+	if (!VxPkW)
+		{
+		Gui, VxPick:New, +AlwaysOnTop -Caption +ToolWindow +E0x20 -DPIScale +HwndVxPkW
+		Gui, VxPick:Color, %ColorCard%
+		Gui, VxPick:Margin, 0, 0
+		Gui, VxPick:Font, s9 Norm c%ColorText%, Segoe UI
+		Gui, VxPick:Add, Text, x0 y0 w10 h10 +0x80 HwndVxPkT
+		SpecialBrushes[VxPkT] := {brush: hBrushCard, text: ColorTextBGR}
+		Gui, 1:Default
+		pad := Round(10 * A_ScreenDPI / 96)
+		}
+	if (!(t == lastT))
+		{
+		lastT := t
+		GuiControl, VxPick:, %VxPkT%, %t%
+		hdc := DllCall("GetDC", "Ptr", VxPkT, "Ptr")
+		hf := DllCall("SendMessage", "Ptr", VxPkT, "UInt", 0x31, "Ptr", 0, "Ptr", 0, "Ptr")
+		old := DllCall("SelectObject", "Ptr", hdc, "Ptr", hf, "Ptr")
+		VarSetCapacity(rc, 16, 0)
+		DllCall("DrawText", "Ptr", hdc, "Str", t, "Int", -1, "Ptr", &rc, "UInt", 0xC00)
+		DllCall("SelectObject", "Ptr", hdc, "Ptr", old)
+		DllCall("ReleaseDC", "Ptr", VxPkT, "Ptr", hdc)
+		tw := NumGet(rc, 8, "Int") + 2
+		th := NumGet(rc, 12, "Int") + 2
+		GuiControl, VxPick:Move, %VxPkT%, % "x" . pad . " y" . pad . " w" . tw . " h" . th
+		last := ""
+		}
+	key := x . "," . y
+	if (key == last)
+		return
+	last := key
+	gw := tw + 2 * pad
+	gh := th + 2 * pad
+	Gui, VxPick:Show, % "NoActivate x" . Round(x) . " y" . Round(y) . " w" . gw . " h" . gh
+	r := Round(16 * A_ScreenDPI / 96)
+	WinSet, Region, % "0-0 w" . gw . " h" . gh . " R" . r . "-" . r, ahk_id %VxPkW%
+}
+
+; how wide a text is in a control's font, in the window's own units
+IpTextW(h, s) {
+	if (s = "")
+		return 0
+	hdc := DllCall("GetDC", "Ptr", h, "Ptr")
+	hf := DllCall("SendMessage", "Ptr", h, "UInt", 0x31, "Ptr", 0, "Ptr", 0, "Ptr")
+	old := DllCall("SelectObject", "Ptr", hdc, "Ptr", hf, "Ptr")
+	VarSetCapacity(sz, 8, 0)
+	DllCall("GetTextExtentPoint32", "Ptr", hdc, "Str", s, "Int", StrLen(s), "Ptr", &sz)
+	DllCall("SelectObject", "Ptr", hdc, "Ptr", old)
+	DllCall("ReleaseDC", "Ptr", h, "Ptr", hdc)
+	return Ceil(NumGet(sz, 0, "Int") * 96 / A_ScreenDPI) + 3
+}
+
+; a control of the profile card, with its place in the card (design coordinates, card top = 120)
+ProfPut(h, x, y) {
+	global ProfCtrls, ProfPosX, ProfPosY
+	ProfCtrls.Push(h)
+	ProfPosX.Push(x)
+	ProfPosY.Push(y - 120)
+}
+
+; the changelog page (Extra > Changelog), newest first: [version, [notes]]
+VxChangelog() {
+	c := []
+	c.Push(["v1.0", ["Released"]])
+	return c
+}
+
 ;@@VELTRIX-PANEL-BEGIN
 ;====================================================================================================;
 ; New look: the Veltrix window (C#/WPF, built on this PC by Windows' own C# compiler) draws the window.
@@ -31091,6 +31238,25 @@ while (UiQueue.Length())
 			UiP := StrSplit(SubStr(UiS, 5), "`t", , 2)
 			UiSet(UiP[1] + 0, UiP[2])
 			}
+		else if (SubStr(UiS, 1, 7) = "keycap ")
+			{
+			VxCapNext := SubStr(UiS, 8) + 0
+			SetTimer, VxKeyCapture, -1
+			}
+		else if (SubStr(UiS, 1, 5) = "ipos ")
+			{
+			; the info panel's place, dragged in the panel: it moves live
+			UiP := StrSplit(SubStr(UiS, 6), " ")
+			UiFx := UiP[1] + 0, UiFy := UiP[2] + 0
+			InfoPanelX := Round((UiFx < 0) ? 0 : ((UiFx > 1) ? 1 : UiFx), 4)
+			InfoPanelY := Round((UiFy < 0) ? 0 : ((UiFy > 1) ? 1 : UiFy), 4)
+			if (hIpBox)
+				SetBase(hIpBox, IpMonBX + Round(InfoPanelX * (IpMonW - IpBoxW)), IpMonBY + Round(InfoPanelY * (IpMonH - IpBoxH)))
+			VxIpDragT := A_TickCount
+			gosub, InfoPanelTick
+			if (UiP[3] = "end")
+				gosub, QueueAutoSave
+			}
 		}
 	else if (UiC = 13)
 		gosub, GuiClose
@@ -31160,6 +31326,7 @@ UiInitJson() {
 	; tabs: Reel / Cast / Tools / Setup, with icons of Windows' icon font (the panel draws them with it)
 	nav := "{""k"":""Home"",""icon"":" . UiJ(Chr(0xE7FC)) . ",""label"":""Reel""},{""k"":""Cast"",""icon"":" . UiJ(Chr(0xE724)) . ",""label"":""Cast""}"
 		. ",{""k"":""Utilities"",""icon"":" . UiJ(Chr(0xE90F)) . ",""label"":""Tools""},{""k"":""General"",""icon"":" . UiJ(Chr(0xE713)) . ",""label"":""Setup""}"
+		. ",{""k"":""Misc"",""icon"":" . UiJ(Chr(0xE712)) . ",""label"":""Extra""}"
 	return "{""title"":" . UiJ("Veltrix") . ",""ver"":" . UiJ("v" . VxVersion) . ",""sidew"":" . SIDEW . ",""toph"":" . TOPH
 		. ",""theme"":" . t . ",""nav"":[" . nav . "],""extra"":[]}"
 }
@@ -31197,7 +31364,9 @@ UiPos(h, ByRef x, ByRef y, ByRef w, ByRef ht) {
 }
 
 UiKindOf(h) {
-	global SpecialBrushes, hBrushCard, IconTips
+	global SpecialBrushes, hBrushCard, IconTips, VxKeyCtrls
+	if (IsObject(VxKeyCtrls) and VxKeyCtrls.HasKey(h))
+		return "keycap"
 	WinGetClass, cls, ahk_id %h%
 	st := DllCall("GetWindowLong", "Ptr", h, "Int", -16)
 	if (cls = "Static")
@@ -31280,7 +31449,7 @@ UiSwatch(h) {
 }
 
 UiItemJson(h, k) {
-	global UiBrushHex, SpecialBrushes, IconTips, TOPH, hBrushCard, hBrushBG, hBrushPanel, UiGrp
+	global UiBrushHex, SpecialBrushes, IconTips, TOPH, hBrushCard, hBrushBG, hBrushPanel, UiGrp, hIpBox, hIpMon
 	UiPos(h, x, y, w, ht)
 	j := "{""h"":" . h . ",""k"":" . UiJ(k) . ",""x"":" . x . ",""y"":" . y . ",""w"":" . w . ",""ht"":" . ht . ",""g"":" . (UiGrp.HasKey(h) ? UiGrp[h] : 0)
 	if (y < TOPH)
@@ -31289,7 +31458,8 @@ UiItemJson(h, k) {
 	if (k = "card" or k = "line")
 		return j . "}"
 	if (k = "box")
-		return j . ",""bgc"":" . UiJ(UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : "") . "}"
+		return j . ",""bgc"":" . UiJ(UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : "")
+			. ((hIpBox and h = hIpBox and hIpMon) ? ",""drag"":""" . hIpMon . """" : "") . "}"
 	; font: size in px and bold
 	hf := DllCall("SendMessage", "Ptr", h, "UInt", 0x31, "Ptr", 0, "Ptr", 0, "Ptr")
 	if (hf)
@@ -31396,7 +31566,7 @@ UiStyle(h, v) {
 }
 
 UiNavTitle(sec) {
-	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
+	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
 		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry"}
 	return t.HasKey(sec) ? t[sec] : sec
 }
@@ -31493,8 +31663,10 @@ return
 UiNavSec(sec) {
 	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess")
 		return "Utilities"
-	if (sec = "Advanced" or sec = "Misc")
+	if (sec = "Advanced")
 		return "General"
+	if (sec = "Changelog")
+		return "Misc"
 	if (sec = "Minigame")
 		return "Home"
 	if (sec = "Shake")
@@ -31504,10 +31676,10 @@ UiNavSec(sec) {
 
 ; which part of a merged page each control belongs to: the panel keeps each part together, in order
 UiGroups() {
-	global UiGrp, HomeCtrls, GeneralCtrls, CastCtrls, NormalCastCtrls, PerfectCastCtrls, MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls, CreditsCtrls
+	global UiGrp, HomeCtrls, GeneralCtrls, CastCtrls, NormalCastCtrls, PerfectCastCtrls, MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls, CreditsCtrls, ProfCtrls
 	global MiniTabSetupH, MiniTabColorsH
 	UiGrp := {}
-	for g, lists in [[MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls], [CreditsCtrls]]
+	for g, lists in [[ProfCtrls, MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls], [CreditsCtrls]]
 		{
 		for i, lst in lists
 			{
@@ -31698,9 +31870,6 @@ public class PanelWindow : Window {
 <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='RadioButton'><StackPanel Orientation='Horizontal' Background='Transparent'>
 <Border x:Name='o' Width='16' Height='16' CornerRadius='8' BorderBrush='MUTED' BorderThickness='2' VerticalAlignment='Center'><Ellipse x:Name='d' Width='6' Height='6' Fill='ACCENT' Visibility='Collapsed'/></Border>
 <ContentPresenter Margin='8,0,0,0' VerticalAlignment='Center'/></StackPanel><ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'>
-)
-ui2 =
-(% Join`n
 <Setter TargetName='d' Property='Visibility' Value='Visible'/><Setter TargetName='o' Property='BorderBrush' Value='ACCENT'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
 <Style x:Key='ItemS' TargetType='ComboBoxItem'><Setter Property='Foreground' Value='TEXT'/><Setter Property='Padding' Value='10,6'/><Setter Property='Template'><Setter.Value>
 <ControlTemplate TargetType='ComboBoxItem'><Border x:Name='b' Background='Transparent' CornerRadius='6' Padding='{TemplateBinding Padding}' Margin='4,1'><ContentPresenter/></Border>
@@ -31711,6 +31880,9 @@ ui2 =
 <ToggleButton Focusable='False' ClickMode='Press' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
 <ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border x:Name='b' Background='INPUT' BorderBrush='BORDER' BorderThickness='1' CornerRadius='8'>
 <Path HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0' Data='M0,0 L4,4 L8,0' Stroke='MUTED' StrokeThickness='1.6'/></Border>
+)
+ui2 =
+(% Join`n
 <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='MUTED'/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template></ToggleButton>
 <ContentPresenter IsHitTestVisible='False' Margin='10,0,26,0' VerticalAlignment='Center' Content='{TemplateBinding SelectionBoxItem}'/>
 <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Fade'>
@@ -31719,6 +31891,7 @@ ui2 =
 <Style TargetType='ScrollBar'><Setter Property='Width' Value='8'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ScrollBar'>
 <Track x:Name='PART_Track' IsDirectionReversed='True'><Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType='Thumb'>
 <Border Background='BORDER' CornerRadius='4' Margin='1,2'/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb></Track></ControlTemplate></Setter.Value></Setter></Style>
+<Style TargetType='ResizeGrip'><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ResizeGrip'><Border Background='Transparent'/></ControlTemplate></Setter.Value></Setter></Style>
 </ResourceDictionary>";
         x = x.Replace("INPUT", C("input")).Replace("TEXT", C("text")).Replace("BORDER", C("border")).Replace("ACCENT", C("accent"))
              .Replace("MUTED", C("muted")).Replace("HOVER", C("hover"));
@@ -31802,9 +31975,6 @@ ui2 =
 
     Button WinButton(string t, bool red, Action a) {
         var b = new Button { Width = 30, Height = 30, Margin = new Thickness(4, 0, 0, 0), Cursor = Cursors.Hand, Focusable = false };
-)
-ui3 =
-(% Join`n
         b.Template = BtnTemplate(Colors.Transparent, red ? col["red"] : col["hover"], 8);
         b.Content = new TextBlock { Text = t, Foreground = B("muted"), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         b.Click += (s, e) => a();
@@ -31863,11 +32033,15 @@ ui3 =
         else if (code == 4) { if (S(d, "show") == "1") { Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; } else Hide(); }
         else if (code == 5) { Activate(); }
         else if (code == 6) Stats(d);
+        else if (code == 7) KeyDone(d);
     }
 
     void Init(Dictionary<string, object> d) {
         if (d.ContainsKey("theme")) {
             SetTheme(d["theme"] as Dictionary<string, object>);
+)
+ui3 =
+(% Join`n
             var keep = lastPage;
             Build();
             lastPage = keep;
@@ -31966,9 +32140,6 @@ ui3 =
             if (home == null) foreach (var b in cards) if (b.g == g && b.y >= N(it, "y") && (home == null || b.y < home.y)) home = b;
             if (home == null) foreach (var b in cards) if (b.g == g && (home == null || b.y > home.y)) home = b;
             if (home == null) {
-)
-ui4 =
-(% Join`n
                 home = new Block { g = g, x = N(it, "x"), y = N(it, "y"), w = Math.Max(N(it, "w"), 200), h = N(it, "ht") };
                 cards.Add(home);
             }
@@ -32057,6 +32228,9 @@ ui4 =
         var sp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = ha, VerticalAlignment = VerticalAlignment.Center };
         var it = new TextBlock { Text = ic, FontFamily = IconFont, FontSize = fs + 1, Foreground = new SolidColorBrush(fc), VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 1, rest == "" ? 0 : 8, 0), Visibility = ic == "" ? Visibility.Collapsed : Visibility.Visible };
+)
+ui4 =
+(% Join`n
         var tt = new TextBlock { Text = rest, Foreground = new SolidColorBrush(fc), FontSize = fs, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         sp.Children.Add(it);
@@ -32123,9 +32297,6 @@ ui4 =
             }
             case "help": {
                 var g = new Grid { Width = 18, Height = 18, Cursor = Cursors.Help, VerticalAlignment = VerticalAlignment.Center };
-)
-ui5 =
-(% Join`n
                 g.Children.Add(new Ellipse { Fill = new SolidColorBrush(Mix(col["card"], col["accent"], 0.18)) });
                 g.Children.Add(new TextBlock { Text = "?", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = B("accent"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
                 var wrap = new Grid { Width = w, Height = h, Background = Brushes.Transparent };
@@ -32196,7 +32367,22 @@ ui5 =
                 break;
             }
             case "box": {
-                el = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(Math.Min(8, Math.Min(w, h) / 2)), Background = new SolidColorBrush(Hex(S(it, "bgc"), col["border"])) };
+                var bx = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(Math.Min(8, Math.Min(w, h) / 2)), Background = new SolidColorBrush(Hex(S(it, "bgc"), col["border"])) };
+                if (S(it, "drag") != "") DragBox(bx, it, (long)N(it, "drag"));
+                el = bx;
+                break;
+            }
+            case "keycap": {
+                var kb = new Button { Width = w, Height = Math.Max(h, 24), Cursor = Cursors.Hand, Focusable = false };
+                kb.Template = BtnTemplate(col["input"], Mix(col["input"], col["text"], 0.08), 8);
+                var kt = new TextBlock { Text = KeyNice(S(it, "v")), FontSize = fs, FontWeight = FontWeights.SemiBold, Foreground = B("text"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+                kb.Content = kt;
+                r.text = kt;
+                r.last = S(it, "v");
+                long kh = r.h;
+                kb.Click += (s, e) => { Keyboard.ClearFocus(); kt.Text = "Press a key or mouse button..."; kt.Foreground = B("accent"); Send(12, "keycap " + kh); };
+                el = kb;
                 break;
             }
             case "swatch": {
@@ -32221,6 +32407,9 @@ ui5 =
         if (S(it, "st") == "seg") {
             Color sbg = sel ? acc : Mix(card, text, 0.06);
             b.Template = BtnTemplate(sbg, sel ? acc : Mix(card, text, 0.12), Math.Min(10, b.Height / 2));
+)
+ui5 =
+(% Join`n
             b.Content = new TextBlock { Text = Amp(S(it, "tx")), FontSize = fs, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(sel ? col["bg"] : muted),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             return;
@@ -32248,6 +32437,77 @@ ui5 =
         b.Content = g;
     }
 
+    // a key box shows its key the way people say it; a click lets the macro catch the next key (it answers with 7)
+    static string KeyNice(string k) {
+        if (string.IsNullOrEmpty(k)) return "Not set";
+        var parts = new List<string>();
+        int i = 0;
+        while (i < k.Length - 1 && "^!+#".IndexOf(k[i]) >= 0) {
+            char c = k[i];
+            parts.Add(c == '^' ? "Ctrl" : c == '!' ? "Alt" : c == '+' ? "Shift" : "Win");
+            i++;
+        }
+        string b = k.Substring(i), lo = b.ToLowerInvariant();
+        parts.Add(lo == "xbutton1" ? "Mouse back" : lo == "xbutton2" ? "Mouse forward" : lo == "mbutton" ? "Middle mouse" : lo == "rbutton" ? "Right mouse"
+            : lo == "wheelup" ? "Wheel up" : lo == "wheeldown" ? "Wheel down" : b.Length == 1 ? b.ToUpperInvariant() : b);
+        return string.Join(" + ", parts);
+    }
+
+    void KeyDone(Dictionary<string, object> d) {
+        Item r;
+        if (!items.TryGetValue((long)N(d, "h"), out r) || r.kind != "keycap" || r.text == null) return;
+        if (d.ContainsKey("v")) r.last = S(d, "v");
+        r.text.Text = KeyNice(r.last);
+        r.text.Foreground = B("text");
+    }
+
+    // the info panel's place: the bright box is dragged inside the screen shape and the macro moves the panel live
+    void DragBox(Border bx, Dictionary<string, object> it, long monH) {
+        bool down = false;
+        Point p0 = new Point();
+        double l0 = 0, t0 = 0, fx = 0, fy = 0;
+        DateTime sent = DateTime.MinValue;
+        Func<bool> calc = () => {
+            Item mi;
+            if (!items.TryGetValue(monH, out mi)) return false;
+            double ml = Canvas.GetLeft(mi.el), mt = Canvas.GetTop(mi.el), mw = mi.el.Width, mh = mi.el.Height;
+            double bl = Canvas.GetLeft(bx), bt = Canvas.GetTop(bx);
+            fx = mw > bx.Width ? Math.Max(0, Math.Min(1, (bl - ml) / (mw - bx.Width))) : 0;
+            fy = mh > bx.Height ? Math.Max(0, Math.Min(1, (bt - mt) / (mh - bx.Height))) : 0;
+            return true;
+        };
+        bx.Cursor = Cursors.SizeAll;
+        bx.MouseLeftButtonDown += (s, e) => {
+            var cv = bx.Parent as Canvas;
+            if (cv == null) return;
+            down = true;
+            p0 = e.GetPosition(cv);
+            l0 = Canvas.GetLeft(bx); t0 = Canvas.GetTop(bx);
+            bx.CaptureMouse();
+            e.Handled = true;
+        };
+        bx.MouseMove += (s, e) => {
+            var cv = bx.Parent as Canvas;
+            Item mi;
+            if (!down || cv == null || !items.TryGetValue(monH, out mi)) return;
+            var p = e.GetPosition(cv);
+            double ml = Canvas.GetLeft(mi.el), mt = Canvas.GetTop(mi.el);
+            Canvas.SetLeft(bx, Math.Max(ml, Math.Min(ml + mi.el.Width - bx.Width, l0 + p.X - p0.X)));
+            Canvas.SetTop(bx, Math.Max(mt, Math.Min(mt + mi.el.Height - bx.Height, t0 + p.Y - p0.Y)));
+            if (calc() && (DateTime.Now - sent).TotalMilliseconds >= 40) { sent = DateTime.Now; Send(12, "ipos " + Num(fx) + " " + Num(fy)); }
+        };
+        bx.MouseLeftButtonUp += (s, e) => {
+            if (!down) return;
+            down = false;
+            bx.ReleaseMouseCapture();
+            it["x"] = Num(N(it, "x") + Canvas.GetLeft(bx) - l0);
+            it["y"] = Num(N(it, "y") + Canvas.GetTop(bx) - t0);
+            if (calc()) Send(12, "ipos " + Num(fx) + " " + Num(fy) + " end");
+        };
+    }
+
+    static string Num(double v) { return v.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture); }
+
     void Update(Dictionary<string, object> d) {
         var list = d.ContainsKey("items") ? d["items"] as ArrayList : null;
         if (list == null) return;
@@ -32265,11 +32525,9 @@ ui5 =
                 if (u.ContainsKey("tx")) SetText(r, S(u, "tx"));
                 if (u.ContainsKey("fc") && r.text != null) r.text.Foreground = new SolidColorBrush(Hex(S(u, "fc"), col["text"]));
                 if (u.ContainsKey("dis")) r.el.IsEnabled = S(u, "dis") != "1";
-)
-ui6 =
-(% Join`n
                 if (!u.ContainsKey("v")) continue;
                 string v = S(u, "v");
+                if (r.kind == "keycap") { r.last = v; if (r.text != null) { r.text.Text = KeyNice(v); r.text.Foreground = B("text"); } continue; }
                 if (r.el is ToggleButton) ((ToggleButton)r.el).IsChecked = v == "1";
                 else if (r.el is TextBox) { var t = (TextBox)r.el; if (!t.IsKeyboardFocused && t.Text != v) { t.Text = v; r.last = v; } }
                 else if (r.el is ComboBox) { var c = (ComboBox)r.el; if (u.ContainsKey("o")) { c.Items.Clear(); foreach (var o in (ArrayList)u["o"]) c.Items.Add(Convert.ToString(o)); } c.SelectedItem = v; }
@@ -32280,7 +32538,7 @@ ui6 =
 }
 
 )
-	return ui1 . "`n" . ui2 . "`n" . ui3 . "`n" . ui4 . "`n" . ui5 . "`n" . ui6
+	return ui1 . "`n" . ui2 . "`n" . ui3 . "`n" . ui4 . "`n" . ui5
 }
 ;@@VELTRIX-PANEL-END
 
