@@ -23,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 63
-; for copies from before the rename (their updater looks for these): DFModBuild := 63
+VxBuild := 64
+; for copies from before the rename (their updater looks for these): DFModBuild := 64
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -26159,7 +26159,7 @@ return
 ; the credit line (one small line under Setup)
 BuildCreditsSection:
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y840 w%TXW% h16 HwndhC, hai :3
+Gui, Add, Text, x%CX% y840 w%TXW% h16 HwndhC,
 CreditsCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
