@@ -23,8 +23,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 65
-; for copies from before the rename (their updater looks for these): DFModBuild := 65
+VxBuild := 66
+; for copies from before the rename (their updater looks for these): DFModBuild := 66
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -31157,9 +31157,23 @@ VxClCards(lst, y, title, lines, openIdx) {
 UiBoot:
 if (UseNewLook and !UiStart())
 	{
-	UseNewLook := false
-	UiOldNormal()
-	MsgBox, 4144, Veltrix, The Veltrix window could not be built on this PC (it needs the .NET Framework 4 that comes with Windows), so the classic window is used.
+	MsgBox, 4112, Veltrix, The Veltrix window could not be built on this PC. It needs the .NET Framework 4 that comes with Windows.
+	ExitApp
+	}
+return
+
+; the panel went away without being closed (it crashed or was ended): it is started again - the classic window
+; never comes back. More than 3 times inside a minute means something is wrong, so Veltrix closes.
+UiRelaunch:
+if (UiOn)
+	return
+if (UiRelaunchT = "" or A_TickCount - UiRelaunchT >= 60000)
+	UiRelaunchN := 0, UiRelaunchT := A_TickCount
+UiRelaunchN += 1
+if (UiRelaunchN > 3 or !UiStart())
+	{
+	MsgBox, 4112, Veltrix, The Veltrix window keeps closing by itself, so Veltrix stops here. Start it again.
+	gosub, GuiClose
 	}
 return
 
@@ -31211,31 +31225,6 @@ UiBuild(src, exe) {
 	RunWait, % """" . fw . "\csc.exe"" /nologo /target:winexe /optimize+ /out:""" . exe . """ " . refs . " """ . cs . """", %A_Temp%, Hide UseErrorLevel
 	FileDelete, %cs%
 	return FileExist(exe) ? true : false
-}
-
-UiStop() {
-	global UiOn, UiHwnd, UiPid, GuiHwnd
-	SetTimer, UiSync, Off
-	UiOn := false
-	if (UiPid)
-		Process, Close, %UiPid%
-	UiHwnd := 0, UiPid := 0
-	UiOldNormal()
-	SetTimer, UiReShow, -10
-}
-
-; the old window back to normal (seen and clickable)
-UiOldNormal() {
-	global GuiHwnd
-	if (!GuiHwnd)
-		return
-	WinSet, Transparent, Off, ahk_id %GuiHwnd%
-	WinSet, ExStyle, -0x20, ahk_id %GuiHwnd%
-	Gui, 1:-ToolWindow
-	if (DllCall("IsWindowVisible", "Ptr", GuiHwnd))
-		Gui, 1:Show
-	; the pages split again in the classic window
-	SetTimer, UiReShow, -10
 }
 
 UiCopyData(wParam, lParam, msg, hwnd) {
@@ -31300,10 +31289,9 @@ while (UiQueue.Length())
 		gosub, GuiClose
 	else if (UiC = 14 and UiOn)
 		{
-		; the panel was closed some other way: the classic window comes back
-		UiOn := false, UiHwnd := 0, UiPid := 0
-		SetTimer, UiSync, Off
-		UiOldNormal()
+		; the panel was closed some other way (Alt+F4, the taskbar): Veltrix closes with it
+		UiOn := false
+		gosub, GuiClose
 		}
 	}
 return
@@ -31619,7 +31607,7 @@ if (UiPid)
 		{
 		UiOn := false, UiHwnd := 0, UiPid := 0
 		SetTimer, UiSync, Off
-		UiOldNormal()
+		SetTimer, UiRelaunch, -300
 		return
 		}
 	}
@@ -31778,6 +31766,7 @@ public static class Program {
         long h = 0;
         if (args.Length < 1 || !long.TryParse(args[0], out h)) return;
         var app = new Application();
+        app.DispatcherUnhandledException += (s, e) => { e.Handled = true; };
         app.ShutdownMode = ShutdownMode.OnMainWindowClose;
         app.Run(new PanelWindow(new IntPtr(h)));
     }
