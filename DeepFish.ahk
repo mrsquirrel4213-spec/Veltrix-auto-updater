@@ -36,7 +36,7 @@
 #SingleInstance Force
 #MaxThreadsPerHotkey 2
 
-DFBetaVersion := "1.1.7"
+VxBaseVersion := "1.1.7"
 FsExtraCount := 0
 KbPostponeN := 0
 KbUiClear := true
@@ -58,12 +58,13 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-DFModBuild := 59
-DFVersion := DFVerName(DFModBuild)
-DFUpdateRepo := "mrsquirrel4213-spec/auto-updater-for-my-version-of-deepfish"
-DFInstallForm := "https://docs.google.com/forms/d/e/1FAIpQLSefWgHfYjr1KmIf7nr1eu7a5Am1a6pmvuSP6w6cnVWeprPIZQ/formResponse|entry.120608623"
-DFInstallHook := "https://discord.com/api/webhooks/1559177033320235070/lwApqkQylZKb41cWYMwHoMeeWyLuaFe8IrWdwwCabKRh3q8HUD3ya1uCibvO5lKEKSnI"
-DFKeySalt := "89a8ae69945953e706be487f26863e94"
+VxBuild := 60
+; for copies from before the rename (their updater looks for these): DFModBuild := 60
+; DFBetaVersion :=
+VxVersion := VxVerName(VxBuild)
+; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
+UseNewLook := true
+VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
 
 setkeydelay, -1
 setmousedelay, -1
@@ -87,17 +88,7 @@ SettingsFile := A_ScriptDir . "\Settings.ini"
 DefaultProfileFile := ProfilesDir . "\Default.ini"
 
 ProfileFields := []
-ProfileFields.Push( ["General","AutoLowerGraphics","true","bool"]
-                  , ["General","AutoGraphicsDelay","50","num"]
-                  , ["General","AutoZoomInCamera","true","bool"]
-                  , ["General","AutoZoomDelay","50","num"]
-                  , ["General","AutoEnableCameraMode","true","bool"]
-                  , ["General","AutoCameraDelay","5","num"]
-                  , ["General","AutoLookDownCamera","true","bool"]
-                  , ["General","AutoLookDelay","200","num"]
-                  , ["General","AutoBlurCamera","false","bool"]
-                  , ["General","AutoBlurDelay","50","num"]
-                  , ["General","RestartDelay","1000","num"]
+ProfileFields.Push( ["General","RestartDelay","1000","num"]
                   , ["General","TimeOffset","0","num"]
                   , ["General","HideOverlay","false","bool"]
                   , ["General","HideTextAlways","false","bool"]
@@ -143,9 +134,7 @@ ProfileFields.Push( ["Minigame","ControlMode","Precision","controlmode"]
                   , ["Minigame","BarColorTolerance","3","num"]
                   , ["Minigame","ArrowColor","0x848587","str"]
                   , ["Minigame","ArrowColorTolerance","3","num"]
-                  , ["Minigame","StabilizerLoop","10","num"]
                   , ["Minigame","SideBarRatio","0.8","num"]
-                  , ["Minigame","SideBarWaitMultiplier","4.5","num"]
                   , ["Minigame","SpecialRod","None","specialrod"]
                   , ["Minigame","RemembranceMode","Living","remembrancemode"]
                   , ["Minigame","NoteColor","0xB2CFFF","str"]
@@ -160,6 +149,18 @@ ProfileFields.Push( ["Minigame","ControlMode","Precision","controlmode"]
                   , ["Minigame","LullTrigPct","10","num"]
                   , ["Minigame","LullClearMs","100","num"]
                   , ["Minigame","LullMinDeg","4","num"]
+                  , ["Minigame","LmOn","false","bool"]
+                  , ["Minigame","LmBagKey","","str"]
+                  , ["Minigame","LmPos1","","str"]
+                  , ["Minigame","LmPos2","","str"]
+                  , ["Minigame","LmPos3","","str"]
+                  , ["Minigame","LmPos4","","str"]
+                  , ["Minigame","LmPos5","","str"]
+                  , ["Minigame","LmPos6","","str"]
+                  , ["Minigame","LmOrder","1,2","str"]
+                  , ["Minigame","LmEvery","60","str"]
+                  , ["Minigame","LmOpenWait","400","num"]
+                  , ["Minigame","LmClickWait","300","num"]
                   , ["Minigame","ReelMinHold","200","num"]
                   , ["Minigame","ReelMinRelease","200","num"]
                   , ["Minigame","ManiaLead","45","num"] )
@@ -202,17 +203,7 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","StellarHeadTol","30","num"]
 				  , ["Rods","SwColsNormal","","str"]
 				  , ["Rods","SwColsOuija","","str"] )
-ProfileFields.Push( ["Tuning","StableRightMultiplier","2.1","num"]
-                  , ["Tuning","StableRightDivision","1.4","num"]
-                  , ["Tuning","StableLeftMultiplier","1.1","num"]
-                  , ["Tuning","StableLeftDivision","1.0","num"]
-                  , ["Tuning","UnstableRightMultiplier","2.4","num"]
-                  , ["Tuning","UnstableRightDivision","1.5","num"]
-                  , ["Tuning","UnstableLeftMultiplier","1.3","num"]
-                  , ["Tuning","UnstableLeftDivision","1.1","num"]
-                  , ["Tuning","RightAnkleBreakMultiplier","1","num"]
-                  , ["Tuning","LeftAnkleBreakMultiplier","0.9","num"]
-                  , ["Tuning","Kp","0.5","num"]
+ProfileFields.Push( ["Tuning","Kp","0.5","num"]
                   , ["Tuning","Kd","0.3","num"]
                   , ["Tuning","VelocitySmoothing","0.2","num"]
                   , ["Tuning","StoppingDistanceMultiplier","3.0","num"] )
@@ -271,11 +262,25 @@ ProfileFields.Push( ["Misc","PogoOn","false","bool"]
                   , ["Misc","PogoJumpKey","Space","str"]
                   , ["Misc","PogoHold","30","num"] )
 
+; a copy with another file name (from before the rename) moves itself to Veltrix.ahk once
+if (A_ScriptName != "Veltrix.ahk" and !FileExist(A_ScriptDir . "\Veltrix.ahk"))
+	{
+	FileCopy, %A_ScriptFullPath%, %A_ScriptDir%\Veltrix.ahk
+	if (!ErrorLevel)
+		{
+		FileDelete, %A_ScriptFullPath%
+		Run, "%A_AhkPath%" "%A_ScriptDir%\Veltrix.ahk", %A_ScriptDir%, UseErrorLevel
+		ExitApp
+		}
+	}
 gosub, EnsureConfigFiles
 gosub, LoadSettingsFile
 gosub, LoadActiveProfile
-gosub, FirstRunGate
-gosub, DFAccessInit
+; leftover: the copy kept while the last update was put in place
+FileDelete, %A_ScriptFullPath%.bak
+VxIco := VxIconFile()
+if (VxIco != "")
+	Menu, Tray, Icon, %VxIco%
 
 MacroRunning := false
 MacroPaused := false
@@ -471,6 +476,7 @@ NoteHoldX := -1
 LullFrames := 0
 LullCalN := 0
 LullR := 0
+LullLitOk := ""
 LullSecN := 0
 LullCalLt := []
 LullCalDk := []
@@ -568,9 +574,9 @@ GroupAdd, RobloxGrp, ahk_exe Windows10Universal.exe
 PogoHkNow := ""
 gosub, PogoApplyHotkey
 
-Menu, Tray, Tip, DeepFish BETA
-Menu, Tray, Add, Show DeepFish, ShowGuiFromTray
-Menu, Tray, Default, Show DeepFish
+Menu, Tray, Tip, Veltrix
+Menu, Tray, Add, Show Veltrix, ShowGuiFromTray
+Menu, Tray, Default, Show Veltrix
 Menu, Tray, Click, 1
 
 gosub, BuildGui
@@ -685,58 +691,12 @@ Tooltip20 := (WindowHeight/2)+(20*10)
 if (DetTesting)
 	goto CalcTipsDone
 
-tooltip, Made By Yato, %TooltipX%, %Tooltip1%, 1
 tooltip, Runtime: 0h 0m 0s, %TooltipX%, %Tooltip2%, 2
 
 
 if (DetTesting)
 	goto CalcTipsDone
 gosub, RefreshHints
-
-if (AutoLowerGraphics == true)
-	{
-	tooltip, AutoLowerGraphics: true, %TooltipX%, %Tooltip8%, 8
-	}
-else
-	{
-	tooltip, AutoLowerGraphics: false, %TooltipX%, %Tooltip8%, 8
-	}
-	
-if (AutoEnableCameraMode == true)
-	{
-	tooltip, AutoEnableCameraMode: true, %TooltipX%, %Tooltip9%, 9
-	}
-else
-	{
-	tooltip, AutoEnableCameraMode: false, %TooltipX%, %Tooltip9%, 9
-	}
-	
-if (AutoZoomInCamera == true)
-	{
-	tooltip, AutoZoomInCamera: true, %TooltipX%, %Tooltip10%, 10
-	}
-else
-	{
-	tooltip, AutoZoomInCamera: false, %TooltipX%, %Tooltip10%, 10
-	}
-	
-if (AutoLookDownCamera == true)
-	{
-	tooltip, AutoLookDownCamera: true, %TooltipX%, %Tooltip11%, 11
-	}
-else
-	{
-	tooltip, AutoLookDownCamera: false, %TooltipX%, %Tooltip11%, 11
-	}
-	
-if (AutoBlurCamera == true)
-	{
-	tooltip, AutoBlurCamera: true, %TooltipX%, %Tooltip12%, 12
-	}
-else
-	{
-	tooltip, AutoBlurCamera: false, %TooltipX%, %Tooltip12%, 12
-	}
 
 tooltip, Navigation Key: "%NavigationKey%", %TooltipX%, %Tooltip14%, 14
 
@@ -820,35 +780,25 @@ HotkeyToggle:
 
 if (MacroRunning)
 	goto ToggleMacro
-if WinActive("DeepFish BETA")
+if WinActive("ahk_id " . GuiHwnd)
 	return
 goto ToggleMacro
 
 HotkeyReload:
 if (MacroRunning)
 	goto DoReload
-if WinActive("DeepFish BETA")
+if WinActive("ahk_id " . GuiHwnd)
 	return
 goto DoReload
 
 HotkeyExit:
 if (MacroRunning)
 	goto DoExit
-if WinActive("DeepFish BETA")
+if WinActive("ahk_id " . GuiHwnd)
 	return
 goto DoExit
 
 ToggleMacro:
-if (!MacroRunning and DFLocked)
-	{
-	MsgBox, 0x1030, DeepFish, %DFLockReason%
-	return
-	}
-if (!MacroRunning and !ReadThisAccepted)
-	{
-	gosub, ReadThisLockedNotice
-	return
-	}
 if (MacroRunning)
 	{
 	MacroRunning := false
@@ -887,11 +837,6 @@ if (MacroRunning)
 	return
 	}
 
-if (!ReadThisAccepted)
-	{
-	gosub, ReadThisLockedNotice
-	return
-	}
 
 if (LastAutoStop and (A_TickCount - LastAutoStop) < 2500)
 	{
@@ -904,7 +849,7 @@ LastAutoStop := 0
 gosub, ResolveRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox game window. Make sure Roblox is running, then try again.
+	msgbox, 4144, Veltrix, Could not find the Roblox game window. Make sure Roblox is running, then try again.
 	return
 	}
 WinActivate, ahk_id %RobloxHwnd%
@@ -922,7 +867,7 @@ return
 HotkeyWatch:
 if (FreezeActive)
 	return
-if (!WinExist("DeepFish BETA"))
+if (!DllCall("IsWindowVisible", "Ptr", GuiHwnd))
 	gosub, ArmHotkeys
 gosub, SyncRunKeys
 return
@@ -996,8 +941,6 @@ FsSeen := {}
 WhLastCatchTick := 0
 WhLastSummary := A_TickCount
 WhStalled := false
-WhEvent("start")
-settimer, WhTick, 30000
 send {lbutton up}
 send {rbutton up}
 send {shift up}
@@ -1006,7 +949,7 @@ gosub, ResolveRoblox
 if (!RobloxHwnd)
 	{
 	MacroRunning := false
-	msgbox, 4144, DeepFish, Could not find the Roblox game window. Make sure Roblox is running, then try again.
+	msgbox, 4144, Veltrix, Could not find the Roblox game window. Make sure Roblox is running, then try again.
 	return
 	}
 WinActivate, ahk_id %RobloxHwnd%
@@ -1024,87 +967,6 @@ tooltip, , , , 11
 tooltip, , , , 12
 tooltip, , , , 14
 tooltip, , , , 16
-
-tooltip, Current Task: AutoLowerGraphics, %TooltipX%, %Tooltip7%, 7
-tooltip, F10 Count: 0/20, %TooltipX%, %Tooltip9%, 9
-f10counter := 0
-if (AutoLowerGraphics == true)
-	{
-	send {shift}
-	tooltip, Action: Press Shift, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoGraphicsDelay)
-	send {shift down}
-	tooltip, Action: Hold Shift, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoGraphicsDelay)
-	loop, 20
-		{
-		f10counter++
-		tooltip, F10 Count: %f10counter%/20, %TooltipX%, %Tooltip9%, 9
-		send {f10}
-		tooltip, Action: Press F10, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoGraphicsDelay)
-		}
-	send {shift up}
-	tooltip, Action: Release Shift, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoGraphicsDelay)
-	}
-
-tooltip, Current Task: AutoZoomInCamera, %TooltipX%, %Tooltip7%, 7
-tooltip, Scroll In: 0/20, %TooltipX%, %Tooltip9%, 9
-tooltip, Scroll Out: 0/1, %TooltipX%, %Tooltip10%, 10
-scrollcounter := 0
-if (AutoZoomInCamera == true and CastMode != "Perfect")
-	{
-	Sleep, % Tm(AutoZoomDelay)
-	loop, 20
-		{
-		scrollcounter++
-		tooltip, Scroll In: %scrollcounter%/20, %TooltipX%, %Tooltip9%, 9
-		send {wheelup}
-		tooltip, Action: Scroll In, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoZoomDelay)
-		}
-	send {wheeldown}
-	tooltip, Scroll Out: 1/1, %TooltipX%, %Tooltip10%, 10
-	tooltip, Action: Scroll Out, %TooltipX%, %Tooltip8%, 8
-	ZoomSettleDelay := AutoZoomDelay*5
-	Sleep, % Tm(ZoomSettleDelay)
-	}
-	
-tooltip, , , , 10
-
-tooltip, Current Task: AutoEnableCameraMode, %TooltipX%, %Tooltip7%, 7
-tooltip, Right Count: 0/10, %TooltipX%, %Tooltip9%, 9
-rightcounter := 0
-CamModeOn := (AutoEnableCameraMode and !(TotemAuto or AquariumAuto or KeeperAuto))
-if (CamModeOn == true)
-	{
-	PixelSearch, , , CameraCheckLeft, CameraCheckTop, CameraCheckRight, CameraCheckBottom, 0xFFFFFF, 0, Fast
-	if (ErrorLevel == 0)
-		{
-		Sleep, % Tm(AutoCameraDelay)
-		send {2}
-		tooltip, Action: Presss 2, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoCameraDelay)
-		send {1}
-		tooltip, Action: Press 1, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoCameraDelay)
-		send {%NavigationKey%}
-		tooltip, Action: Press %NavigationKey%, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoCameraDelay)
-		loop, 10
-			{
-			rightcounter++
-			tooltip, Right Count: %rightcounter%/10, %TooltipX%, %Tooltip9%, 9
-			send {right}
-			tooltip, Action: Press Right, %TooltipX%, %Tooltip8%, 8
-			Sleep, % Tm(AutoCameraDelay)
-			}
-		send {enter}
-		tooltip, Action: Press Enter, %TooltipX%, %Tooltip8%, 8
-		Sleep, % Tm(AutoCameraDelay)
-		}
-	}
 
 RestartMacro:
 
@@ -1252,51 +1114,16 @@ if (!MacroRunning)
 
 tooltip, , , , 9
 
-tooltip, Current Task: AutoLookDownCamera, %TooltipX%, %Tooltip7%, 7
-; passive mode leaves the mouse alone (only a Stellarwave fight moves it, to click the signs)
-if (AutoLookDownCamera == true and !PasIdle())
-	{
-	send {rbutton up}
-	Sleep, % Tm(AutoLookDelay)
-	mousemove, LookDownX, LookDownY
-	tooltip, Action: Position Mouse, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoLookDelay)
-	send {rbutton down}
-	tooltip, Action: Hold Right Click, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoLookDelay)
-	DllCall("mouse_event", "UInt", 0x01, "UInt", 0, "UInt", 10000)
-	tooltip, Action: Move Mouse Down, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoLookDelay)
-	send {rbutton up}
-	tooltip, Action: Release Right Click, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoLookDelay)
-	mousemove, LookDownX, LookDownY
-	tooltip, Action: Position Mouse, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoLookDelay)
-	}
-	
-if (!MacroRunning)
-	goto Idle
-
-tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
-; the M key would type into whatever window you tabbed to
-if (AutoBlurCamera == true and !(PasIdle() and !WinActive("ahk_id " . RobloxHwnd)))
-	{
-	tooltip, Current Task: AutoBlurCamera, %TooltipX%, %Tooltip7%, 7
-	Sleep, % Tm(AutoBlurDelay)
-	send {m}
-	tooltip, Action: Press M, %TooltipX%, %Tooltip8%, 8
-	Sleep, % Tm(AutoBlurDelay)
-	}
-
 if (!MacroRunning)
 	goto Idle
 
 if (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
 	goto SwPassiveWatch
 
-if (!CamModeOn and RodSlotKey != "" and !RodEquippedOnce)
+if (RodSlotKey != "" and !RodEquippedOnce)
 	ForceReEquip := true
+; Lullaby mode switch first: the bag puts the rod away, so it is equipped again right below
+gosub, LmMaybeSwitch
 
 if (RodSlotKey != "" and (ForceReEquip or (UnstickAfter > 0 and CastFailCount >= UnstickAfter)))
 	{
@@ -1799,16 +1626,12 @@ tooltip, Current Task: Playing Bar Minigame, %TooltipX%, %Tooltip7%, 7
 tooltip, Bar Size: %WhiteBarSize%, %TooltipX%, %Tooltip8%, 8
 
 
-HalfBarSize := WhiteBarSize/2
 MgLastSig := -1
 MgStaticN := 0
 BarSizeBadN := 0
 BarSizePend := 0
 BarSizePendN := 0
 DllCall("QueryPerformanceCounter", "Int64*", MgStaticAt)
-SideDelay := 0
-AnkleBreakDelay := 0
-DirectionalToggle := "Disabled"
 AtLeastFindWhiteBar := false
 LastFishX := -1
 LastBarL := -1
@@ -1954,6 +1777,7 @@ PnTipAt := 0
 LullFrames := 0
 LullCalN := 0
 LullR := 0
+LullLitOk := ""
 LullSecN := 0
 LullCalLt := []
 LullCalDk := []
@@ -2279,7 +2103,6 @@ if (FoundBar and RunWidth > 0)
 	if (BarWidthTrusted and Abs(NewBarSize - WhiteBarSize) > (WhiteBarSize * 0.2))
 		{
 		WhiteBarSize := NewBarSize
-		HalfBarSize := WhiteBarSize/2
 		ZoneInset := WhiteBarSize*SideBarRatio
 		ZoneInsetMax := (TrackRight-TrackLeft)*0.4
 		if (ZoneInset > ZoneInsetMax)
@@ -2412,185 +2235,7 @@ if (FishX < 0 and SpecialRod = "Noiseform")
 if (SpecialRod = "Noiseform")
 	NoiseLostN := 0
 if (FishX >= 0)
-	{
-	if (ControlMode = "Precision" or ControlMode = "Lines" or SpecialRod = "Requiem")
-		goto BarPrecisionControl
-	if (FishX < MaxLeftBar)
-		{
-		if (MaxLeftToggle == false)
-			{
-			MoveHudBarSpan(RunLeft, RunWidth)
-			DirectionalToggle := "Right"
-			MaxLeftToggle := true
-			send {lbutton up}
-			sleep 1
-			send {lbutton up}
-			sleep %SideDelay%
-			AnkleBreakDelay := 0
-			SideDelay := 0
-			}
-		goto BarMinigame2
-		}
-	else if (FishX > MaxRightBar)
-		{
-		if (MaxRightToggle == false)
-			{
-			MoveHudBarSpan(RunLeft, RunWidth)
-			DirectionalToggle := "Left"
-			MaxRightToggle := true
-			send {lbutton down}
-			sleep 1
-			send {lbutton down}
-			sleep %SideDelay%
-			AnkleBreakDelay := 0
-			SideDelay := 0
-			}
-		goto BarMinigame2
-		}
-	MaxLeftToggle := false
-	MaxRightToggle := false
-	if (FoundBar)
-		{
-		AtLeastFindWhiteBar := true
-		BarX := RunLeft+(RunWidth/2)
-		if (BarX > FishX)
-			{
-			MoveHudBarSpan(RunLeft, RunWidth)
-			Difference := (BarX-FishX)*ResolutionScaling*StableLeftMultiplier
-			CounterDifference := Difference/StableLeftDivision
-			send {lbutton up}
-			if (DirectionalToggle == "Right")
-				{
-				sleep %AnkleBreakDelay%
-				AnkleBreakDelay := 0
-				}
-			else
-				{
-				AnkleBreakDelay := AnkleBreakDelay+(Difference-CounterDifference)*LeftAnkleBreakMultiplier
-				SideDelay := AnkleBreakDelay/LeftAnkleBreakMultiplier*SideBarWaitMultiplier
-				}
-			SleepTrack(Difference, "Left", false)
-			CounterDifference := CounterDifference*HeldFraction
-			gosub, CaptureFishBar
-			FishX := GetFishPos()
-			if (UiHandsOff(true))
-				goto BarMinigame2
-			if (FishX < MaxLeftBar)
-				goto BarMinigame2
-			send {lbutton down}
-			sleep %CounterDifference%
-			gosub, StabilizeBurst
-			DirectionalToggle := "Left"
-			}
-		else
-			{
-			MoveHudBarSpan(RunLeft, RunWidth)
-			Difference := (FishX-BarX)*ResolutionScaling*StableRightMultiplier
-			CounterDifference := Difference/StableRightDivision
-			send {lbutton down}
-			if (DirectionalToggle == "Left")
-				{
-				sleep %AnkleBreakDelay%
-				AnkleBreakDelay := 0
-				}
-			else
-				{
-				AnkleBreakDelay := AnkleBreakDelay+(Difference-CounterDifference)*RightAnkleBreakMultiplier
-				SideDelay := AnkleBreakDelay/RightAnkleBreakMultiplier*SideBarWaitMultiplier
-				}
-			SleepTrack(Difference, "Right", false)
-			CounterDifference := CounterDifference*HeldFraction
-			gosub, CaptureFishBar
-			FishX := GetFishPos()
-			if (UiHandsOff(true))
-				goto BarMinigame2
-			if (FishX > MaxRightBar)
-				goto BarMinigame2
-			send {lbutton up}
-			sleep %CounterDifference%
-			gosub, StabilizeBurst
-			DirectionalToggle := "Right"
-			}
-		}
-	else
-		{
-		tooltip, Bar NOT FOUND, %TooltipX%, %Tooltip9%, 9
-		if (AtLeastFindWhiteBar == false)
-			{
-			if (FishLineVisible() or FindArrowX() >= 0)
-				{
-				send {lbutton down}
-				send {lbutton up}
-				}
-			goto BarMinigame2
-			}
-
-		ArrowX := FindArrowX()
-		if (ArrowX < 0)
-			ArrowX := FindColorX(0x878584, ArrowColorTolerance)
-		if (ArrowX < 0)
-			goto BarMinigame2
-		if (ArrowX > FishX)
-			{
-			MoveHudBarC(ArrowX)
-			Difference := HalfBarSize*UnstableLeftMultiplier
-			CounterDifference := Difference/UnstableLeftDivision
-			send {lbutton up}
-			if (DirectionalToggle == "Right")
-				{
-				sleep %AnkleBreakDelay%
-				AnkleBreakDelay := 0
-				}
-			else
-				{
-				AnkleBreakDelay := AnkleBreakDelay+(Difference-CounterDifference)*LeftAnkleBreakMultiplier
-				SideDelay := AnkleBreakDelay/LeftAnkleBreakMultiplier*SideBarWaitMultiplier
-				}
-			SleepTrack(Difference, "Left", true)
-			CounterDifference := CounterDifference*HeldFraction
-			gosub, CaptureFishBar
-			FishX := GetFishPos()
-			if (UiHandsOff(true))
-				goto BarMinigame2
-			if (FishX < MaxLeftBar)
-				goto BarMinigame2
-			send {lbutton down}
-			sleep %CounterDifference%
-			gosub, StabilizeBurst
-			DirectionalToggle := "Left"
-			}
-		else
-			{
-			MoveHudBarC(ArrowX)
-			Difference := HalfBarSize*UnstableRightMultiplier
-			CounterDifference := Difference/UnstableRightDivision
-			send {lbutton down}
-			if (DirectionalToggle == "Left")
-				{
-				sleep %AnkleBreakDelay%
-				AnkleBreakDelay := 0
-				}
-			else
-				{
-				AnkleBreakDelay := AnkleBreakDelay+(Difference-CounterDifference)*RightAnkleBreakMultiplier
-				SideDelay := AnkleBreakDelay/RightAnkleBreakMultiplier*SideBarWaitMultiplier
-				}
-			SleepTrack(Difference, "Right", true)
-			CounterDifference := CounterDifference*HeldFraction
-			gosub, CaptureFishBar
-			FishX := GetFishPos()
-			if (UiHandsOff(true))
-				goto BarMinigame2
-			if (FishX > MaxRightBar)
-				goto BarMinigame2
-			send {lbutton up}
-			sleep %CounterDifference%
-			gosub, StabilizeBurst
-			DirectionalToggle := "Right"
-			}
-		}
-	goto BarMinigame2
-	}
+	goto BarPrecisionControl
 
 BlindAcc := BlindAcc + DutyAvg
 if (BlindAcc >= 1)
@@ -2996,21 +2641,6 @@ if (GetKeyState("LButton") and !SwPressK)
 	send {lbutton up}
 return
 
-StabilizeBurst:
-if (SpecialRod = "Requiem" or (SpecialRod = "Stellarwave Melody" and SwPhase))
-	return
-gosub, CaptureFishBar
-if (!BarPresent() and !FishLineVisible() and FindArrowX() < 0)
-	return
-if (UiHandsOff(true))
-	return
-loop, %StabilizerLoop%
-	{
-	send {lbutton down}
-	send {lbutton up}
-	}
-return
-
 ;====================================================================================================;
 
 BarMinigameOver:
@@ -3035,8 +2665,6 @@ KbCatches := KbCatches + 1
 KbOcrCatches := KbOcrCatches + 1
 WhLastCatchTick := A_TickCount
 WhStalled := false
-if (WebhookOnCatch)
-	WhEvent("catch")
 settimer, BarCalculationFailsafe, off
 send {lbutton up}
 send {rbutton up}
@@ -3320,7 +2948,6 @@ if (KbRelicOn)
 MouseMove, KbSaveX, KbSaveY
 tooltip, , , , 8
 KbStatus := (KbRecharged > 0) ? "done" : "failed"
-WhEvent("keeper", ((KbStatus = "done") ? "Done: " : "Failed: ") . KbLastResult)
 KbCatches := 0
 KbOcrCatches := 0
 KbGoodPct := ""
@@ -3383,7 +3010,6 @@ if (!AqPanelSure())
 	{
 	AqLastResult := "could not find the fish food panel"
 	AqStatus := "failed"
-	WhEvent("aquarium", "Failed: " . AqLastResult)
 	MouseMove, AqSaveX, AqSaveY
 	tooltip, , , , 8
 	AqNextTick := A_TickCount + (Round(AquariumEveryMin) * 60000)
@@ -3426,10 +3052,6 @@ if (AqPanelSure())
 MouseMove, AqSaveX, AqSaveY
 tooltip, , , , 8
 AqNextTick := A_TickCount + (Round(AquariumEveryMin) * 60000)
-if (AqStatus = "done")
-	WhEvent("aquarium", "Done: " . AqLastResult)
-else
-	WhEvent("aquarium", "Stopped: " . ((AqLastResult != "") ? AqLastResult : AqStatus))
 AqBusy := false
 SetBatchLines, -1
 return
@@ -3593,9 +3215,6 @@ AqBusy := false
 KbBusy := false
 MacroPreview := false
 MgInPlay := false
-settimer, WhTick, off
-if (WhStartTick)
-	WhEvent("stop")
 WhStartTick := 0
 settimer, runtime, off
 settimer, NavigationShakeFailsafe, off
@@ -3668,242 +3287,6 @@ if !FileExist(SettingsFile)
 return
 
 ;====================================================================================================;
-
-DFAccessInit:
-DFLocked := false
-DFLockReason := ""
-DFKill := false
-IniRead, DFInstallID, %SettingsFile%, Access, InstallID, %A_Space%
-if (DFInstallID = "" or StrLen(DFInstallID) < 8)
-	{
-	Random,, % A_TickCount
-	; always has a letter, so it is never read as a number
-	DFInstallID := ""
-	while !RegExMatch(DFInstallID, "[a-f]")
-		{
-		DFInstallID := ""
-		Loop 16
-			{
-			Random, rr, 0, 15
-			DFInstallID .= SubStr("0123456789abcdef", rr + 1, 1)
-			}
-		}
-	IniWrite, %DFInstallID%, %SettingsFile%, Access, InstallID
-	}
-IniRead, DFTrusted, %SettingsFile%, Access, Trusted, 0
-DFTrusted := (DFTrusted = 1) ? 1 : 0
-IniRead, DFReqKeyCache, %SettingsFile%, Access, ReqKeyCache, 0
-gosub, DFAccessCheck
-SetTimer, DFAccessCheck, 180000
-gosub, DFInstallPing
-DFAccessReady := true
-if (DFKill or DFBlockedNow)
-	gosub, DFBlockedExit
-return
-
-; blocked or turned off by the owner: the window does not stay open
-DFBlockedExit:
-SetTimer, DFAccessCheck, Off
-if (MacroRunning)
-	gosub, DFForceStop
-try DFFormReq.WaitForResponse(5)
-try DFPingReq.WaitForResponse(5)
-MsgBox, 0x41030, DeepFish, %DFLockReason%
-ExitApp
-
-; install log: on start (and when a key is added) posts the Install ID, keyed or not, and the version to the owner's channel
-DFInstallPing:
-; the owner's Google Form (one short-answer question): "id|keyed|version|UTC time" - the publisher reads it back from the sheet
-if (InStr(DFInstallForm, "/formResponse|entry."))
-	{
-	DFFormP := StrSplit(DFInstallForm, "|")
-	try
-		{
-		DFFormReq := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-		DFFormReq.SetTimeouts(4000, 4000, 4000, 6000)
-		DFFormReq.Open("POST", DFFormP[1], true)
-		DFFormReq.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-		DFFormReq.Send(DFFormP[2] . "=" . DFInstallID . "%7C" . (DFTrusted ? 1 : 0) . "%7C" . DFVersion . "%7C" . A_NowUTC)
-		}
-	catch e
-		DFFormReq := ""
-	}
-if (DFInstallHook = "" or !InStr(DFInstallHook, "/api/webhooks/"))
-	return
-DFPingF := WhField("Install ID", DFInstallID) . "," . WhField("Version", "v" . DFVersion . "  (build " . DFModBuild . ")")
-DFPingF .= "," . WhField("Blocked", DFBlockedNow ? "yes" : "no")
-DFPingJ := "{""username"":""DeepFish installs"",""embeds"":[{""title"":""" . (DFTrusted ? "Keyed install" : "NOT keyed install") . """,""color"":" . (DFTrusted ? 3066993 : 15158332) . ",""fields"":[" . DFPingF . "],""timestamp"":""" . WhStamp() . """}]}"
-try
-	{
-	DFPingReq := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-	DFPingReq.SetTimeouts(4000, 4000, 4000, 6000)
-	DFPingReq.Open("POST", DFInstallHook, true)
-	DFPingReq.SetRequestHeader("Content-Type", "application/json; charset=utf-8")
-	DFPingReq.Send(DFPingJ)
-	}
-catch e
-	DFPingReq := ""
-return
-
-DFAccessCheck:
-DFAccTxt := ""
-DFBlkTxt := ""
-DFReach := false
-if (DFUpdateRepo != "")
-	{
-	try
-		{
-		whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-		whr.SetTimeouts(3000, 3000, 3000, 3000)
-		whr.Open("GET", "https://raw.githubusercontent.com/" . DFUpdateRepo . "/HEAD/access.txt?t=" . A_TickCount, false)
-		whr.Send()
-		if (whr.Status = 200)
-			{
-			DFAccTxt := whr.ResponseText
-			DFReach := true
-			}
-		else if (whr.Status = 404)
-			DFReach := true
-		}
-	catch e
-		DFReach := false
-	try
-		{
-		whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-		whr.SetTimeouts(3000, 3000, 3000, 3000)
-		whr.Open("GET", "https://raw.githubusercontent.com/" . DFUpdateRepo . "/HEAD/blocked.txt?t=" . A_TickCount, false)
-		whr.Send()
-		if (whr.Status = 200)
-			DFBlkTxt := whr.ResponseText
-		}
-	catch e
-		DFBlkTxt := DFBlkTxt
-	}
-DFKill := false
-DFReqKey := DFReqKeyCache
-if (DFReach)
-	{
-	DFKill := (InStr(DFAccTxt, "kill=1") ? true : false)
-	DFReqKey := (InStr(DFAccTxt, "requirekey=1") ? 1 : 0)
-	if (DFReqKey != DFReqKeyCache)
-		{
-		DFReqKeyCache := DFReqKey
-		IniWrite, %DFReqKey%, %SettingsFile%, Access, ReqKeyCache
-		}
-	}
-DFBlockedNow := false
-Loop, Parse, DFBlkTxt, `n, `r
-	{
-	v := Trim(A_LoopField)
-	if (v != "" and v = DFInstallID)
-		DFBlockedNow := true
-	}
-DFLocked := false
-DFLockReason := ""
-if (DFKill)
-	{
-	DFLocked := true
-	DFLockReason := "The macro has been turned off by the owner."
-	}
-else if (DFBlockedNow)
-	{
-	DFLocked := true
-	DFLockReason := "Your access to this macro has been turned off."
-	}
-else if (DFReqKey = 1 and !DFTrusted)
-	{
-	DFLocked := true
-	DFLockReason := "This macro needs a key.`n`nClick ""Add key"" (bottom left) and enter the key the owner gave you.`n`nYour Install ID:  " . DFInstallID
-	}
-if ((DFKill or DFBlockedNow) and DFAccessReady)
-	gosub, DFBlockedExit
-if (DFLocked and MacroRunning)
-	gosub, DFForceStop
-return
-
-DFForceStop:
-MacroRunning := false
-MacroPreview := false
-GuiControl, 1:, StartStopDisplay, ▶ Start
-gosub, RefreshRunChip
-settimer, runtime, off
-settimer, NavigationShakeFailsafe, off
-settimer, BarCalculationFailsafe, off
-send {lbutton up}
-send {rbutton up}
-send {shift up}
-TrayTip, DeepFish, %DFLockReason%, 5
-return
-
-AddKeyClick:
-DFKeyPrompt := "Your Install ID (send this to the owner to get a key):`n`n" . DFInstallID . "`n`nPaste the key you were given:"
-InputBox, DFKeyIn, DeepFish - Add key, %DFKeyPrompt%, , 420, 230
-if (ErrorLevel)
-	return
-DFKeyIn := Trim(DFKeyIn)
-if (DFKeyIn = "")
-	return
-if (DFKeySalt = "")
-	{
-	MsgBox, 0x1030, DeepFish, Keys are not set up for this build yet. Ask the owner.
-	return
-	}
-if (DFKeyNorm(DFKeyIn) = DFKeyNorm(DFKeyExpected(DFInstallID)))
-	{
-	DFTrusted := 1
-	IniWrite, 1, %SettingsFile%, Access, Trusted
-	gosub, DFAccessCheck
-	gosub, DFInstallPing
-	MsgBox, 0x1040, DeepFish, Key accepted - you are now trusted on this PC.
-	}
-else
-	MsgBox, 0x1030, DeepFish, That key is not valid for this PC.`n`nMake sure the owner made it from this exact Install ID:`n`n%DFInstallID%
-return
-
-DFKeyExpected(id) {
-	global DFKeySalt
-	h := SHA256Hex(id . "|" . DFKeySalt)
-	x := SubStr(h, 1, 12)
-	return "DF-" . SubStr(x, 1, 4) . "-" . SubStr(x, 5, 4) . "-" . SubStr(x, 9, 4)
-}
-
-DFKeyNorm(k) {
-	k := RegExReplace(k, "[^0-9A-Za-z]", "")
-	StringUpper, k, k
-	return k
-}
-
-SHA256Hex(str) {
-	n := StrPut(str, "UTF-8") - 1
-	VarSetCapacity(buf, (n < 1) ? 1 : n, 0)
-	StrPut(str, &buf, "UTF-8")
-	return CryptHashHex(&buf, n)
-}
-
-CryptHashHex(pData, nData) {
-	hProv := 0
-	hHash := 0
-	if (!DllCall("advapi32\CryptAcquireContextW", "Ptr*", hProv, "Ptr", 0, "Ptr", 0, "UInt", 24, "UInt", 0xF0000000))
-		return ""
-	if (!DllCall("advapi32\CryptCreateHash", "Ptr", hProv, "UInt", 0x800C, "Ptr", 0, "UInt", 0, "Ptr*", hHash))
-		{
-		DllCall("advapi32\CryptReleaseContext", "Ptr", hProv, "UInt", 0)
-		return ""
-		}
-	DllCall("advapi32\CryptHashData", "Ptr", hHash, "Ptr", pData, "UInt", nData, "UInt", 0)
-	size := 32
-	VarSetCapacity(hash, size, 0)
-	DllCall("advapi32\CryptGetHashParam", "Ptr", hHash, "UInt", 2, "Ptr", &hash, "UInt*", size, "UInt", 0)
-	hex := ""
-	Loop % size
-		{
-		b := NumGet(hash, A_Index - 1, "UChar")
-		hex .= SubStr("0" . Format("{:X}", b), -1)
-		}
-	DllCall("advapi32\CryptDestroyHash", "Ptr", hHash)
-	DllCall("advapi32\CryptReleaseContext", "Ptr", hProv, "UInt", 0)
-	return hex
-}
 
 OverlayHideTick:
 OvWant := MacroRunning and (HideOverlay or (SwPassiveHide and ((SwPassive and SpecialRod = "Stellarwave Melody") or PassiveAll)))
@@ -4027,38 +3410,38 @@ OverlayWinEvent(hHook, event, hwnd, idObject, idChild, thread, time) {
 		WinSet, Transparent, 0, ahk_id %hwnd%
 }
 
-DFCheckForUpdate:
-SetTimer, DFCheckForUpdate, 600000
-if (!AutoUpdate or DFUpdateRepo = "" or DFUpdBusy or MacroRunning)
+VxCheckForUpdate:
+SetTimer, VxCheckForUpdate, 600000
+if (!AutoUpdate or VxUpdateRepo = "" or VxUpdBusy or MacroRunning)
 	return
-DFUpdBusy := true
-DFLatestBuild := ""
+VxUpdBusy := true
+VxLatestBuild := ""
 try
 	{
 	whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
 	whr.SetTimeouts(3000, 3000, 3000, 3000)
-	whr.Open("GET", "https://raw.githubusercontent.com/" . DFUpdateRepo . "/HEAD/build.txt?t=" . A_TickCount, false)
+	whr.Open("GET", "https://raw.githubusercontent.com/" . VxUpdateRepo . "/HEAD/build.txt?t=" . A_TickCount, false)
 	whr.Send()
 	if (whr.Status = 200)
-		DFLatestBuild := RegExReplace(whr.ResponseText, "[^0-9]", "")
+		VxLatestBuild := RegExReplace(whr.ResponseText, "[^0-9]", "")
 	}
 catch e
-	DFLatestBuild := ""
-if (DFLatestBuild != "" and DFLatestBuild + 0 > DFModBuild + 0 and !MacroRunning)
-	gosub, DFInstallUpdate
-DFUpdBusy := false
+	VxLatestBuild := ""
+if (VxLatestBuild != "" and VxLatestBuild + 0 > VxBuild + 0 and !MacroRunning)
+	gosub, VxInstallUpdate
+VxUpdBusy := false
 return
 
-DFInstallUpdate:
-DFTmp := A_ScriptDir . "\DeepFishUpdate.tmp"
-DFBak := A_ScriptFullPath . ".bak"
-FileDelete, %DFTmp%
-DFGot := false
+VxInstallUpdate:
+VxTmp := A_ScriptDir . "\VeltrixUpdate.tmp"
+VxBak := A_ScriptFullPath . ".bak"
+FileDelete, %VxTmp%
+VxGot := false
 try
 	{
 	whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
 	whr.SetTimeouts(5000, 5000, 15000, 30000)
-	whr.Open("GET", "https://raw.githubusercontent.com/" . DFUpdateRepo . "/HEAD/DeepFish.ahk?t=" . A_TickCount, false)
+	whr.Open("GET", "https://raw.githubusercontent.com/" . VxUpdateRepo . "/HEAD/Veltrix.ahk?t=" . A_TickCount, false)
 	whr.Send()
 	if (whr.Status = 200)
 		{
@@ -4066,46 +3449,46 @@ try
 		ado.Type := 1
 		ado.Open()
 		ado.Write(whr.ResponseBody)
-		ado.SaveToFile(DFTmp, 2)
+		ado.SaveToFile(VxTmp, 2)
 		ado.Close()
-		DFGot := true
+		VxGot := true
 		}
 	}
 catch e
-	DFGot := false
-if (!DFGot or !FileExist(DFTmp))
+	VxGot := false
+if (!VxGot or !FileExist(VxTmp))
 	{
-	FileDelete, %DFTmp%
+	FileDelete, %VxTmp%
 	return
 	}
-FileGetSize, DFSz, %DFTmp%
-FileRead, DFChk, %DFTmp%
-DFValid := (DFSz > 200000 and InStr(DFChk, "DFModBuild := " . DFLatestBuild . "`r") and InStr(DFChk, "DFBetaVersion :="))
-DFChk := ""
-if (!DFValid or MacroRunning)
+FileGetSize, VxSz, %VxTmp%
+FileRead, VxChk, %VxTmp%
+VxValid := (VxSz > 200000 and InStr(VxChk, "VxBuild := " . VxLatestBuild . "`r") and InStr(VxChk, "VxBaseVersion :="))
+VxChk := ""
+if (!VxValid or MacroRunning)
 	{
-	FileDelete, %DFTmp%
+	FileDelete, %VxTmp%
 	return
 	}
-FileCopy, %A_ScriptFullPath%, %DFBak%, 1
-FileCopy, %DFTmp%, %A_ScriptFullPath%, 1
+FileCopy, %A_ScriptFullPath%, %VxBak%, 1
+FileCopy, %VxTmp%, %A_ScriptFullPath%, 1
 if (ErrorLevel)
 	{
-	if (FileExist(DFBak))
-		FileCopy, %DFBak%, %A_ScriptFullPath%, 1
-	FileDelete, %DFTmp%
+	if (FileExist(VxBak))
+		FileCopy, %VxBak%, %A_ScriptFullPath%, 1
+	FileDelete, %VxTmp%
 	return
 	}
-FileDelete, %DFTmp%
-TrayTip, DeepFish, % "Updated to build " . DFLatestBuild . " - restarting.", 3
+FileDelete, %VxTmp%
+TrayTip, Veltrix, % "Updated to build " . VxLatestBuild . " - restarting.", 3
 Sleep, 1500
 Reload
 return
 
-DFUpdateManual:
+VxUpdateManual:
 return
 
-DFVersionNewer(a, b) {
+VxVersionNewer(a, b) {
 	StringSplit, aP, a, .
 	StringSplit, bP, b, .
 	Loop, 4
@@ -4124,48 +3507,9 @@ DFVersionNewer(a, b) {
 	return false
 }
 
-FirstRunGate:
-
-IniRead, FirstRunDone, %SettingsFile%, Meta, FirstRunDone, 0
-if (FirstRunDone = 1)
-	return
-
-GateMsg := "IMPORTANT DISCLAIMER`n`n"
-GateMsg .= "This will Auto-Subscribe you to the channel.`n`n"
-GateMsg .= "OK  =  I understand, continue`n"
-GateMsg .= "Cancel  =  Exit"
-
-MsgBox, 0x2021, DeepFish BETA — First Time Setup, %GateMsg%
-IfMsgBox, Cancel
-	ExitApp
-
-Run, https://www.youtube.com/@yatoark?sub_confirmation=1
-
-Sleep, % Tm(3000)
-
-WinGetPos,,, W, H, A
-
-CenterX := W // 2
-CenterY := H // 2
-
-Click, %CenterX%, %CenterY%
-
-Sleep, % Tm(100)
-Send, {Tab}
-Sleep, % Tm(100)
-Send, {Tab}
-Sleep, % Tm(300)
-Send, {Enter}
-Sleep, % Tm(500)
-Send, {Enter}
-
-IniWrite, 1, %SettingsFile%, Meta, FirstRunDone
-FirstRunDone := 1
-return
-
-;====================================================================================================;
-
 LoadSettingsFile:
+; older builds kept an install ID / key / access cache here - none of it is used, so it is removed from disk
+IniDelete, %SettingsFile%, Access
 
 IniRead, ActiveProfile, %SettingsFile%, Profiles, ActiveProfile, Default
 IniRead, TotemGlobal, %SettingsFile%, Totem, Global, 0
@@ -4182,30 +3526,9 @@ IniRead, GuiAutoSave, %SettingsFile%, GUI, AutoSave, 0
 if (GuiAutoSave != 1)
 	GuiAutoSave := 0
 IniRead, ReadThisAccepted, %SettingsFile%, GUI, ReadThisAccepted, 0
-if (ReadThisAccepted != 1)
-	ReadThisAccepted := 0
+; there is no READ THIS page any more: always unlocked
+ReadThisAccepted := 1
 hReadThisLockMsg := 0
-IniRead, WebhookURL, %SettingsFile%, Webhook, URL, %A_Space%
-if (WebhookURL = "ERROR")
-	WebhookURL := ""
-IniRead, WebhookOn, %SettingsFile%, Webhook, Enabled, 0
-IniRead, WebhookShot, %SettingsFile%, Webhook, Screenshot, 0
-IniRead, WebhookSummaryMin, %SettingsFile%, Webhook, SummaryMinutes, 10
-IniRead, WebhookStallMin, %SettingsFile%, Webhook, StallMinutes, 10
-IniRead, WebhookOnCatch, %SettingsFile%, Webhook, OnCatch, 0
-IniRead, WebhookOnAlert, %SettingsFile%, Webhook, OnAlert, 0
-if (WebhookOn != 1)
-	WebhookOn := 0
-if (WebhookShot != 1)
-	WebhookShot := 0
-if (WebhookOnCatch != 1)
-	WebhookOnCatch := 0
-if (WebhookOnAlert != 1)
-	WebhookOnAlert := 0
-if (WebhookSummaryMin < 1)
-	WebhookSummaryMin := 10
-if (WebhookStallMin < 1)
-	WebhookStallMin := 10
 
 ActiveProfileFile := ProfilesDir . "\" . ActiveProfile . ".ini"
 if !FileExist(ActiveProfileFile)
@@ -4248,7 +3571,7 @@ for i, f in ProfileFields
 
 TotemSelSanitize()
 if (ConfigWarnings != "")
-	msgbox, 4144, DeepFish - Config Notice, One or more settings in "%ActiveProfile%.ini" were invalid and have been reset to defaults:`n`n%ConfigWarnings%
+	msgbox, 4144, Veltrix - Config Notice, One or more settings in "%ActiveProfile%.ini" were invalid and have been reset to defaults:`n`n%ConfigWarnings%
 
 gosub, AstraMigrateColours
 gosub, RefreshControlModes
@@ -4276,9 +3599,7 @@ ProfFieldOk(type, ByRef val) {
 		return (val = "Living" or val = "Departed")
 	if (type = "controlmode")
 		{
-		if (val = "Classic")
-			val := "Manual"
-		return (val = "Manual" or val = "Precision" or val = "Lines")
+		return (val = "Precision" or val = "Lines")
 		}
 	if (type = "castmode")
 		return (val = "Normal" or val = "Perfect")
@@ -5719,7 +5040,7 @@ HudH := 34
 Gui, Hud:New, +AlwaysOnTop -Caption +ToolWindow +E0x80020 +HwndhHudGui
 Gui, Hud:Color, 010101
 Gui, Hud:Margin, 0, 0
-Gui, Hud:Show, NoActivate Hide, DeepFishHud
+Gui, Hud:Show, NoActivate Hide, VeltrixHud
 HudBuilt := true
 HudGpOk := HudSurfaceMake(HudW, HudH)
 HudFishTgt := -1
@@ -6554,6 +5875,73 @@ LullFindSectors() {
 	return LullSecN
 }
 
+; per degree of the ring: when it last stayed light for a moment (the needle sweeping over a dark spot is too
+; quick to count) and how light. A degree that was not light for 0.6 s is no longer part of a zone
+LullLearnSeed(now) {
+	global LullBg, LullLitOk, LullLitLum, LullLitStart, LullRelT
+	LullLitOk := [], LullLitLum := [], LullLitStart := [], LullRelT := now
+	d := 180
+	while (d <= 360)
+		{
+		if (LullBg[d] != "" and LullBg[d] > 0)
+			LullLitOk[d] := now, LullLitLum[d] := LullBg[d]
+		d := d + 2
+		}
+}
+
+LullLearn(v, now) {
+	global LullBg, LullLitOk, LullLitLum, LullLitStart, LullRelT, LullLightLum, LullSecN, LullSecA, LullSecB, LullArmA, LullClrT
+	if (!IsObject(LullLitOk))
+		LullLearnSeed(now)
+	ll := LullLightLum
+	ll := (ll < 30) ? 30 : ((ll > 220) ? 220 : ll)
+	d := 180
+	while (d <= 360)
+		{
+		if (v[d] != "" and v[d] >= ll)
+			{
+			if (LullLitStart[d] = "")
+				LullLitStart[d] := now
+			if (now - LullLitStart[d] >= TA("lulllit", 120))
+				LullLitOk[d] := now, LullLitLum[d] := v[d]
+			}
+		else
+			LullLitStart[d] := ""
+		d := d + 2
+		}
+	if (now - LullRelT < 150)
+		return
+	LullRelT := now
+	keep := TA("lullkeep", 600)
+	d := 180
+	while (d <= 360)
+		{
+		LullBg[d] := (LullLitOk[d] != "" and now - LullLitOk[d] <= keep) ? LullLitLum[d] : 0
+		d := d + 2
+		}
+	; zones keep their armed state by where they start; a new one starts armed
+	oldA := LullArmA, oldC := LullClrT
+	LullFindSectors()
+	LullArmA := [], LullClrT := []
+	i := 1
+	while (i <= LullSecN)
+		{
+		ka := LullSecA[i], best := ""
+		if (IsObject(oldA))
+		for k, a in oldA
+			{
+			if (Abs(k - ka) <= 6)
+				{
+				best := k
+				break
+				}
+			}
+		if (best != "")
+			LullArmA[ka] := oldA[best], LullClrT[ka] := oldC[best]
+		i := i + 1
+		}
+}
+
 LullScan() {
 	global LullFrames, LullCalN, LullR, LullBg, LullSecN, LullSecA, LullSecB
 	global LullArmA, LullClrT, LullActive, LullHitSec
@@ -6589,9 +5977,12 @@ LullScan() {
 			{
 			LullPickRadius()
 			LullFindSectors()
+			LullLearnSeed(A_TickCount)
 			}
 		return false
 		}
+	; the light zones are learned again the whole fight (they can move or change after a hit)
+	LullLearn(v, A_TickCount)
 	dv := LullArmDelta
 	if (dv < 15)
 		dv := 15
@@ -6626,7 +6017,8 @@ LullScan() {
 				}
 			d := d + 2
 			}
-		if (n > 0 and (dk * 100) >= (n * tp))
+		; a zone that changed all at once went away (or moved) - the needle only covers part of one
+		if (n > 0 and (dk * 100) >= (n * tp) and (n < 4 or dk < n))
 			{
 			LullClrT[ka] := 0
 			if (LullArmA[ka] = "" or LullArmA[ka])
@@ -7330,11 +6722,10 @@ BarLostLim() {
 }
 
 ; the version shown everywhere comes from the build number: 43 = 2.0, 44 = 2.01, 45 = 2.02 ...
-DFVerName(b) {
+VxVerName(b) {
+	; the shown version: the release (build 60) is 1.0, every publish after it counts up 1.1, 1.2, ...
 	b := Round(b)
-	if (b <= 43)
-		return "2.0"
-	return "2." . Format("{:02}", b - 43)
+	return (b <= 60) ? "1.0" : "1." . (b - 60)
 }
 
 Tm(ms) {
@@ -7440,11 +6831,6 @@ AdvRegistry() {
 	r.Push(["Stellarwave Melody", "L", "swgchover", 8, "ms|Auto retry guess: hover before the nudge"])
 	r.Push(["Stellarwave Melody", "L", "swgcwait", 8, "ms|Auto retry guess: wait before clicking"])
 	r.Push(["Stellarwave Melody", "L", "swgchold", 25, "ms|Auto retry guess: click hold"])
-	r.Push(["Camera setup", "V", "AutoGraphicsDelay", 0, "ms|Auto-lower graphics delay"])
-	r.Push(["Camera setup", "V", "AutoZoomDelay", 0, "ms|Auto-zoom delay"])
-	r.Push(["Camera setup", "V", "AutoCameraDelay", 0, "ms|Auto camera mode delay"])
-	r.Push(["Camera setup", "V", "AutoLookDelay", 0, "ms|Auto look-down delay"])
-	r.Push(["Camera setup", "V", "AutoBlurDelay", 0, "ms|Auto blur delay"])
 	r.Push(["Keeperbound recharge", "V", "KeeperOpenDelay", 0, "ms|Menu delay"])
 	r.Push(["Keeperbound recharge", "V", "KeeperStepDelay", 0, "ms|Step delay"])
 	r.Push(["Keeperbound recharge", "V", "KeeperBetweenDelay", 0, "ms|Between relics"])
@@ -7486,62 +6872,6 @@ AdvRegistry() {
 	return r
 }
 
-SleepTrack(ms, dir := "", useArrow := false) {
-	global MacroRunning, FishX, FishBarTooltipHeight, QpcFreq, RunLeft, RunWidth, HeldFraction
-	HeldFraction := 1.0
-	if (ms <= 15)
-		{
-		Sleep, % (ms < 0 ? 0 : ms)
-		return
-		}
-
-	DllCall("QueryPerformanceCounter", "Int64*", tStart)
-	Loop
-		{
-		if (!MacroRunning)
-			return
-		DllCall("QueryPerformanceCounter", "Int64*", tNow)
-		elapsed := (tNow - tStart) * 1000.0 / QpcFreq
-		remain := ms - elapsed
-		if (remain <= 0)
-			return
-		if (remain <= 20)
-			{
-
-			Sleep, % Round(remain)
-			return
-			}
-		CaptureStrip()
-		if (UiHandsOff(true))
-			return
-		nx := GetFishPos()
-		if (nx >= 0)
-			{
-			FishX := nx
-			MoveHudFish(nx)
-			}
-
-		if (dir != "")
-			{
-			if (useArrow)
-				bx := FindArrowX()
-			else
-				bx := (BarPresent() and RunWidth > 0) ? RunLeft + (RunWidth/2) : -1
-			if (bx >= 0)
-				{
-				if (useArrow)
-					MoveHudBarC(bx)
-				else
-					MoveHudBarSpan(RunLeft, RunWidth)
-				if ((dir == "Left" and bx <= FishX) or (dir == "Right" and bx >= FishX))
-					{
-					HeldFraction := elapsed/ms
-					return
-					}
-				}
-			}
-		}
-}
 
 ;====================================================================================================;
 
@@ -10475,11 +9805,6 @@ TotemLastPop := TotemNext
 TotemLastPopSigs := TotemEvtSigs
 TotemLastPopUntil := A_TickCount + 60000
 if (TotemNext = "Sundial")
-	WhEvent("totem", "Sundial Totem - changing the time to " . TotemWantTime
-		. ((TotemFor = "Day" or TotemFor = "Night") ? "" : " for the " . TotemFor . " Totem"))
-else
-	WhEvent("totem", TotemNext . " Totem")
-if (TotemNext = "Sundial")
 	{
 	TotemWaited := 0
 	while (MacroRunning and TotemWaited < TA("totemmax", 40000))
@@ -10916,232 +10241,16 @@ TotemListsRefresh() {
 		}
 }
 
-WhEsc(t) {
-	t := StrReplace(t, "\", "\\")
-	t := StrReplace(t, """", "\""")
-	t := StrReplace(t, "`r", "")
-	t := StrReplace(t, "`n", "\n")
-	t := StrReplace(t, "`t", " ")
-	return t
-}
 
-WhField(nm, val, inline := true) {
-	return "{""name"":""" . WhEsc(nm) . """,""value"":""" . WhEsc(val) . """,""inline"":" . (inline ? "true" : "false") . "}"
-}
 
-WhStamp() {
-	ts := A_NowUTC
-	FormatTime, d, %ts%, yyyy-MM-dd
-	FormatTime, t, %ts%, HH:mm:ss
-	return d . "T" . t . ".000Z"
-}
 
-WhBuildJson(title, desc, color, fieldsJson, footer, img := "") {
-	j := "{""username"":""DeepFish"",""embeds"":[{"
-	j .= """title"":""" . WhEsc(title) . ""","
-	if (desc != "")
-		j .= """description"":""" . WhEsc(desc) . ""","
-	j .= """color"":" . color . ","
-	if (fieldsJson != "")
-		j .= """fields"":[" . fieldsJson . "],"
-	if (img != "")
-		j .= """image"":{""url"":""attachment://" . img . """},"
-	j .= """footer"":{""text"":""" . WhEsc(footer) . """},"
-	j .= """timestamp"":""" . WhStamp() . """"
-	j .= "}]}"
-	return j
-}
-
-WhPost(json) {
-	global WebhookURL
-	if (WebhookURL = "" or InStr(WebhookURL, "discord") = 0)
-		return false
-	try
-		{
-		req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-		req.SetTimeouts(4000, 4000, 4000, 6000)
-		req.Open("POST", WebhookURL, false)
-		req.SetRequestHeader("Content-Type", "application/json; charset=utf-8")
-		req.Send(json)
-		}
-	catch e
-		return false
-	return true
-}
-
-WhTick:
-if (!WebhookOn or WebhookURL = "" or !MacroRunning)
-	return
-if (WebhookSummaryMin >= 1 and (A_TickCount - WhLastSummary) >= (WebhookSummaryMin * 60000))
-	{
-	WhLastSummary := A_TickCount
-	WhEvent("summary")
-	}
-if (WebhookOnAlert and !WhStalled and WebhookStallMin >= 1)
-	{
-	WhRef := WhLastCatchTick ? WhLastCatchTick : WhStartTick
-	if (WhRef and (A_TickCount - WhRef) >= (WebhookStallMin * 60000))
-		{
-		WhStalled := true
-		WhEvent("stall")
-		}
-	}
-return
 
 ;====================================================================================================;
 
-WhSendShot(json, fallback := "") {
-	global WebhookURL
-	if (WebhookURL = "")
-		return false
-	cu := A_WinDir . "\System32\curl.exe"
-	if (!FileExist(cu))
-		return WhSendAsync(fallback != "" ? fallback : json)
-	stamp := A_TickCount
-	jf := A_Temp . "\deepfish_wh_" . stamp . ".json"
-	pf := A_Temp . "\deepfish_shot_" . stamp . ".jpg"
-	sf := A_Temp . "\deepfish_shot_" . stamp . ".ps1"
-	FileDelete, %jf%
-	FileAppend, % json, %jf%, UTF-8-RAW
-	if (!FileExist(jf))
-		return false
-	sw := A_ScreenWidth
-	sh := A_ScreenHeight
-	tw := sw // 2
-	if (tw > 1280)
-		tw := 1280
-	if (tw < 640)
-		tw := 640
-	th := Round(sh * tw / sw)
-	ps := "Add-Type -AssemblyName System.Drawing`n"
-	ps .= "$ErrorActionPreference='SilentlyContinue'`n"
-	ps .= "$W=" . sw . "; $H=" . sh . "; $TW=" . tw . "; $TH=" . th . "`n"
-	ps .= "$J='" . jf . "'; $P='" . pf . "'; $S='" . sf . "'`n"
-	ps .= "$C='" . cu . "'; $U='" . WebhookURL . "'`n"
-	ps .= "$b=New-Object System.Drawing.Bitmap $W,$H`n"
-	ps .= "$g=[System.Drawing.Graphics]::FromImage($b)`n"
-	ps .= "$g.CopyFromScreen(0,0,0,0,$b.Size)`n"
-	ps .= "$t=New-Object System.Drawing.Bitmap $TW,$TH`n"
-	ps .= "$g2=[System.Drawing.Graphics]::FromImage($t)`n"
-	ps .= "$g2.InterpolationMode='HighQualityBicubic'`n"
-	ps .= "$g2.DrawImage($b,0,0,$TW,$TH)`n"
-	ps .= "$enc=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }`n"
-	ps .= "$ep=New-Object System.Drawing.Imaging.EncoderParameters 1`n"
-	ps .= "$ep.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter -ArgumentList ([System.Drawing.Imaging.Encoder]::Quality), ([long]70)`n"
-	ps .= "$t.Save($P,$enc,$ep)`n"
-	ps .= "$g.Dispose(); $g2.Dispose(); $b.Dispose(); $t.Dispose()`n"
-	ps .= "$ca=@('-s','-m','30','-F',""payload_json=<$J"",'-F',""files[0]=@$P;filename=shot.jpg"",$U)`n"
-	ps .= "& $C @ca`n"
-	ps .= "Remove-Item $J,$P,$S -Force -ErrorAction SilentlyContinue`n"
-	FileDelete, %sf%
-	FileAppend, % ps, %sf%, UTF-8-RAW
-	if (!FileExist(sf))
-		{
-		FileDelete, %jf%
-		return false
-		}
-	Run, powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%sf%", , Hide
-	return true
-}
 
-WhSendAsync(json) {
-	global WebhookURL
-	if (WebhookURL = "")
-		return false
-	tf := A_Temp . "\deepfish_wh_" . A_TickCount . ".json"
-	FileDelete, %tf%
-	FileAppend, % json, %tf%, UTF-8-RAW
-	if (!FileExist(tf))
-		return false
-	cu := A_WinDir . "\System32\curl.exe"
-	if (FileExist(cu))
-		{
-		cmd := A_ComSpec . " /c """"" . cu . """ -s -m 15 -H ""Content-Type: application/json"" --data-binary @""" . tf . """ """ . WebhookURL . """ & del """ . tf . """"""
-		Run, %cmd%, , Hide
-		return true
-		}
-	WhPost(json)
-	FileDelete, %tf%
-	return true
-}
 
-WhRuntimeText() {
-	global WhStartTick
-	if (!WhStartTick)
-		return "0h 0m"
-	ms := A_TickCount - WhStartTick
-	tsec := ms // 1000
-	th := tsec // 3600
-	tm := Mod(tsec, 3600) // 60
-	return th . "h " . tm . "m"
-}
 
-WhCommonFields() {
-	global WhCatches, WhStartTick, ActiveProfile
-	caught := CaughtTotal()
-	global TotemAuto, TotemTime, TotemWeather
-	ms := WhStartTick ? (A_TickCount - WhStartTick) : 0
-	hrs := (ms > 0) ? (ms / 3600000.0) : 0
-	rate := (hrs > 0.01) ? Round(caught / hrs) : 0
-	f := WhField("Runtime", WhRuntimeText(), true)
-	f .= "," . WhField("Fish", caught . "", true)
-	f .= "," . WhField("Per hour", rate . "", true)
-	f .= "," . WhField("Profile", ActiveProfile, true)
-	if (TotemAuto)
-		{
-		st := (TotemTime = "" ? "?" : TotemTime)
-		st .= " / " . (TotemWeather = "" ? "?" : TotemWeather)
-		f .= "," . WhField("Server", st, true)
-		}
-	return f
-}
 
-WhEvent(kind, detail := "") {
-	global WebhookOn, WebhookURL, WebhookOnAlert, WebhookShot, ActiveProfile
-	if (!WebhookOn or WebhookURL = "")
-		return
-	if (kind = "start")
-		j := WhBuildJson("Macro started", "", 3066993, WhCommonFields(), "DeepFish")
-	else if (kind = "stop")
-		{
-		if (!WebhookOnAlert)
-			return
-		j := WhBuildJson("Macro stopped", "The macro is no longer running.", 15158332, WhCommonFields(), "DeepFish")
-		}
-	else if (kind = "stall")
-		{
-		if (!WebhookOnAlert)
-			return
-		j := WhBuildJson("No fish caught recently", "The macro is running but has not landed a fish for a while.", 15844367, WhCommonFields(), "DeepFish")
-		if (WebhookShot)
-			{
-			cf := WhCommonFields()
-			WhSendShot(WhBuildJson("No fish caught recently", "The macro is running but has not landed a fish for a while.", 15844367, cf, "DeepFish", "shot.jpg"), j)
-			return
-			}
-		}
-	else if (kind = "summary")
-		{
-		j := WhBuildJson("Status report", "", 3447003, WhCommonFields(), "DeepFish")
-		if (WebhookShot)
-			{
-			cf := WhCommonFields()
-			WhSendShot(WhBuildJson("Status report", "", 3447003, cf, "DeepFish", "shot.jpg"), j)
-			return
-			}
-		}
-	else if (kind = "catch")
-		j := WhBuildJson("Fish caught", "", 10181046, WhCommonFields(), "DeepFish")
-	else if (kind = "totem")
-		j := WhBuildJson("Totem used", detail, 15105570, WhCommonFields(), "DeepFish")
-	else if (kind = "aquarium")
-		j := WhBuildJson("Aquarium", detail, 1752220, WhCommonFields(), "DeepFish")
-	else if (kind = "keeper")
-		j := WhBuildJson("Keeperbound recharge", detail, 11342935, WhCommonFields(), "DeepFish")
-	else
-		return
-	WhSendAsync(j)
-}
 
 TotemReadState() {
 	global TotemTime, TotemWeather, TotemEvents, TotemDbg, TotemEvtSigs
@@ -21280,7 +20389,7 @@ SwDoClickMax(k, now, slow := false) {
 	else
 		PreciseSleep(SwMs(60))
 	nk := 0
-	if (MacroRunning and (SwFastClicks or 1) and ControlMode != "Manual" and !SwStop and SwK0 >= 0 and SwLit < 11)
+	if (MacroRunning and (SwFastClicks or 1) and !SwStop and SwK0 >= 0 and SwLit < 11)
 		{
 		i := SwNextI ? SwNextI : SwLit - SwK0 + 2
 		if (i >= 1 and i <= SwOrder.Length())
@@ -21933,7 +21042,7 @@ SwDoClick(k, now) {
 	if (SwLockStrk and SwNow() - SwLockT < 0.15)
 		return false
 	wasWant := SwWantK
-	atomic := (ControlMode = "Manual" or !MacroRunning)
+	atomic := !MacroRunning
 	nomA := 0
 	if (PrecisionDown or GetKeyState("LButton"))
 		{
@@ -22166,7 +21275,7 @@ SwPressDone() {
 	SwLastClick := SwClickAt
 	SwLastStep := SwClickAt
 	SwLog("click slot " . k . " at " . SwPressCx . "," . SwPressCy . " lit " . SwClickLit . " took " . Round(SwClickTook * 1000) . (SwPressPre ? " pre" : "") . (SwPressN ? " repress" : ""))
-	if (!MacroRunning or ControlMode = "Manual")
+	if (!MacroRunning)
 		SwPreEnd("park")
 }
 
@@ -22183,7 +21292,7 @@ SwPreNext() {
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwFastClicks, MacroRunning, ControlMode, SwStop, SwK0, SwClickLit, SwOrder, SwSlotSt, SwClickSlot
 	global SwFishX, SwSB, SwFrTop, FishBarTop, RobloxHwnd
 	nk := 0
-	if (MacroRunning and SwFastClicks and ControlMode != "Manual" and !SwStop and SwK0 >= 0 and SwClickLit < 11 and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
+	if (MacroRunning and SwFastClicks and !SwStop and SwK0 >= 0 and SwClickLit < 11 and RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
 		{
 		i := SwClickLit - SwK0 + 2
 		if (i >= 1 and i <= SwOrder.Length())
@@ -24463,14 +23572,6 @@ WM_MOUSEMOVE(wParam, lParam, msg, hwnd) {
 		ToolTip, , , , 3
 }
 
-WM_SETCURSOR(wParam, lParam, msg, hwnd) {
-	global hVersionsBtn
-	if (hVersionsBtn and wParam = hVersionsBtn)
-		{
-		DllCall("SetCursor", "Ptr", DllCall("LoadCursor", "Ptr", 0, "Ptr", 32649, "Ptr"))
-		return true
-		}
-}
 
 WM_MOUSEWHEEL(wParam, lParam, msg, hwnd) {
 	global hFaqBox, GuiHwnd, SIDEW, HEADH, BARH, DpiF
@@ -24821,6 +23922,8 @@ LayoutMinigame() {
 		vis.Push("halicol")
 	if (SpecialRod = "Remembrance")
 		vis.Push("remem")
+	if (SpecialRod = "Lullaby")
+		vis.Push("lullmode")
 	if (SpecialRod = "Pinions Aria")
 		vis.Push("notes")
 	else if ((ControlMode != "Lines" or SpecialRod = "Remembrance") and SpecialRod != "Tryhard Rod" and SpecialRod != "Stellarwave Melody")
@@ -24836,15 +23939,9 @@ LayoutMinigame() {
 		vis.Push("cbcol")
 	if (SpecialRod = "Requiem")
 		vis.Push("reel")
-	if (ControlMode = "Manual")
-		vis.Push("manual")
-	else
-		vis.Push("precision")
+	vis.Push("precision")
 	vis.Push("barctl")
-	if (ControlMode = "Manual")
-		vis.Push("manrules")
-	else
-		vis.Push("precrules")
+	vis.Push("precrules")
 	vis.Push("detcheck")
 	y := MiniTop
 	for i, nm in vis
@@ -25073,6 +24170,7 @@ OnMessage(0x135, "WM_CTLCOLORBTN")
 OnMessage(0x138, "WM_CTLCOLORSTATIC")
 
 GeneralCtrls := []
+CreditsCtrls := []
 HomeCtrls := []
 CastCtrls := []
 NormalCastCtrls := []
@@ -25089,12 +24187,9 @@ KeeperBodyCtrls := []
 AdvCtrls := []
 GuessCtrls := []
 GuessBodyCtrls := []
-WebhookCtrls := []
-WebhookBodyCtrls := []
 FaqCtrls := []
 AboutCtrls := []
 VersionsCtrls := []
-ReadThisCtrls := []
 ThemedCtrls := []
 CMCtrls := []
 NavHwnd := {}
@@ -25136,10 +24231,10 @@ IconTips := {}
 
 Gui, Font, s11 Bold c%ColorText%, Segoe UI
 TitleX := SIDEW + 16
-Gui, Add, Text, x%TitleX% y9 w220 h20 HwndhTitleText, DeepFish
+Gui, Add, Text, x%TitleX% y9 w220 h20 HwndhTitleText, Veltrix
 SpecialBrushes[hTitleText] := {brush: hBrushBG, text: ColorTextBGR}
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%TitleX% y28 w260 h14 HwndhSubtitle, ULTIMATE  ·  v%DFVersion%  ·  Made by Yato
+Gui, Add, Text, x%TitleX% y28 w260 h14 HwndhSubtitle, v%VxVersion%
 SpecialBrushes[hSubtitle] := {brush: hBrushBG, text: ColorMutedBGR}
 
 CloseX := WINW - 44
@@ -25230,7 +24325,6 @@ Gui, Font, s9 c%ColorAccent%, Segoe UI
 
 OnMessage(0x200, "WM_MOUSEMOVE")
 OnMessage(0x20A, "WM_MOUSEWHEEL")
-OnMessage(0x20, "WM_SETCURSOR")
 OnMessage(0x201, "ShellDragDown")
 
 ;---- Sidebar: icons only ---------------------------------------------------------------------------
@@ -25245,9 +24339,8 @@ Gui, Font, s15 Norm c%ColorText%, Segoe UI
 Gui, Add, Text, x10 y8 w44 h40 Center +0x200 HwndhLogoTile, 🐟
 SpecialBrushes[hLogoTile] := {brush: hBrushPanel, text: ColorTextBGR}
 
-NavDefs := [ ["ReadThis","⚠  READ THIS"], ["Home","🏠  Fishing"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
-	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"], ["Misc","🧩  Miscellaneous"]
-	, ["Faq","❓  FAQ"], ["About","ℹ️  About"] ]
+NavDefs := [ ["Home","🏠  Fishing"], ["General","🎣  General"], ["Cast","🎯  Cast"], ["Shake","🐚  Shake"]
+	, ["Minigame","🎮  Minigame"], ["Utilities","🧰  Utilities"], ["Misc","🧩  Miscellaneous"] ]
 
 NavY := 62
 for i, d in NavDefs
@@ -25263,24 +24356,13 @@ for i, d in NavDefs
 	Gui, Font, s13 Norm c%ColorText%, Segoe UI
 	Gui, Add, Text, x10 y%NavY% w44 h40 Center +0x200 vNav%nk% gSidebarClick HwndhNV, %nl%
 	RoundCtrl(hNV, 44, 40, 10)
-	SpecialBrushes[hNV] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
+	SpecialBrushes[hNV] := {brush: hBrushPanel, text: ColorNavBGR}
 	IconTips[hNV] := Trim(np[2])
 	NavHwnd[nk] := hNV
 	NavY += 46
 	}
 
 Gui, Font, s12 Norm c%ColorAccent%, Segoe UI
-AddKeyBtnY := WINH - 100
-Gui, Add, Text, x10 y%AddKeyBtnY% w44 h40 Center +0x100 +0x200 gAddKeyClick HwndhAddKeyBtn, 🔑
-SpecialBrushes[hAddKeyBtn] := {brush: hBrushPanel, text: ColorAccentBGR}
-RoundCtrl(hAddKeyBtn, 44, 40, 10)
-IconTips[hAddKeyBtn] := "Add key"
-Gui, Font, s12 Norm c%ColorRed%, Segoe UI
-VersionsBtnY := WINH - 54
-Gui, Add, Text, x10 y%VersionsBtnY% w44 h40 Center +0x100 +0x200 gVersionsClick HwndhVersionsBtn, 📜
-SpecialBrushes[hVersionsBtn] := {brush: hBrushPanel, text: ColorRedBGR}
-RoundCtrl(hVersionsBtn, 44, 40, 10)
-IconTips[hVersionsBtn] := "Versions  (F9 = Colors)"
 
 Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
 MtX := CARDX - XS
@@ -25298,7 +24380,7 @@ AllManaged := []
 NeedSection := "General"
 gosub, EnsureSection
 
-TargetSection := ReadThisAccepted ? "Home" : "ReadThis"
+TargetSection := "Home"
 gosub, ApplyCastModeLocks
 gosub, ShowSection
 
@@ -25323,15 +24405,26 @@ DllCall("SetWindowPos", "Ptr", SbThumb, "Ptr", 0, "Int", 0, "Int", 0, "Int", 0, 
 GuiControl, 1:Hide, %SbTrack%
 GuiControl, 1:Hide, %SbThumb%
 
-Gui, Show, w%WINW% h%WINH%, DeepFish BETA
+; new look: the classic window is invisible and click-through before it is first shown, so it never flashes
+if (UseNewLook)
+	{
+	DetectHiddenWindows, On
+	WinSet, Transparent, 0, ahk_id %GuiHwnd%
+	WinSet, ExStyle, +0x20, ahk_id %GuiHwnd%
+	DetectHiddenWindows, Off
+	Gui, 1:+ToolWindow
+	}
+Gui, Show, w%WINW% h%WINH%, Veltrix
 SetTimer, HeaderStatsTick, 1000
 HideHelpIcons()
 RoundExtras()
 SetTimer, InfoPanelTick, 500
 SetTimer, FishScanTick, 450
-SetTimer, DFCheckForUpdate, -1200
+SetTimer, VxCheckForUpdate, -1200
 SetTimer, OverlayHideTick, 250
 gosub, RepaintGui
+if (UseNewLook)
+	SetTimer, UiBoot, -10
 
 return
 
@@ -25348,7 +24441,8 @@ NewLists := []
 if (NeedSection = "General")
 	{
 	gosub, BuildGeneralSection
-	NewLists := [GeneralCtrls]
+	gosub, BuildCreditsSection
+	NewLists := [GeneralCtrls, CreditsCtrls]
 	}
 else if (NeedSection = "Home")
 	{
@@ -25405,31 +24499,6 @@ else if (NeedSection = "Guess")
 	{
 	gosub, BuildGuessSection
 	NewLists := [GuessCtrls]
-	}
-else if (NeedSection = "Webhook")
-	{
-	gosub, BuildWebhookSection
-	NewLists := [WebhookCtrls]
-	}
-else if (NeedSection = "Faq")
-	{
-	gosub, BuildFaqSection
-	NewLists := [FaqCtrls]
-	}
-else if (NeedSection = "About")
-	{
-	gosub, BuildAboutSection
-	NewLists := [AboutCtrls]
-	}
-else if (NeedSection = "Versions")
-	{
-	gosub, BuildVersionsSection
-	NewLists := [VersionsCtrls]
-	}
-else if (NeedSection = "ReadThis")
-	{
-	gosub, BuildReadThisSection
-	NewLists := [ReadThisCtrls]
 	}
 else
 	return
@@ -25702,7 +24771,7 @@ for ri, r in ApOpts
 	ry += HmRowH
 	}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%HmX% y1006 w%HmW% h18 HwndhC, Changing these restarts the window (your settings are saved first).
+Gui, Add, Text, x%HmX% y1006 w%HmW% h18 HwndhC, Changes restart the window (settings are saved first).
 HomeCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 return
@@ -25718,7 +24787,7 @@ if (ApKey = "" or ApV = ApCur)
 IniWrite, %ApV%, %SettingsFile%, GUI, %ApKey%
 if (MacroRunning)
 	{
-	MsgBox, 4160, DeepFish, Saved. It applies the next time the macro starts (it is running right now).
+	MsgBox, 4160, Veltrix, Saved. It applies the next time the macro starts (it is running right now).
 	return
 	}
 gosub, SaveSettings
@@ -25782,7 +24851,7 @@ if (!hInfoP)
 	Gui, InfoP:Color, %ColorCard%
 	Gui, InfoP:Margin, 0, 0
 	Gui, InfoP:Font, s10 Bold c%ColorText%, Segoe UI
-	Gui, InfoP:Add, Text, x14 y10 w200 h20 HwndhIpT, DeepFish
+	Gui, InfoP:Add, Text, x14 y10 w200 h20 HwndhIpT, Veltrix
 	SpecialBrushes[hIpT] := {brush: hBrushCard, text: ColorTextBGR}
 	IpHasSw := (SpecialRod = "Stellarwave Melody")
 	IpRows := ["Rod", "Phase", "Caught", "Per hour", "Session", "Rod power"]
@@ -25804,7 +24873,7 @@ if (!hInfoP)
 		IpY += 20
 		}
 	IpH := IpY + 8
-	Gui, InfoP:Show, Hide w%IpW% h%IpH%, DeepFish Info
+	Gui, InfoP:Show, Hide w%IpW% h%IpH%, Veltrix Info
 	DetectHiddenWindows, On
 	WinGetPos, , , IpPw, IpPh, ahk_id %hInfoP%
 	IpRad := Round(28 * ((GuiRoundMul = "") ? 1 : GuiRoundMul))
@@ -25868,8 +24937,8 @@ if (!FsReady or A_TickCount - FsDataChkT > 600000)
 		}
 	}
 FsEnsureWorker()
-FsOutF := A_Temp . "\deepfish_ocr_out.txt"
-FsReqF := A_Temp . "\deepfish_ocr_req.txt"
+FsOutF := A_Temp . "\veltrix_ocr_out.txt"
+FsReqF := A_Temp . "\veltrix_ocr_req.txt"
 if FileExist(FsOutF)
 	{
 	FileRead, FsTxt, *P65001 %FsOutF%
@@ -26279,7 +25348,7 @@ FsFetch(q) {
 		whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
 		whr.SetTimeouts(5000, 5000, 8000, 15000)
 		whr.Open("GET", "https://fischipedia.org/w/api.php?action=bucket&format=json&query=" . enc, false)
-		whr.SetRequestHeader("User-Agent", "DeepFish-macro")
+		whr.SetRequestHeader("User-Agent", "Mozilla/5.0")
 		whr.Send()
 		if (whr.Status != 200)
 			return ""
@@ -26303,7 +25372,7 @@ FsEnsureWorker() {
 		if (ErrorLevel)
 			return
 		}
-	ps := A_Temp . "\deepfish_ocr_worker.ps1"
+	ps := A_Temp . "\veltrix_ocr_worker.ps1"
 	FileDelete, %ps%
 	FileAppend, % FsWorkerScript(), %ps%, UTF-8
 	me := DllCall("GetCurrentProcessId")
@@ -26561,8 +25630,8 @@ $engine = $null
 try { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new('en-US')) } catch { }
 if (-not $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
 $maxDim = [Windows.Media.Ocr.OcrEngine]::MaxImageDimension - 10
-$req = Join-Path $Dir 'deepfish_ocr_req.txt'
-$out = Join-Path $Dir 'deepfish_ocr_out.txt'
+$req = Join-Path $Dir 'veltrix_ocr_req.txt'
+$out = Join-Path $Dir 'veltrix_ocr_out.txt'
 $nl = [Environment]::NewLine
 $dataStamp = $null
 function LoadData() {
@@ -26788,7 +25857,7 @@ else if (A_GuiControl = "DashScan")
 	{
 	if (DashOn and !FishScanOn)
 		{
-		MsgBox, 0x40034, DeepFish - Fish Scanner, The fish scanner and value calculator are NOT 100`% accurate.`n`nThey read the "You just caught a ..." message with text recognition, so now and then a name or weight can be misread or a message missed. Fish values, the session total and the extra-fish count are estimates.`n`nTurn the fish scanner on anyway?
+		MsgBox, 0x40034, Veltrix - Fish Scanner, The fish scanner and value calculator are NOT 100`% accurate.`n`nThey read the "You just caught a ..." message with text recognition, so now and then a name or weight can be misread or a message missed. Fish values, the session total and the extra-fish count are estimates.`n`nTurn the fish scanner on anyway?
 		IfMsgBox, No
 			{
 			GuiControl, 1:Choose, DashScan, 1
@@ -26802,7 +25871,7 @@ else if (A_GuiControl = "DashScan")
 		FsLoadData()
 		ToolTip
 		if (!FileExist(A_ScriptDir . "\FischFishData.txt"))
-			MsgBox, 0x40030, DeepFish - Fish Scanner, Could not download the fish value list from Fischipedia right now. It will try again by itself while the macro runs.
+			MsgBox, 0x40030, Veltrix - Fish Scanner, Could not download the fish value list from Fischipedia right now. It will try again by itself while the macro runs.
 		}
 	; rebuild the info panel with (or without) the fish rows
 	if (hInfoP)
@@ -26873,13 +25942,11 @@ BuildGeneralSection:
 
 hC := AddPanel(CARDX, 120, CARDW, 152)
 GeneralCtrls.Push(hC)
-hC := AddPanel(CARDX, 282, CARDW, 168)
-GeneralCtrls.Push(hC)
 hC := AddPanel(CARDX, 460, CARDW, 308 + RH)
 GeneralCtrls.Push(hC)
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y130 w%TXW% h16 HwndhL, HOTKEYS && WINDOW
+Gui, Add, Text, x%CX% y130 w%TXW% h16 HwndhL, HOTKEYS
 GeneralCtrls.Push(hL)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
@@ -26903,10 +25970,10 @@ for i, d in GeneralHotDefs
 
 Gui, Font, s9 c%ColorText%, Segoe UI
 aotChk := GuiAlwaysOnTop ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiAlwaysOnTop %aotChk% gToggleAlwaysOnTop HwndhC, Window always on top
+Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiAlwaysOnTop %aotChk% gToggleAlwaysOnTop HwndhC, Always on top
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%IX% y%Y% w%IW% h20 HwndhL, Theme (restarts the window):
+Gui, Add, Text, x%IX% y%Y% w%IW% h20 HwndhL, Theme:
 GeneralCtrls.Push(hL)
 Gui, Font, s9 c%ColorText%, Segoe UI
 Y += 22
@@ -26919,39 +25986,8 @@ ThemedCtrls.Push(hC)
 IconTips[hC] := "Colour theme for this window.`n`nMono - near-black, minimal (default)`nMidnight - dark blue-grey`nViolet, Emerald, Crimson - other accents`nClassic - the original all-blue look"
 
 keepChk := GuiKeepOpen ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiKeepOpen %keepChk% gToggleKeepOpen HwndhC, Always open after pressing Start
+Gui, Add, CheckBox, x%CX% y%Y% w230 h20 c%ColorText% vGuiKeepOpen %keepChk% gToggleKeepOpen HwndhC, Stay open on Start
 GeneralCtrls.Push(hC)
-
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y292 w%TXW% h16 HwndhL, AUTOMATIC GAME SETUP
-GeneralCtrls.Push(hL)
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%DX% y292 w%DW% h16 Center HwndhL, delay ms
-GeneralCtrls.Push(hL)
-
-Y := 314
-GeneralBoolDefs := [ ["Auto-lower graphics","AutoLowerGraphics","AutoGraphicsDelay"]
-                   , ["Auto-zoom camera","AutoZoomInCamera","AutoZoomDelay"]
-                   , ["Auto-enable camera mode","AutoEnableCameraMode","AutoCameraDelay"]
-                   , ["Auto-look down","AutoLookDownCamera","AutoLookDelay"]
-                   , ["Auto-blur camera","AutoBlurCamera","AutoBlurDelay"] ]
-
-Gui, Font, s9 c%ColorText%, Segoe UI
-for i, d in GeneralBoolDefs
-	{
-	lbl := d[1]
-	var := d[2]
-	dvar := d[3]
-	val := %var%
-	chk := val ? "Checked" : ""
-	Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% v%var% %chk% gQueueAutoSave HwndhC, %lbl%
-	GeneralCtrls.Push(hC)
-	EdOpt := TmNumOpt(dvar)
-	Gui, Add, Edit, x%DX% y%Y% w%DW% h20 v%dvar% gQueueAutoSave HwndhD %EdOpt%, % %dvar%
-	GeneralCtrls.Push(hD)
-	ThemedCtrls.Push(hD)
-	Y += RH
-	}
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CX% y470 w%TXW% h16 HwndhL, RECOVERY
@@ -26959,7 +25995,7 @@ GeneralCtrls.Push(hL)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 Y := 492
-GeneralNumDefs := [ ["Restart delay (ms)","RestartDelay"], ["Re-equip after N failed casts","UnstickAfter"] ]
+GeneralNumDefs := [ ["Restart delay (ms)","RestartDelay"], ["Re-equip after fails","UnstickAfter"] ]
 for i, d in GeneralNumDefs
 	{
 	lbl := d[1]
@@ -26973,9 +26009,9 @@ for i, d in GeneralNumDefs
 	Y += RH
 	}
 
-GeneralKeyDefs := [ ["Rod hotbar slot key","RodSlotKey"
+GeneralKeyDefs := [ ["Rod slot key","RodSlotKey"
 	, "The hotbar key your fishing rod sits on.`n`nUsed to un-equip and re-equip the rod when a`ncast gets stuck on the ground."]
-	, ["Equipment bag key","BagSlotKey"
+	, ["Bag key","BagSlotKey"
 	, "The hotbar key for your equipment bag.`n`nIf set, the macro switches to this and back to`nthe rod to un-stick a cast. Leave blank to just`npress the rod key twice instead."] ]
 
 for i, d in GeneralKeyDefs
@@ -27011,14 +26047,14 @@ IconTips[hQ] := "Shifts EVERY wait in the macro by this many ms.`n0 is normal.`n
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 AuChk := AutoUpdate ? "Checked" : ""
-AuLbl := "Auto update" . ((DFModBuild > 0) ? "   (v" . DFVersion . ")" : "")
+AuLbl := "Auto update" . ((VxBuild > 0) ? "   (v" . VxVersion . ")" : "")
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vAutoUpdate %AuChk% gAutoUpdateChanged HwndhC, %AuLbl%
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
-IconTips[hQ] := "ON - when a new build is published, DeepFish`ndownloads it and restarts on it by itself. It checks`nwhen it starts and every 10 minutes, but never`nwhile the macro is fishing. Your old file is kept`nnext to it as .bak.`n`nOFF (default) - never updates by itself."
+IconTips[hQ] := "ON - when a new build is published, Veltrix`ndownloads it and restarts on it by itself. It checks`nwhen it starts and every 10 minutes, but never`nwhile the macro is fishing. Your old file is kept`nnext to it as .bak.`n`nOFF (default) - never updates by itself."
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 AdvChk := AdvancedOn ? "Checked" : ""
@@ -27037,7 +26073,7 @@ IconTips[hQ] := "ON - every timer in the macro can be tuned on the`nAdvanced pag
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 HoChk := HideOverlay ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vHideOverlay %HoChk% gOverlayOptChanged HwndhC, Hide overlay while running
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vHideOverlay %HoChk% gOverlayOptChanged HwndhC, Hide overlay
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
@@ -27047,17 +26083,17 @@ IconTips[hQ] := "ON - while the macro runs (any rod, any mode), the`ninfo text a
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 HtChk := HideTextAlways ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vHideTextAlways %HtChk% gOverlayOptChanged HwndhC, Hide the in-game text at all times
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vHideTextAlways %HtChk% gOverlayOptChanged HwndhC, Hide in-game text
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
-IconTips[hQ] := "ON - the text the macro shows over Roblox (the start`nlist with Made By Yato and the keys, Current Task,`nand so on) never shows, also while it is stopped.`nThe keys and the macro work exactly the same.`n`nThe credit stays in this window's title."
+IconTips[hQ] := "ON - the text the macro shows over Roblox (the start`nlist with the keys, Current Task, and so on) never shows, also while it is stopped.`nThe keys and the macro work exactly the same."
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 PaChk := PassiveAll ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vPassiveAll %PaChk% gPassiveAllChanged HwndhC, Passive mode (every rod)
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vPassiveAll %PaChk% gPassiveAllChanged HwndhC, Passive mode
 GeneralCtrls.Push(hC)
 Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
@@ -27065,7 +26101,7 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
 IconTips[hQ] := "ON - the macro does NOT cast or shake, for ANY rod.`nAfter you press Start it just watches your screen`nand plays the minigame whenever it shows up, then`ngoes back to watching. You cast and shake yourself.`n`nKeeperbound recharge, totems and aquarium still run`nbetween fish.`n`nOFF - normal: the macro casts and shakes too."
 Y += RH
-Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Passive scan every (ms):
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Passive scan (ms):
 GeneralCtrls.Push(hL)
 Gui, Add, Edit, x%IX% y%Y% w%IW% h20 vPassiveMs gPassiveAllChanged HwndhC +Number, %PassiveMs%
 GeneralCtrls.Push(hC)
@@ -27096,7 +26132,7 @@ if (ErrorLevel or GtV = "" or GtV = GuiTheme)
 IniWrite, %GtV%, %SettingsFile%, GUI, Theme
 if (MacroRunning)
 	{
-	MsgBox, 4160, DeepFish, Theme saved. It applies the next time the macro starts (it is running right now).
+	MsgBox, 4160, Veltrix, Theme saved. It applies the next time the macro starts (it is running right now).
 	return
 	}
 gosub, SaveSettings
@@ -27109,7 +26145,7 @@ if (!ErrorLevel)
 	AutoUpdate := AuV ? true : false
 gosub, QueueAutoSave
 if (AutoUpdate)
-	SetTimer, DFCheckForUpdate, -500
+	SetTimer, VxCheckForUpdate, -500
 return
 
 TimeOffsetChanged:
@@ -27126,6 +26162,15 @@ gosub, QueueAutoSave
 return
 
 ;====================================================================================================;
+
+; the credit line (one small line under Setup)
+BuildCreditsSection:
+Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y840 w%TXW% h16 HwndhC, Based on DeepFish by Yato  ·  Reel control by AsphaltCake
+CreditsCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+return
 
 BuildCastSection:
 
@@ -27156,9 +26201,9 @@ hC := AddPanel(CARDX, 306, CARDW, 108)
 NormalCastCtrls.Push(hC)
 
 Y := CastGroupTop
-NormalCastDefs := [ ["Hold rod cast duration (ms)","HoldRodCastDuration"
+NormalCastDefs := [ ["Cast hold (ms)","HoldRodCastDuration"
 	, "How long the mouse is held down to cast.`n`nHIGHER = casts further out.`nLOWER  = casts closer in."]
-	, ["Wait for bobber delay (ms)","WaitForBobberDelay"
+	, ["Bobber wait (ms)","WaitForBobberDelay"
 	, "How long to wait after casting before it`nstarts looking for the shake button.`n`nRaise it if shaking starts before the`nbobber has landed."] ]
 for i, d in NormalCastDefs
 	{
@@ -27179,7 +26224,7 @@ for i, d in NormalCastDefs
 	Y += RH
 	}
 SmartCastChk := SmartCast ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSmartCast %SmartCastChk% gSmartCastChanged HwndhC, Smart cast, casts:
+Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSmartCast %SmartCastChk% gSmartCastChanged HwndhC, Smart cast:
 NormalCastCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
 ScnX := CX + 152
@@ -27197,7 +26242,7 @@ NormalCastCtrls.Push(hQ)
 IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nThe box: casts that many times in a row - each`ncast holds for Cast hold, then waits Cast hold +`n50 ms before the next. 2 is a double cast.`n`nOFF - plain timed cast."
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y316 w%TXW% h16 HwndhNCTipHdr, QUICK RULES — NORMAL
+Gui, Add, Text, x%CX% y316 w%TXW% h16 HwndhNCTipHdr, TIPS
 NormalCastCtrls.Push(hNCTipHdr)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
 NormalCastTips := "• Casts a fixed distance every time.`n"
@@ -27272,7 +26317,7 @@ RoundCtrl(hC, 200, 26, 7)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y434 w%TXW% h16 HwndhPCTipHdr, QUICK RULES — PERFECT
+Gui, Add, Text, x%CX% y434 w%TXW% h16 HwndhPCTipHdr, TIPS
 PerfectCastCtrls.Push(hPCTipHdr)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
 PerfectCastTips := "• Releases too late? Lower Release timing by 0.5.`n"
@@ -27309,18 +26354,6 @@ return
 ;====================================================================================================;
 
 ApplyCastModeLocks:
-if (CastMode = "Perfect")
-	{
-	AutoZoomInCamera := false
-	GuiControl, 1:, AutoZoomInCamera, 0
-	GuiControl, 1:Disable, AutoZoomInCamera
-	GuiControl, 1:Disable, AutoZoomDelay
-	}
-else
-	{
-	GuiControl, 1:Enable, AutoZoomInCamera
-	GuiControl, 1:Enable, AutoZoomDelay
-	}
 return
 
 ;====================================================================================================;
@@ -27346,7 +26379,7 @@ ShakeCtrls.Push(hC)
 ThemedCtrls.Push(hC)
 Y += RH
 
-Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, In-game navigation key:
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Navigation key:
 ShakeCtrls.Push(hL)
 Gui, Add, Edit, x%IX% y%Y% w%IW% h20 vNavigationKey HwndhC, %NavigationKey%
 ShakeCtrls.Push(hC)
@@ -27359,11 +26392,11 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 Y := 250
 ShakeAreaDefs := [ ["Navigation failsafe (s)","NavigationShakeFailsafe"]
-                 , ["Navigation spam delay (ms)","NavigationSpamDelay"]
-                 , ["Search area left (%)","ShakeAreaLeftPct"]
-                 , ["Search area right (%)","ShakeAreaRightPct"]
-                 , ["Search area top (%)","ShakeAreaTopPct"]
-                 , ["Search area bottom (%)","ShakeAreaBottomPct"] ]
+                 , ["Navigation spam (ms)","NavigationSpamDelay"]
+                 , ["Area left (%)","ShakeAreaLeftPct"]
+                 , ["Area right (%)","ShakeAreaRightPct"]
+                 , ["Area top (%)","ShakeAreaTopPct"]
+                 , ["Area bottom (%)","ShakeAreaBottomPct"] ]
 for i, d in ShakeAreaDefs
 	{
 	lbl := d[1]
@@ -27395,10 +26428,10 @@ MgAdd("mode", hL)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 Y := 152
-Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Detection mode:
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Detection:
 MgAdd("mode", hL)
-ControlModeChoice := (ControlMode = "Manual") ? 1 : ((ControlMode = "Lines") ? 3 : 2)
-Gui, Add, DropDownList, x%IX% y%Y% w%IW% h100 vControlMode gControlModeChanged Choose%ControlModeChoice% HwndhC, Manual|Precision|Lines
+ControlModeChoice := (ControlMode = "Lines") ? 2 : 1
+Gui, Add, DropDownList, x%IX% y%Y% w%IW% h100 vControlMode gControlModeChanged Choose%ControlModeChoice% HwndhC, Precision|Lines
 ControlModeDdl := hC
 MgAdd("mode", hC)
 ThemedCtrls.Push(hC)
@@ -27409,7 +26442,7 @@ MgAdd("mode", hQ)
 IconTips[hQ] := "How the macro steers the bar.`n`nPRECISION - looks at the bar every frame and`nre-decides instantly. It also tracks how fast`nthe fish is MOVING, so it aims where the fish`nis going. Almost no tuning needed.`n`nLINES - reads the bar's EDGES instead of`nmatching colors, so your color picks do not`nmatter at all.`n`nMANUAL - presses the mouse for a calculated`nnumber of milliseconds, then brakes. You tune`nthe timings yourself with multipliers."
 
 Y += RH
-Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Special rod (use default skin):
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Rod:
 MgAdd("mode", hL)
 SpecialBrushes[hL] := {brush: hBrushCard, text: ColorRedBGR}
 SpecialRodChoice := (SpecialRod = "Pinions Aria") ? 2 : ((SpecialRod = "Requiem") ? 3 : ((SpecialRod = "Darkheart") ? 4 : ((SpecialRod = "Bellona's Waraxe") ? 5 : ((SpecialRod = "Dreambreaker") ? 6 : ((SpecialRod = "Tranquility") ? 7 : ((SpecialRod = "Noiseform") ? 8 : ((SpecialRod = "Verdant Oath") ? 9 : ((SpecialRod = "Lullaby") ? 10 : ((SpecialRod = "Castbound") ? 11 : ((SpecialRod = "Remembrance") ? 12 : ((SpecialRod = "MiguRod") ? 13 : ((SpecialRod = "Halibut Harpoon") ? 14 : ((SpecialRod = "Splitbranch Twig") ? 15 : ((SpecialRod = "Tryhard Rod") ? 16 : ((SpecialRod = "Stellarwave Melody") ? 17 : 1)))))))))))))))
@@ -27527,7 +26560,7 @@ NoteFieldDefs := [ ["Note tolerance","NoteColorTolerance"
 	, "Leave at 15.`n`nPink note line missing while notes fall:`nraise to 18-22.`n`nFish icon getting marked as a note:`nlower to 10-12.`n`nCapped at 25."]
 	, ["Note priority","NoteBias"
 	, "Leave at 100.`n`nPinions Aria: losing fish while the bar is away`non a note: lower to 80 (keeps 22 % progress in`nhand before leaving) or 60 (keeps 32 %).`n0 = ignore notes.`n`nThe bar only leaves the fish for a note when`nthe progress can afford it. Notes it can catch`nwithout leaving the fish are always taken.`n`nOther rods: 100 = go straight to the note,`n0 = track the fish only."]
-	, ["Resonance hand-off (px)","NoteHandoff"
+	, ["Hand-off (px)","NoteHandoff"
 	, "Resonance state only.`n`nHow many pixels BEFORE a note lands to start`nmoving to the next note behind it.`n`nHIGHER = leaves early, reaches the second note`nin time but can drop the first.`n0 = never leave early (old behaviour)."] ]
 
 for i, d in NoteFieldDefs
@@ -27854,66 +26887,102 @@ MgAdd("remem", hL)
 SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
-; --------------------------------------------------------------------------- manual steering
-TuningFieldDefs := [ ["Stable Right Multiplier","StableRightMultiplier"
-	, "GAS PEDAL for moving RIGHT.`n`nTOO HIGH  = shoots past the fish.`nTOO LOW   = never catches up to it."]
-	, ["Stable Right Division","StableRightDivision"
-	, "BRAKES after moving right.`n`nBIGGER number = WEAKER brakes (slides past).`nSMALLER number = STRONGER brakes (stops early).`n`nYes, it works backwards."]
-	, ["Stable Left Multiplier","StableLeftMultiplier"
-	, "GAS PEDAL for moving LEFT.`n`nTOO HIGH  = shoots past the fish.`nTOO LOW   = never catches up to it."]
-	, ["Stable Left Division","StableLeftDivision"
-	, "BRAKES after moving left.`n`nBIGGER number = WEAKER brakes (slides past).`nSMALLER number = STRONGER brakes (stops early).`n`nYes, it works backwards."]
-	, ["Unstable Right Multiplier","UnstableRightMultiplier"
-	, "Gas pedal for RIGHT, used only when the macro`nCANNOT SEE the bar and is guessing.`n`nTOO HIGH = shoots past.  TOO LOW = too slow."]
-	, ["Unstable Right Division","UnstableRightDivision"
-	, "Brakes for the guessing right move.`n`nBIGGER = weaker brakes.`nSMALLER = stronger brakes."]
-	, ["Unstable Left Multiplier","UnstableLeftMultiplier"
-	, "Gas pedal for LEFT, used only when the macro`nCANNOT SEE the bar and is guessing.`n`nTOO HIGH = shoots past.  TOO LOW = too slow."]
-	, ["Unstable Left Division","UnstableLeftDivision"
-	, "Brakes for the guessing left move.`n`nBIGGER = weaker brakes.`nSMALLER = stronger brakes."]
-	, ["Right Ankle Break Multiplier","RightAnkleBreakMultiplier"
-	, "Tiny PAUSE before turning around to go right.`n`nTOO HIGH = smooth but slow to react.`nTOO LOW  = jittery, shakes back and forth."]
-	, ["Left Ankle Break Multiplier","LeftAnkleBreakMultiplier"
-	, "Tiny PAUSE before turning around to go left.`n`nTOO HIGH = smooth but slow to react.`nTOO LOW  = jittery, shakes back and forth."] ]
-
-MgBlockOpen("manual", 456, 288)
+; ----------------------------------------------------------- Lullaby: switch the rod's mode now and then
+MgBlockOpen("lullmode", 204, 382)
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y466 w%TXW% h16 HwndhC, MANUAL STEERING
-MgAdd("manual", hC)
-Gui, Font, s9 c%ColorDark%, Segoe UI
-Gui, Add, Text, x%CX% y486 w%TXW% h22 +0x200 HwndhWarn, ⚠  Wrong values break tracking. Hover a ? to learn more.
-MgAdd("manual", hWarn)
-SpecialBrushes[hWarn] := {brush: hBrushAmber, text: ColorDarkBGR}
-RoundCtrl(hWarn, TXW, 22, 6)
+Gui, Add, Text, x%CX% y212 w%TXW% h16 HwndhL, LULLABY MODES
+MgAdd("lullmode", hL)
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+Y := 236
+LmChk := LmOn ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vLmOn %LmChk% gLmOnChanged HwndhC, Switch modes
+MgAdd("lullmode", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
-Y := 516
-for i, d in TuningFieldDefs
+MgAdd("lullmode", hQ)
+IconTips[hQ] := "ON - between catches (right before casting) the macro`nopens the equipment bag, clicks the next mode in your`norder and closes the bag again. Each mode is kept for`nits time, then the next one comes, round and round.`n`nSet the bag key, pick each mode's spot (Pick, then click`nthat mode's icon in Roblox), and write the order.`nNot used in passive mode."
+Y += RH
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Bag key:
+MgAdd("lullmode", hL)
+SpecialBrushes[hL] := {brush: hBrushCard, text: ColorYellowBGR}
+Gui, Add, Edit, x%IX% y%Y% w120 h20 vLmBagKey gQueueAutoSave HwndhC, %LmBagKey%
+MgAdd("lullmode", hC)
+ThemedCtrls.Push(hC)
+IconTips[hC] := "The key (or mouse button) that opens your equipment bag.`nPress Set, then that key - or type it (a letter, ``, Tab, ...)."
+LmBx := IX + 128
+LmBy := Y - 2
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%LmBx% y%LmBy% w72 h24 Center +0x100 +0x200 vLmSetBtn gLmSetKey HwndhC, Set
+MgAdd("lullmode", hC)
+SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorAccentBGR}
+RoundCtrl(hC, 72, 24, 7)
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Y += RH
+Loop 6
 	{
-	lbl := d[1]
-	var := d[2]
-	hint := d[3]
-	Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, %lbl%:
-	MgAdd("manual", hL)
-	Gui, Add, Edit, x%IX% y%Y% w%IW% h20 v%var% gQueueAutoSave HwndhC, % %var%
-	MgAdd("manual", hC)
+	LmLbl := "Mode " . A_Index . " spot:"
+	LmVal := LmPos%A_Index%
+	Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, %LmLbl%
+	MgAdd("lullmode", hL)
+	SpecialBrushes[hL] := {brush: hBrushCard, text: ColorYellowBGR}
+	Gui, Add, Edit, x%IX% y%Y% w120 h20 vLmPos%A_Index% gQueueAutoSave HwndhC, %LmVal%
+	MgAdd("lullmode", hC)
+	ThemedCtrls.Push(hC)
+	IconTips[hC] := "Where mode " . A_Index . "'s icon is, as parts of the Roblox window`n(0.5,0.5 = the middle). Press Pick to set it by clicking it."
+	LmBy := Y - 2
+	Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+	Gui, Add, Text, x%LmBx% y%LmBy% w72 h24 Center +0x100 +0x200 vLmPick%A_Index% gLmPick HwndhC, Pick
+	MgAdd("lullmode", hC)
+	SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorAccentBGR}
+	RoundCtrl(hC, 72, 24, 7)
+	IconTips[hC] := "Press, then click mode " . A_Index . "'s icon in Roblox (open your bag first). Esc cancels."
+	Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+	Y += RH
+	}
+for LmI, LmD in [ ["Order","LmOrder","The modes to switch to, in order, e.g. 1,3,5`nAfter the last one it starts over."]
+	, ["Time per mode (s)","LmEvery","How long each mode is kept before the next one.`nOne number for all, or one per step in the order`n(e.g. 60,30,90). It switches at the first catch`nafter the time is up."]
+	, ["Bag open wait (ms)","LmOpenWait","Pause after pressing the bag key, before the click."]
+	, ["Click wait (ms)","LmClickWait","Pause after clicking the mode (and after closing the bag)."] ]
+	{
+	LmLbl := LmD[1], LmVar := LmD[2], LmVal := %LmVar%
+	LmOpt := (LmVar = "LmOpenWait" or LmVar = "LmClickWait") ? "+Number" : ""
+	Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, %LmLbl%:
+	MgAdd("lullmode", hL)
+	SpecialBrushes[hL] := {brush: hBrushCard, text: ColorYellowBGR}
+	Gui, Add, Edit, x%IX% y%Y% w%IW% h20 v%LmVar% gQueueAutoSave HwndhC %LmOpt%, %LmVal%
+	MgAdd("lullmode", hC)
 	ThemedCtrls.Push(hC)
 	Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 	Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 	Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-	MgAdd("manual", hQ)
-	IconTips[hQ] := hint
-	Y += 24
+	MgAdd("lullmode", hQ)
+	IconTips[hQ] := LmD[3]
+	Y += RH
 	}
+Y += 2
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%CX% y%Y% w120 h24 Center +0x100 +0x200 gLmTry HwndhC, ▶ Switch now
+MgAdd("lullmode", hC)
+SpecialBrushes[hC] := {brush: hBrushBorder, text: ColorAccentBGR}
+RoundCtrl(hC, 120, 24, 7)
+IconTips[hC] := "Goes to Roblox and does the next switch in your order now"
+Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
+LmSx := CX + 130
+Gui, Add, Text, x%LmSx% y%Y% w420 h24 +0x200 vLmStatus HwndhL, % LmStatusText()
+MgAdd("lullmode", hL)
+SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 ; ------------------------------------------------------------------------ precision steering
 PrecisionFieldDefs := [ ["Kp","Kp"
 	, "How hard it steers based on DISTANCE from`nthe fish.`n`nTOO HIGH = overshoots and wobbles.`nTOO LOW  = drifts, never quite arrives.`n`nSafe range: 0.3 to 0.8."]
 	, ["Kd","Kd"
 	, "How hard it steers based on SPEED. This is`nthe part Manual mode has no equivalent for --`nit accounts for the fish MOVING.`n`nTOO HIGH = sluggish, over-damped.`nTOO LOW  = oscillates around the fish.`n`nThis is the most important value here."]
-	, ["Velocity Smoothing","VelocitySmoothing"
+	, ["Smoothing","VelocitySmoothing"
 	, "How much it trusts the newest speed reading.`n0.2 means 20% new, 80% history.`n`nHIGHER = reacts faster but jitters more.`nLOWER  = smoother but slower to notice a`nchange of direction."]
-	, ["Stopping Distance","StoppingDistanceMultiplier"
+	, ["Stop distance","StoppingDistanceMultiplier"
 	, "How early it starts braking, measured in`nspeed. Faster closing = brakes sooner.`n`nTOO HIGH = brakes way too early, crawls.`nTOO LOW  = sails straight past the fish."] ]
 
 MgBlockOpen("precision", 456, 144)
@@ -27951,12 +27020,8 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 Y := 652
 MinigameFieldDefs := [ ["Minigame failsafe (s)","BarCalculationFailsafe",1
 	, "Max SECONDS for one minigame (including waiting`nfor the bar). If it runs over, the macro re-equips`nthe rod and starts a fresh cast.`n`nDefault 60."]
-	, ["Stabilizer clicks","StabilizerLoop",1
-	, "Rapid clicks after each move to hold the bar`nstill. Lower control = increase (12-14)`n`nHIGHER = steadier, holds position better.`nLOWER = reacts faster."]
 	, ["Side bar ratio","SideBarRatio",0
-	, "How far in from the edges the amber markers sit.`n`nHIGHER = markers move inward, so the macro`nstarts edge-holding sooner.`nLOWER = markers sit closer to the edges."]
-	, ["Side wait multiplier","SideBarWaitMultiplier",0
-	, "How long it waits at the far edges before`ncoming back.`n`nHIGHER = waits longer (less bouncing).`nLOWER = leaves the edge sooner."] ]
+	, "How far in from the edges the amber markers sit.`n`nHIGHER = markers move inward, so the macro`nstarts edge-holding sooner.`nLOWER = markers sit closer to the edges."] ]
 
 for i, d in MinigameFieldDefs
 	{
@@ -27979,30 +27044,9 @@ for i, d in MinigameFieldDefs
 	}
 
 ; ------------------------------------------------------------------------------- quick rules
-MgBlockOpen("manrules", 800, 158)
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y810 w%TXW% h16 HwndhC, QUICK RULES — MANUAL
-MgAdd("manrules", hC)
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-ManualTipsLines := ["• RIGHT values should be HIGHER than LEFT values."
-	, "• UNSTABLE values should be HIGHER than STABLE values."
-	, "• Keep every Division between 1.0 and 1.5."
-	, "• Overshoots the fish? Lower the Multiplier."
-	, "• Too slow to catch up? Raise the Multiplier."
-	, "• Change ONE value at a time, by about 15%."]
-RuleY := 832
-for i, RuleTxt in ManualTipsLines
-	{
-	Gui, Add, Text, x%CX% y%RuleY% w%TXW% h16 cFFFFFF HwndhC, %RuleTxt%
-	MgAdd("manrules", hC)
-	SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
-	RuleY += 16
-	}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
 MgBlockOpen("precrules", 800, 186)
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y810 w%TXW% h16 HwndhC, QUICK RULES — PRECISION / LINES
+Gui, Add, Text, x%CX% y810 w%TXW% h16 HwndhC, TIPS
 MgAdd("precrules", hC)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
 PrecTipsLines := ["• Try the defaults FIRST. Precision needs far less"
@@ -28027,7 +27071,7 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 ; ------------------------------------------------------------------------ live detection check
 MgBlockOpen("detcheck", 1000, 88)
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y1009 w%TXW% h16 HwndhC, DETECTION CHECK
+Gui, Add, Text, x%CX% y1009 w%TXW% h16 HwndhC, DETECTION TEST
 MgAdd("detcheck", hC)
 Gui, Font, s9 Norm c%ColorText%, Segoe UI
 Gui, Add, Text, x%CX% y1029 w170 h28 Center +0x100 +0x200 vDetTestBtn gDetTestToggle HwndhC, ▶  Test detection
@@ -28035,7 +27079,7 @@ MgAdd("detcheck", hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
 RoundCtrl(hC, 170, 28, 7)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Text, x386 y1029 w342 h28 +0x200 vDetTestOut HwndhC, Stop the macro first`, then press Test.
+Gui, Add, Text, x386 y1029 w342 h28 +0x200 vDetTestOut HwndhC, Stop the macro, then press Test.
 MgAdd("detcheck", hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
@@ -28051,7 +27095,7 @@ return
 BuildUtilitiesSection:
 
 Gui, Font, s13 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w%CARDW% h30 HwndhUH, Fishing Utilities
+Gui, Add, Text, x%CARDX% y120 w%CARDW% h30 HwndhUH, Tools
 UtilCtrls.Push(hUH)
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 Gui, Add, Text, x%CARDX% y152 w%CARDW% h18 HwndhUS, Extras that run alongside fishing. Turn one on and open it to set it up.
@@ -28061,8 +27105,7 @@ SpecialBrushes[hUS] := {brush: hBrushBG, text: ColorMutedBGR}
 UtilRowDefs := [ ["Auto Totem","UtilTotemOn","UtilTotemToggle","UtilOpenTotem"]
 	, ["Auto Aquarium","UtilAquariumOn","UtilAquariumToggle","UtilOpenAquarium"]
 	, ["Auto Keeperbound Recharge","UtilKeeperOn","UtilKeeperToggle","UtilOpenKeeper"]
-	, ["Stellarwave Auto Retry","UtilGuessOn","UtilGuessToggle","UtilOpenGuess"]
-	, ["Discord Webhook","UtilWebhookOn","UtilWebhookToggle","UtilOpenWebhook"] ]
+	, ["Stellarwave Auto Retry","UtilGuessOn","UtilGuessToggle","UtilOpenGuess"] ]
 
 UtilRowY := 180
 for i, d in UtilRowDefs
@@ -28087,8 +27130,6 @@ for i, d in UtilRowDefs
 		uchk := KeeperAuto ? "Checked" : ""
 	else if (cvar = "UtilGuessOn")
 		uchk := SwGuessOn ? "Checked" : ""
-	else
-		uchk := WebhookOn ? "Checked" : ""
 	Gui, Add, CheckBox, x572 y%UtilLblY% w58 h20 c%ColorText% v%cvar% %uchk% g%ctog% HwndhC, On
 	UtilCtrls.Push(hC)
 	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -28116,14 +27157,6 @@ GuiControlGet, UtilTotemOn, 1:, UtilTotemOn
 TotemAuto := UtilTotemOn
 GuiControl, 1:, TotemAuto, %UtilTotemOn%
 gosub, RefreshCameraLock
-gosub, ShowSection
-gosub, QueueAutoSave
-return
-
-UtilWebhookToggle:
-GuiControlGet, UtilWebhookOn, 1:, UtilWebhookOn
-WebhookOn := UtilWebhookOn
-GuiControl, 1:, WebhookOn, %UtilWebhookOn%
 gosub, ShowSection
 gosub, QueueAutoSave
 return
@@ -28161,11 +27194,6 @@ TargetSection := "Keeper"
 gosub, ShowSection
 return
 
-UtilOpenWebhook:
-TargetSection := "Webhook"
-gosub, ShowSection
-return
-
 UtilBack:
 TargetSection := "Utilities"
 gosub, ShowSection
@@ -28176,7 +27204,7 @@ return
 BuildGuessSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, <  Fishing Add-ons
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, <  Tools
 GuessCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 
@@ -28289,7 +27317,7 @@ GuessCtrls.Push(hQ)
 GuessBodyCtrls.Push(hQ)
 SpecialBrushes[hQ] := {brush: hBrushCard, text: ColorAccentBGR}
 IconTips[hQ] := "How long to wait after a click for the star to`nlight up before trying the next sign.`n`nLower is faster. If it calls right signs wrong`n(and wastes clicks), raise it (150-250)."
-Gui, Add, Text, x%CX% y400 w%LW% h20 HwndhC, Guess the last (stars):
+Gui, Add, Text, x%CX% y400 w%LW% h20 HwndhC, Guess last (stars):
 GuessCtrls.Push(hC)
 GuessBodyCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -28407,7 +27435,7 @@ SwGuessPickPts:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 RobloxClientRect(RobloxHwnd, GwX, GwY, GwW, GwH)
@@ -28520,7 +27548,7 @@ SwGuessTest:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 Gui, Hide
@@ -28533,18 +27561,18 @@ TargetSection := "Guess"
 gosub, ShowSection
 if (GN < 0)
 	{
-	msgbox, 4144, DeepFish, Set the star positions and both colors first.
+	msgbox, 4144, Veltrix, Set the star positions and both colors first.
 	return
 	}
 GRow := ""
 Loop 12
 	GRow .= A_Index . (SwGuessState[A_Index] ? "=LIT  " : "=off  ") . ((A_Index = 6) ? "`n" : "")
-msgbox, 4160, DeepFish, % "Stars lit in a row from the left: " . GN . "`n`n" . GRow . "`n`nIt takes over once " . (12 - SwGuessN()) . " or more are lit."
+msgbox, 4160, Veltrix, % "Stars lit in a row from the left: " . GN . "`n`n" . GRow . "`n`nIt takes over once " . (12 - SwGuessN()) . " or more are lit."
 return
 
 BuildAdvancedSection:
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gAdvBack HwndhC, <  General
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gAdvBack HwndhC, <  Setup
 AdvCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 Gui, Font, s13 Bold c%ColorText%, Segoe UI
@@ -28651,7 +27679,7 @@ IniWrite, %AdvV%, %SettingsFile%, Advanced, % AdvE[3]
 return
 
 AdvResetAll:
-MsgBox, 0x24, DeepFish, Put every hidden timing on this page back to its default?`n`n(Settings marked * keep their values.)
+MsgBox, 0x24, Veltrix, Put every hidden timing on this page back to its default?`n`n(Settings marked * keep their values.)
 IfMsgBox, No
 	return
 IniDelete, %SettingsFile%, Advanced
@@ -28681,7 +27709,7 @@ return
 BuildKeeperSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, <  Fishing Add-ons
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, <  Tools
 KeeperCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 
@@ -28718,7 +27746,7 @@ hC := AddPanel(CARDX, 260, CARDW, 512)
 KeeperCtrls.Push(hC)
 KeeperBodyCtrls.Push(hC)
 
-KbFieldDefs := [ ["Wait before recharge (ms)","KeeperPreDelay","num"
+KbFieldDefs := [ ["Recharge wait (ms)","KeeperPreDelay","num"
 	, "How long to wait after a catch before the`nrecharge starts. 0 = start right away.`n`nRaise it if the catch popup or the game is still`nbusy when the recharge begins."]
 	, ["Every (catches)","KeeperEveryCatches","num"
 	, "How many catches between recharges.`n`nA Keeperbound rod loses about 0.2% power per`ncatch, so 50 catches is roughly 10% lost."]
@@ -29033,7 +28061,7 @@ if (!KbPickCancel)
 		}
 	if (!RobloxHwnd)
 		{
-		msgbox, 4144, DeepFish, Could not find the Roblox window, so that position cannot be saved.`n`nStart Roblox first, then set the positions again.
+		msgbox, 4144, Veltrix, Could not find the Roblox window, so that position cannot be saved.`n`nStart Roblox first, then set the positions again.
 		Gui, Show
 		TargetSection := "Keeper"
 		gosub, ShowSection
@@ -29052,7 +28080,7 @@ if (!KbPickCancel)
 	KbCh := NumGet(KbRc, 12, "Int")
 	if (KbCliX < 0 or KbCliY < 0 or KbCliX >= KbCw or KbCliY >= KbCh)
 		{
-		msgbox, 4144, DeepFish, That spot is outside the Roblox window, so it was not saved.`n`nThe game window is %KbCw% x %KbCh%, and you picked %KbCliX%`, %KbCliY% inside it.`n`nPut Roblox on the screen you macro on, open your inventory there, and pick the button on that same screen.
+		msgbox, 4144, Veltrix, That spot is outside the Roblox window, so it was not saved.`n`nThe game window is %KbCw% x %KbCh%, and you picked %KbCliX%`, %KbCliY% inside it.`n`nPut Roblox on the screen you macro on, open your inventory there, and pick the button on that same screen.
 		Gui, Show
 		TargetSection := "Keeper"
 		gosub, ShowSection
@@ -29088,7 +28116,7 @@ KeeperTestAuto:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 GuiControlGet, KbPctV, 1:, KeeperAutoPct
@@ -29104,14 +28132,14 @@ Gui, Show
 TargetSection := "Keeper"
 gosub, ShowSection
 if (!KbTok)
-	msgbox, 4144, DeepFish, Could not find the power bar.`n`nHold your Keeperbound rod so the purple power bar (the one that says `% Power) is showing above your hotbar, close any menus, then press Test again.
+	msgbox, 4144, Veltrix, Could not find the power bar.`n`nHold your Keeperbound rod so the purple power bar (the one that says `% Power) is showing above your hotbar, close any menus, then press Test again.
 else
 	{
 	KbTat := KeeperAutoPct
 	if KbTat is not number
 		KbTat := 15
 	KbTres := (KbTp < KbTat) ? "This WOULD start a recharge." : "This would NOT start a recharge yet."
-	msgbox, 4160, DeepFish, % "Found the power bar - it reads about " . Round(KbTp, 1) . "`%.`nIt recharges below " . KbTat . "`%.`n`n" . KbTres
+	msgbox, 4160, Veltrix, % "Found the power bar - it reads about " . Round(KbTp, 1) . "`%.`nIt recharges below " . KbTat . "`%.`n`n" . KbTres
 	}
 return
 
@@ -29169,7 +28197,7 @@ KeeperSetLine:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 RobloxClientRect(RobloxHwnd, KbWx, KbWy, KbWw, KbWh)
@@ -29326,7 +28354,7 @@ if (KbLineSave)
 	KbCy1 := KbLy1 - KbWy
 	KbCy2 := KbLy2 - KbWy
 	if (KbCx < 0 or KbCy1 < 0 or KbCx >= KbWw or KbCy2 >= KbWh)
-		msgbox, 4144, DeepFish, That line is outside the Roblox window, so it was not saved.
+		msgbox, 4144, Veltrix, That line is outside the Roblox window, so it was not saved.
 	else
 		{
 		KeeperLineX := KbCx
@@ -29388,7 +28416,7 @@ KeeperTestLine:
 gosub, KeeperFindRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 GuiControlGet, KbTolV, 1:, KeeperLineTol
@@ -29403,12 +28431,12 @@ Gui, Show
 TargetSection := "Keeper"
 gosub, ShowSection
 if (KbTr < 0)
-	msgbox, 4144, DeepFish, Set the power line and pick the bar color first.
+	msgbox, 4144, Veltrix, Set the power line and pick the bar color first.
 else
 	{
 	KbTn := KbLineNeed(KbTt)
 	KbTres := (KbTr = 1) ? "This WOULD start a recharge (the bar has dropped below the line)." : "This would NOT start a recharge (the bar still covers the line)."
-	msgbox, 4160, DeepFish, % KbTm . " of " . KbTt . " pixels on the line are not the bar color.`nIt recharges at " . KbTn . " or more.`n`n" . KbTres
+	msgbox, 4160, Veltrix, % KbTm . " of " . KbTt . " pixels on the line are not the bar color.`nIt recharges at " . KbTn . " or more.`n`n" . KbTres
 	}
 return
 
@@ -29450,7 +28478,7 @@ return
 BuildAquariumSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, ‹  Fishing Add-ons
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, ‹  Tools
 AquariumCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 
@@ -29745,7 +28773,7 @@ PogoTry:
 gosub, ResolveRoblox
 if (!RobloxHwnd)
 	{
-	msgbox, 4144, DeepFish, Could not find the Roblox window. Start Roblox first.
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
 	return
 	}
 WinActivate, ahk_id %RobloxHwnd%
@@ -29765,6 +28793,202 @@ PreciseSleep(PogoNum(PogoCoilWait, 0))
 PogoPress(PogoJumpKey)
 PogoBusy := false
 return
+
+; ---- Lullaby mode switch ----
+LmOnChanged:
+GuiControlGet, LmOn, 1:, LmOn
+LmOn := LmOn ? true : false
+LmStep := 0, LmNextT := 0
+GuiControl, 1:, LmStatus, % LmStatusText()
+gosub, QueueAutoSave
+return
+
+LmSetKey:
+if (PogoCapturing)
+	return
+PogoCapturing := true
+GuiControl, 1:, LmSetBtn, ...
+GuiControl, 1:, LmStatus, Press the equipment bag key - Esc cancels.
+LmNew := PogoCapture()
+GuiControl, 1:, LmSetBtn, Set
+if (LmNew != "")
+	{
+	LmBagKey := LmNew
+	GuiControl, 1:, LmBagKey, %LmNew%
+	gosub, QueueAutoSave
+	}
+PogoCapturing := false
+GuiControl, 1:, LmStatus, % LmStatusText()
+return
+
+; Pick: the next left click in Roblox sets that mode's spot (as parts of the window, so it survives a resize)
+LmPick:
+LmIdx := SubStr(A_GuiControl, 7)
+gosub, ResolveRoblox
+if (!RobloxHwnd)
+	{
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
+	return
+	}
+GuiControl, 1:, LmStatus, Click mode %LmIdx%'s icon in Roblox - Esc cancels.
+KeyWait, LButton
+WinActivate, ahk_id %RobloxHwnd%
+LmT0 := A_TickCount
+LmGot := false
+while (A_TickCount - LmT0 < 20000)
+	{
+	if (GetKeyState("Escape", "P"))
+		break
+	if (GetKeyState("LButton", "P"))
+		{
+		CoordMode, Mouse, Screen
+		MouseGetPos, LmMx, LmMy
+		CoordMode, Mouse, Client
+		RobloxClientRect(RobloxHwnd, LmRx, LmRy, LmRw, LmRh)
+		if (LmRw > 0 and LmRh > 0 and LmMx >= LmRx and LmMy >= LmRy and LmMx < LmRx + LmRw and LmMy < LmRy + LmRh)
+			{
+			LmPos%LmIdx% := Format("{:.4f},{:.4f}", (LmMx - LmRx) / LmRw, (LmMy - LmRy) / LmRh)
+			LmGot := true
+			}
+		KeyWait, LButton
+		break
+		}
+	Sleep, 10
+	}
+if (LmGot)
+	{
+	GuiControl, 1:, LmPos%LmIdx%, % LmPos%LmIdx%
+	gosub, QueueAutoSave
+	}
+GuiControl, 1:, LmStatus, % LmGot ? "Mode " . LmIdx . " spot set." : LmStatusText()
+return
+
+LmTry:
+gosub, ResolveRoblox
+if (!RobloxHwnd)
+	{
+	msgbox, 4144, Veltrix, Could not find the Roblox window. Start Roblox first.
+	return
+	}
+Gui, Submit, NoHide
+gosub, LmDoSwitch
+if (ForceReEquip and RodSlotKey != "" and !MacroRunning)
+	{
+	; the bag put the rod away: equip it again (as before casting)
+	Sleep, % Tm(TA("reeq1", 120))
+	if (BagSlotKey != "")
+		send {%BagSlotKey%}
+	else
+		send {%RodSlotKey%}
+	Sleep, % Tm(TA("reeq2", 400))
+	send {%RodSlotKey%}
+	ForceReEquip := false
+	}
+GuiControl, 1:, LmStatus, % LmStatusText()
+return
+
+; between catches: switch when the current mode's time is up (it starts with the first mode in the order)
+LmMaybeSwitch:
+if (!LmOn or SpecialRod != "Lullaby" or !MacroRunning or PassiveAll)
+	return
+if (LmNextT and A_TickCount < LmNextT)
+	return
+gosub, LmDoSwitch
+return
+
+LmDoSwitch:
+LmOrd := LmModes(LmOrder)
+if (!LmOrd.Length())
+	{
+	LmNextT := A_TickCount + 10000
+	return
+	}
+LmStep := (LmStep = "" or LmStep < 1 or LmStep >= LmOrd.Length()) ? 1 : LmStep + 1
+LmM := LmOrd[LmStep]
+LmSecs := LmNums(LmEvery)
+LmS := LmSecs.Length() ? LmSecs[Mod(LmStep - 1, LmSecs.Length()) + 1] : 60
+tooltip, Current Task: Lullaby - switching to mode %LmM%, %TooltipX%, %Tooltip7%, 7
+if (LmClickMode(LmPos%LmM%))
+	LmNextT := A_TickCount + LmS * 1000, LmLastM := LmM, ForceReEquip := (RodSlotKey != "")
+else
+	LmNextT := A_TickCount + 10000
+return
+
+; the modes in the order that have a spot set
+LmModes(s) {
+	out := []
+	for i, v in LmNums(s)
+		{
+		if (v >= 1 and v <= 6 and Floor(v) = v and InStr(LmPos(v), ","))
+			out.Push(v)
+		}
+	return out
+}
+
+LmPos(i) {
+	global LmPos1, LmPos2, LmPos3, LmPos4, LmPos5, LmPos6
+	return LmPos%i%
+}
+
+LmNums(s) {
+	out := []
+	Loop, Parse, s, `,;%A_Space%
+		{
+		v := Trim(A_LoopField)
+		if v is number
+			out.Push(v + 0)
+		}
+	return out
+}
+
+; opens the bag, clicks the mode's spot, closes the bag
+LmClickMode(pos) {
+	global RobloxHwnd, LmBagKey, LmOpenWait, LmClickWait
+	p := StrSplit(pos, ",")
+	if (p.Length() < 2 or !RobloxHwnd or Trim(LmBagKey) = "")
+		return false
+	fx := Trim(p[1]), fy := Trim(p[2])
+	if fx is not number
+		return false
+	if fy is not number
+		return false
+	if (!WinActive("ahk_id " . RobloxHwnd))
+		{
+		WinActivate, ahk_id %RobloxHwnd%
+		WinWaitActive, ahk_id %RobloxHwnd%, , 1
+		}
+	RobloxClientRect(RobloxHwnd, rx, ry, rw, rh)
+	sx := Round(rx + fx * rw), sy := Round(ry + fy * rh)
+	if (GetKeyState("LButton"))
+		Send {LButton up}
+	PogoPress(LmBagKey)
+	Sleep, % PogoNum(LmOpenWait, 400)
+	CoordMode, Mouse, Screen
+	MouseMove, %sx%, %sy%, 0
+	Sleep, 40
+	MouseMove, % sx + 1, %sy%, 0
+	Sleep, 30
+	Send {LButton down}
+	Sleep, 40
+	Send {LButton up}
+	CoordMode, Mouse, Client
+	Sleep, % PogoNum(LmClickWait, 300)
+	PogoPress(LmBagKey)
+	Sleep, % PogoNum(LmClickWait, 300)
+	return true
+}
+
+LmStatusText() {
+	global LmOn, LmBagKey, LmOrder, LmLastM
+	if (!LmOn)
+		return "Off."
+	if (Trim(LmBagKey) = "")
+		return "Set the equipment bag key."
+	n := LmModes(LmOrder).Length()
+	if (!n)
+		return "Pick a spot for the modes in your order."
+	return "On - " . n . " mode(s) in the order" . ((LmLastM != "") ? ", last switched to mode " . LmLastM : "") . "."
+}
 
 PogoNum(v, def) {
 	if v is not number
@@ -29786,7 +29010,7 @@ PogoPress(k) {
 BuildTotemSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, ‹  Fishing Add-ons
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, ‹  Tools
 TotemCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
 
@@ -29814,7 +29038,7 @@ TotemBodyCtrls.Push(hC)
 
 Gui, Font, s9 c%ColorText%, Segoe UI
 TGchk := TotemGlobal ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y216 w400 h20 c%ColorText% vTotemGlobal %TGchk% gTotemGlobalChanged HwndhTC, Share Totem settings across all profiles
+Gui, Add, CheckBox, x%CX% y216 w400 h20 c%ColorText% vTotemGlobal %TGchk% gTotemGlobalChanged HwndhTC, Share across profiles
 TotemCtrls.Push(hTC)
 TotemBodyCtrls.Push(hTC)
 SpecialBrushes[hTC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -30049,786 +29273,6 @@ return
 ;====================================================================================================;
 
 RefreshCameraLock:
-if (TotemAuto or AquariumAuto or KeeperAuto)
-	{
-	GuiControl, 1:Disable, AutoEnableCameraMode
-	GuiControl, 1:Disable, AutoCameraDelay
-	}
-else
-	{
-	GuiControl, 1:Enable, AutoEnableCameraMode
-	GuiControl, 1:Enable, AutoCameraDelay
-	}
-return
-
-;====================================================================================================;
-
-BuildWebhookSection:
-
-Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhWC, ‹  Fishing Add-ons
-WebhookCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushBG, text: ColorAccentBGR}
-
-hC := AddPanel(CARDX, 140, CARDW, 54)
-WebhookCtrls.Push(hC)
-Gui, Font, s11 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%CX% y157 w240 h20 HwndhWC, Discord Webhook
-WebhookCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-WEchk := WebhookOn ? "Checked" : ""
-Gui, Add, CheckBox, x572 y157 w58 h20 c%ColorText% vWebhookOn gWebhookOnChanged %WEchk% HwndhWC, On
-WebhookCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x642 y153 w86 h28 Center +0x100 +0x200 gUtilBack HwndhWC, Hide
-WebhookCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorAccentBGR}
-RoundCtrl(hWC, 86, 28, 7)
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-
-hC := AddPanel(CARDX, 204, CARDW, 62)
-WebhookCtrls.Push(hC)
-WebhookBodyCtrls.Push(hC)
-Gui, Add, Text, x%CX% y218 w160 h20 HwndhWC, Webhook URL:
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Add, Edit, x%CX% y238 w%TXW% h20 vWebhookURL gQueueAutoSave HwndhWC, % WebhookURL
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-ThemedCtrls.Push(hWC)
-
-hC := AddPanel(CARDX, 276, CARDW, 226)
-WebhookCtrls.Push(hC)
-WebhookBodyCtrls.Push(hC)
-
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y286 w%TXW% h16 HwndhWC, NOTIFICATIONS
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-
-Gui, Add, Text, x%CX% y310 w240 h20 HwndhWC, Status report every (min):
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Add, Edit, x%IX% y310 w70 h20 vWebhookSummaryMin gQueueAutoSave HwndhWC +Number, % WebhookSummaryMin
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-ThemedCtrls.Push(hWC)
-
-Gui, Add, Text, x%CX% y336 w240 h20 HwndhWC, Alert if no catch for (min):
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Add, Edit, x%IX% y336 w70 h20 vWebhookStallMin gQueueAutoSave HwndhWC +Number, % WebhookStallMin
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-ThemedCtrls.Push(hWC)
-
-WAchk := WebhookOnAlert ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y368 w%TXW% h20 c%ColorText% vWebhookOnAlert gQueueAutoSave %WAchk% HwndhWC, Send alerts (stopped, stalled, re-equip)
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-
-WCchk := WebhookOnCatch ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y392 w%TXW% h20 c%ColorText% vWebhookOnCatch gQueueAutoSave %WCchk% HwndhWC, Send a message for every catch
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-
-WSchk := WebhookShot ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y416 w%TXW% h20 c%ColorText% vWebhookShot gQueueAutoSave %WSchk% HwndhWC, Attach a screenshot to status reports
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorTextBGR}
-
-Gui, Font, s8 c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y440 w%TXW% h28 HwndhWC, Captures the whole screen. It shows your username, level`nand cash, and is deleted right after it is sent.
-WebhookCtrls.Push(hWC)
-WebhookBodyCtrls.Push(hWC)
-SpecialBrushes[hWC] := {brush: hBrushCard, text: ColorMutedBGR}
-
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-Gui, Add, Button, x%CX% y470 w170 h26 gWebhookTest HwndhWebhookTestBtn, Send test message
-WebhookCtrls.Push(hWebhookTestBtn)
-WebhookBodyCtrls.Push(hWebhookTestBtn)
-ThemedCtrls.Push(hWebhookTestBtn)
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-return
-
-;====================================================================================================;
-
-WebhookOnChanged:
-GuiControlGet, WebhookOn, 1:, WebhookOn
-GuiControl, 1:, UtilWebhookOn, % (WebhookOn ? 1 : 0)
-gosub, ShowSection
-gosub, QueueAutoSave
-return
-
-;====================================================================================================;
-
-WebhookTest:
-GuiControlGet, WebhookURL, 1:, WebhookURL
-if (WebhookURL = "")
-	{
-	msgbox, 4144, DeepFish, Enter a webhook URL first.
-	return
-	}
-WhF := WhField("Status", "Test message", true)
-WhF .= "," . WhField("Runtime", "0h 0m", true)
-WhJ := WhBuildJson("DeepFish connected", "If you can read this, the webhook is working.", 3066993, WhF, "DeepFish")
-if (WhPost(WhJ))
-	msgbox, 4160, DeepFish, Test message sent.
-else
-	msgbox, 4144, DeepFish, Could not send. Check the URL is a full Discord webhook link and that you are online.
-return
-
-;====================================================================================================;
-
-BuildFaqSection:
-
-Gui, Font, s13 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w%CARDW% h28 HwndhFaqHdr, Frequently Asked Questions
-FaqCtrls.Push(hFaqHdr)
-
-FaqTexts := []
-FaqNames := ["General", "Cast", "Shake", "Minigame", "Special Rods", "Utilities"]
-FaqT := ""
-FaqT .= "Problems you can hit before the macro even starts fishing, in the order you usually hit them.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  THE MACRO DOES NOTHING AT ALL`n`n"
-FaqT .= "Right-click the DeepFish file and choose Run as administrator.`n`n"
-FaqT .= "If Roblox, or anything else on your PC, is running with more permission than the macro, Windows quietly throws away every click and key press the macro sends. Nothing looks broken, the game just ignores it. Try this before you change any setting.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  COULD NOT FIND THE ROBLOX GAME WINDOW`n`n"
-FaqT .= "Open Roblox and join a game before you press Start.`n`n"
-FaqT .= "If Roblox is already open, close it fully and open it again. The macro looks for the Roblox player window, so a Roblox page open in your browser does not count.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  I PRESS START BUT IT DOES NOT FISH`n`n"
-FaqT .= "The Start button does not start fishing by itself. It finds Roblox, brings it to the front, maximizes it and turns your Start/Stop key on. Press your Start/Stop key after that to begin.`n`n"
-FaqT .= "If the DeepFish window disappears when you press Start, that is normal. Tick Always open after pressing Start in General if you would rather keep it on screen.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  MY START, RELOAD OR EXIT KEY DOES NOTHING`n`n"
-FaqT .= "Check the Start/Stop key, Reload key and Exit key in General match the keys you are pressing.`n`n"
-FaqT .= "Programs like Discord, OBS, Nvidia or keyboard software can grab a key before the macro sees it. Pick a key nothing else uses, such as F6.`n`n"
-FaqT .= "These keys work anywhere on your PC while the macro is armed, so avoid keys you type in chat.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "5.  THE COLOR PICKER OR DETECTION LANDS IN THE WRONG PLACE`n`n"
-FaqT .= "Run Roblox in fullscreen. If that does not fix it, set Windows display scale to 100% (Settings > System > Display > Scale) and restart your PC.`n`n"
-FaqT .= "Windows scaling above 100% makes the macro look at the wrong part of the screen, so colors get picked from the wrong spot and nothing is ever detected. If true fullscreen breaks detection on your PC, use windowed fullscreen instead.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "6.  IT BROKE AFTER I RESIZED OR MOVED ROBLOX`n`n"
-FaqT .= "Stop the macro and start it again.`n`n"
-FaqT .= "The macro measures the Roblox window when it starts. Switching fullscreen on or off, resizing the window or dragging it to another monitor while it is running leaves it looking at the old spot.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "7.  THE CAMERA SETUP STEPS MESS THINGS UP`n`n"
-FaqT .= "Untick the Auto options you do not want in General > Automatic game setup, or raise the delay ms next to the step that fails.`n`n"
-FaqT .= "Each step (lower graphics, zoom, camera mode, look down, blur) presses keys and moves the camera for you. On a slow PC the game may not keep up, and a bigger delay gives it time.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "8.  AUTO-ENABLE CAMERA MODE IS GREYED OUT`n`n"
-FaqT .= "That is on purpose. It is locked off while Auto Totem, Auto Aquarium or Auto Keeperbound is turned on, because camera mode hides the game interface those features need to read.`n`n"
-FaqT .= "With camera mode off, the rod is equipped with your Rod hotbar slot key, so make sure that key is set in General > Recovery.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "9.  THE MACRO FISHES WITHOUT A ROD IN MY HAND`n`n"
-FaqT .= "Set Rod hotbar slot key in General > Recovery to the number your rod sits on.`n`n"
-FaqT .= "When camera mode is off, that key is the only way the macro equips your rod.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "10.  MY SETTINGS KEEP RESETTING`n`n"
-FaqT .= "Press Save, or tick Auto-save so every change is saved the moment you make it.`n`n"
-FaqT .= "Settings are stored per profile, so also check the profile at the top of the window is the one you think you are on. Auto Aquarium and Auto Keeperbound settings are shared by every profile, and Auto Totem can be shared with Share Totem settings across all profiles.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "11.  A POPUP SAYS SOME SETTINGS WERE INVALID AND WERE RESET`n`n"
-FaqT .= "A value in that profile file could not be read, so the macro put that one setting back to its default. The popup lists which ones. Set them again and press Save.`n`n"
-FaqT .= "This usually happens after editing a profile file by hand.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "12.  A POPUP SAYS A FIELD CONTAINS AN INVALID NUMBER`n`n"
-FaqT .= "One of the boxes has letters, spaces or symbols where only a number belongs. The popup lists which field. Fix it and save again. Nothing in that field was saved until you do.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "13.  I CANNOT NAME OR DELETE A PROFILE`n`n"
-FaqT .= "Profile names cannot contain these characters: \ / : * ? < > | or double quotes.`n`n"
-FaqT .= "The Default profile cannot be deleted, and neither can your only profile. Make another profile first.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "14.  THE DEEPFISH WINDOW COVERS THE GAME`n`n"
-FaqT .= "Untick Window always on top in General.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "15.  MY GAME LAGS WHILE THE MACRO RUNS`n`n"
-FaqT .= "Tick Auto-lower graphics in General, and close other heavy programs.`n`n"
-FaqT .= "The macro reads the screen many times a second. A low frame rate in Roblox makes the minigame harder to follow, so lower graphics directly helps tracking.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "16.  I NEED HELP WITH SOMETHING NOT LISTED HERE`n`n"
-FaqT .= "Ask in the Discord (link in About). Say which rod you are using, your screen resolution, and include a screenshot or short video of the problem.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-FaqT := ""
-FaqT .= "Problems with getting the rod into the water.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  THE MACRO NEVER CASTS`n`n"
-FaqT .= "Make sure your rod is in your hand. Set Rod hotbar slot key in General > Recovery so the macro can equip it itself.`n`n"
-FaqT .= "Also check nothing is open on screen, such as your inventory, a shop or a dialog box. The cast click lands on that instead.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  MY CASTS ARE TOO SHORT OR TOO FAR`n`n"
-FaqT .= "Normal cast: change Hold rod cast duration (ms) in Cast. Higher casts further out, lower casts closer in.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  IT STARTS SHAKING BEFORE THE BOBBER LANDS`n`n"
-FaqT .= "Raise Wait for bobber delay (ms) in Cast. Laggy servers need a bigger delay.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  PERFECT CAST NEVER LETS GO`n`n"
-FaqT .= "Open the Color Manager (F9) and pick the green and white colors of the cast power bar again, or raise Green tolerance and White tolerance a little.`n`n"
-FaqT .= "If the bar is never found it gives up after Fail timeout (s) and lets go anyway, so it will not hang forever.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "5.  PERFECT CAST LETS GO TOO EARLY OR TOO LATE`n`n"
-FaqT .= "Change Release timing in Cast in steps of 0.5. Lower it if it lets go too late, raise it if it lets go too early.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "6.  PERFECT CAST LETS GO AT RANDOM MOMENTS`n`n"
-FaqT .= "Lower Green tolerance and White tolerance. When they are too high, other white or green parts of the screen get mistaken for the cast bar.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "7.  MY ROD OR BOBBER GETS STUCK ON THE GROUND`n`n"
-FaqT .= "Set Re-equip after N failed casts in General to 2, and fill in Rod hotbar slot key and Equipment bag key.`n`n"
-FaqT .= "After that many failed casts the macro swaps to your equipment bag and back to the rod, which drops the stuck bobber. If you leave Equipment bag key blank it presses the rod key twice instead.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "8.  IT CASTS AGAIN BEFORE THE CATCH ANIMATION FINISHES`n`n"
-FaqT .= "Raise Restart delay (ms) in General. Try 3000 and adjust from there.`n`n"
-FaqT .= "This is the pause between finishing a catch and the next cast. Too short and the cast is wasted while the game is still showing the catch.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "9.  IT MAKES A STRAY CAST RIGHT AFTER A MINIGAME`n`n"
-FaqT .= "First raise Restart delay (ms) in General.`n`n"
-FaqT .= "If it still happens, the macro is probably mistaking something on screen for the minigame after it ends, then clicking. Stop the macro, press Test detection in Minigame with no minigame on screen, and lower Fish line tolerance or remove extra colors until nothing is detected.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-FaqT := ""
-FaqT .= "Problems between the cast and the minigame.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  IT CASTS BUT NEVER SHAKES`n`n"
-FaqT .= "Check Shake mode in Shake. Navigation uses the keyboard to press the shake button, and Disabled does not shake at all.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  NAVIGATION MODE DOES NOTHING`n`n"
-FaqT .= "Set In-game navigation key in Shake to the key Roblox uses to turn on UI navigation. It is backslash by default.`n`n"
-FaqT .= "If you changed that key in your Roblox settings, the macro needs the same key.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  SHAKING IS TOO SLOW AND THE FISH GETS AWAY`n`n"
-FaqT .= "Lower Navigation spam delay (ms) in Shake.`n`n"
-FaqT .= "Going too low can make the game miss inputs, so lower it a little at a time.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  IT SHAKES FOREVER AND NEVER REACHES THE MINIGAME`n`n"
-FaqT .= "Check the minigame is actually being detected (see the Minigame tab). The macro keeps shaking until it sees the minigame.`n`n"
-FaqT .= "Navigation failsafe (s) in Shake sets how long it shakes before giving up and casting again.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-FaqT := ""
-FaqT .= "Problems once the reeling bar appears. Use Test detection in Minigame to see what the macro can see.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  THE MINIGAME IS NEVER DETECTED`n`n"
-FaqT .= "Stop the macro, press Test detection in Minigame, then cast and play a minigame yourself. It shows whether the bar and the fish line are being seen.`n`n"
-FaqT .= "If they are not, open the Color Manager (F9) and pick the colors again while the minigame is on screen. Each color keeps a list, so if the bar looks different at night or while it fills, add that shade too.`n`n"
-FaqT .= "Raise Fish line tolerance a little at a time if picking again does not help. Colors differ between rod skins, so a new rod often needs a fresh pick.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  TEST DETECTION NEVER SHOWS THE ARROW`n`n"
-FaqT .= "That is normal on many rods. The arrow is only a backup used when the bar itself cannot be seen, so the bar and fish line are what matter.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  IT THINKS A MINIGAME IS ON SCREEN WHEN THERE IS NONE`n`n"
-FaqT .= "Your tolerances are too high or a picked color matches scenery. Lower Fish line tolerance and Bar color tolerance, and remove any colors in the Color Manager that do not belong to the bar.`n`n"
-FaqT .= "Check with Test detection while no minigame is on screen. Nothing should be detected.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  THE BAR IS FOUND BUT DOES NOT FOLLOW THE FISH`n`n"
-FaqT .= "Check Special rod in Minigame. It must match the rod you are holding, or set it to None for a normal rod.`n`n"
-FaqT .= "Try Precision as the Detection mode. It needs the least tuning. Lines reads the edges of the bar instead of your colors, which helps if your colors keep failing.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "5.  THE BAR WOBBLES OR ROCKS AROUND THE FISH`n`n"
-FaqT .= "Precision or Lines: raise Kd a little, then raise Stopping Distance if it still overshoots. Change one value at a time.`n`n"
-FaqT .= "Near the fish the macro clicks rapidly on its own to hold the bar centered, so a small amount of fast clicking there is expected.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "6.  THE BAR SAILS PAST THE FISH`n`n"
-FaqT .= "Raise Stopping Distance in Minigame. It starts braking sooner.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "7.  THE BAR CRAWLS AND NEVER REACHES THE FISH`n`n"
-FaqT .= "Lower Stopping Distance, or raise Kp a little.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "8.  THE BAR FALLS BEHIND A FISH THAT MOVES FAST`n`n"
-FaqT .= "Raise Kp a little. Raising Velocity Smoothing makes it react to direction changes sooner, but too high makes it jittery.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "9.  THE BAR GETS STUCK AGAINST ONE EDGE`n`n"
-FaqT .= "Usually the steering is too weak to pull it back. Raise Stopping Distance first.`n`n"
-FaqT .= "On Manual mode, change Side bar ratio and Side wait multiplier in Minigame.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "10.  THE BLUE BAR ON THE OVERLAY KEEPS CHANGING SIZE`n`n"
-FaqT .= "When the bar gets pushed into the edge of the minigame, part of it is cut off, so it is measured smaller. Fix the steering first (see above) and the size usually settles.`n`n"
-FaqT .= "A short size change right as a minigame starts or ends is normal.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "11.  MANUAL MODE WILL NOT TRACK PROPERLY`n`n"
-FaqT .= "Manual needs tuning by hand, so try Precision first. If you stay on Manual, follow Quick rules in Minigame: Right values higher than Left, Unstable higher than Stable, every Division between 1.0 and 1.5, and change one value by about 15% at a time.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "12.  THE MINIGAME GIVES UP AND RECASTS`n`n"
-FaqT .= "Minigame failsafe (s) in Minigame is the longest one minigame may last before the macro re-equips and casts again. Raise it if your fish take longer than 60 seconds.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "13.  SOME DETECTION MODES ARE MISSING`n`n"
-FaqT .= "Special rods only list the modes that work with them. Set Special rod to None to see all three.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "14.  I MESSED UP MY MINIGAME SETTINGS`n`n"
-FaqT .= "Press Restore defaults in Minigame. It resets the Minigame setup and every color in the Color Manager, so pick your colors again afterwards.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-FaqT := ""
-FaqT .= "Rods with their own mechanics. Pick the rod in Minigame > Special rod. Settings in yellow are specific to that rod.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  I PICKED A SPECIAL ROD AND IT STILL DOES NOT WORK`n`n"
-FaqT .= "Stop the macro and start it again after changing Special rod. Some rods watch a different part of the screen, and that is only measured when the macro starts.`n`n"
-FaqT .= "Check you are holding the rod you picked. The wrong setting on the wrong rod steers badly.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  CASTBOUND`n`n"
-FaqT .= "Castbound finds the bar on its own. If it never picks up the bar on your screen, add the colors your screen shows under Extra colors on its Setup page: open the Color Manager, Pick from screen, and click the purple track first (also where it runs over bright scenery), then the purple sword marker. Bar colors only help if the bar looks very dark. Leave them all empty if it already works - empty means the built-in detection, unchanged. Clear this list in the Color Manager empties one again.`n`n"
-FaqT .= "Its bar shrinks and grows during the fight. That is the rod, not a detection problem. If the bar rocks or overshoots, raise Stopping Distance.`n`n"
-FaqT .= "The game freezes the minigame for about a second now and then. The macro holds steady until it moves again.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  REMEMBRANCE`n`n"
-FaqT .= "Set Rod state to Living or Departed to match your rod. Switching it fills in the right bar colors for that state.`n`n"
-FaqT .= "The goal is to keep the bar on the white fish line and away from the black one. On Living, covering both only pauses progress. On Departed, covering both loses progress, so the bar steers clear of the black line even if it briefly leaves the white one.`n`n"
-FaqT .= "The pink marker on the overlay shows where the macro sees the black line. Restart the macro after picking this rod.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  PINIONS ARIA`n`n"
-FaqT .= "The bar stays on the fish and catches every note it can without leaving it. It only leaves the fish for a note when the catch progress can afford the trip. Leave the note settings at their defaults unless you see one of these.`n`n"
-FaqT .= "During a fight a line under the bar reads Pinions: progress NN% | reason. The reason tells you what to change:`n`n"
-FaqT .= "- no note, while notes are visibly falling: detection. Check Note color in the Color Manager, then raise Note tolerance to 18-22 (above 25 the fish icon counts as a note).`n"
-FaqT .= "- skip: progress NN%: the macro chose the fish over that note on purpose. Nothing to change. If fish are being LOST while the bar is away on a note, lower Note priority to 80 or 60.`n"
-FaqT .= "- skip: too far: the note landed where the bar could not reach in time. No setting changes that.`n"
-FaqT .= "- progress ?: the progress bar could not be read. Report it with your resolution and UI scale.`n`n"
-FaqT .= "Resonance state (the fish locked to the bar, notes falling two at a time) is detected on its own: the bar then goes straight for every note until one is missed, and the status line reads resonance. Resonance hand-off (px) is how many pixels before a note lands the bar leaves for the next one; 50 is right for most people.`n`n"
-FaqT .= "Notes are searched for across the Shake search area, so it must cover the whole minigame.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "5.  REQUIEM`n`n"
-FaqT .= "If the reel keeps snapping, raise Min hold (ms) and Min release (ms). If the bar feels sluggish or falls behind, lower them.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "6.  NOISEFORM AND VERDANT OATH`n`n"
-FaqT .= "Picking these rods fills in their colors for you. If detection is off afterwards, pick the colors again in the Color Manager.`n`n"
-FaqT .= "Verdant Oath: only the green part of the bar counts. The macro keeps the fish line inside the green and off the wood at both ends, because touching the wood costs progress. Lines is the default. Precision is a backup: it finds the green by its color and the fish by Fish line color, which picking the rod fills in.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "7.  DARKHEART, LULLABY, DREAMBREAKER AND BELLONAS WARAXE`n`n"
-FaqT .= "These only allow the detection modes that work with them. Use Lines, or Precision where it is offered, and tune Kp, Kd and Stopping Distance as usual.`n`n"
-FaqT .= "Dreambreaker: a few seconds into the minigame the controls flip - the bar starts drifting right and clicking moves it left. The macro switches over by itself about 1.5 s after the bar starts moving. No right clicks are needed.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "8.  MIGUROD`n`n"
-FaqT .= "MiguRod finds its bar on its own, so the bar colors do not matter for it. If the bar on the overlay looks wrong, that is worth reporting. The pale fish line is still matched by color, so pick that again in the Color Manager if the macro loses track of it.`n`n"
-FaqT .= "The red exclamation marks slice the bar when they strike, which makes it shorter. That cannot really be avoided, so the macro does not try to dodge them and just keeps following the fish.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "9.  TRYHARD ROD`n`n"
-FaqT .= "Finds its bar and fish line on its own. The bar turns dark red, almost the color of the track, whenever the fish is outside it - the macro still sees it and keeps chasing.`n`n"
-FaqT .= "If the bar is never picked up on your screen, add the colors your screen shows under Extra colors on its Setup page (Color Manager, Pick from screen): the bar while the fish is inside it and while it is outside, then the dark marker above the bar if the fish is not found. Leave them empty if it already works - empty means the built-in detection, unchanged.`n`n"
-FaqT .= "The bar is very small and the fish slips out easily. That is the rod, not a detection problem. If the bar rocks or overshoots, raise Stopping Distance.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "10.  HALIBUT HARPOON`n`n"
-FaqT .= "Play minigame (on by default) sends the bar to the exclamation mark when it appears. Turn it off to keep the bar on the fish line the whole time.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "11.  STELLARWAVE MELODY`n`n"
-FaqT .= "Finds its bar and fish on its own. While the zodiac signs are on the bar it clicks them in the order shown above the bar (the signs appear in that order) and keeps reeling in between; when they are gone it reels as normal.`n`n"
-FaqT .= "Keep the mouse cursor free during fights: no shift lock, no first person, camera mode off. If the cursor cannot reach a sign the macro stops clicking for that cast and just reels.`n`n"
-FaqT .= "Click the signs (on by default) can be turned off on its Setup page if the clicks make your fights worse.`n`n"
-FaqT .= "Fast sign clicks (off by default) clicks each sign as soon as it appears, with a shorter click, so the signs go faster. Turn it off again if signs get missed or the wrong sign gets clicked.`n`n"
-FaqT .= "Retry failed clicks (off by default) clicks a sign again when its click did not go through, up to 3 times a moment apart, and spots a failed click sooner. When the next sign does not look like the one it expects, it looks for the right sign among the signs on the bar and clicks that one instead - it never clicks a sign that looks wrong. With it off there are fewer retries, and a sign that does not look right stops the sign clicks until the next signs appear.`n`n"
-FaqT .= "Its bar and fish colors are under Stellarwave colors on its Setup page, filled in with the rod's own colors. Change them only if the bar or fish is not picked up on your screen: open the Color Manager, Pick from screen, and click that part in game. Empty a box to go back to the normal color.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-FaqT := ""
-FaqT .= "Problems with Auto Totem, Auto Aquarium, Auto Keeperbound and the Discord webhook. Turn each one on in Utilities first.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "1.  AUTO TOTEM DOES NOTHING`n`n"
-FaqT .= "Totems only work in private servers. They cannot be used in public ones.`n`n"
-FaqT .= "Pick a totem in Target Event 1, and fill in the hotbar key for that totem. Day and Night need your Sundial key.`n`n"
-FaqT .= "You can pick up to three totems in Target Event 1, 2 and 3. They are tried in that order. Totems that clash are not offered in the other boxes: only one weather totem (Clearcast, Tempest, Windset or Smokescreen), only one surge (Shiny, Sparkling or Mutation), and no totems that need opposite times of day. Aurora and Starfall already make it Night and Eclipse makes it Day, so Night or Day cannot be picked next to them.`n`n"
-FaqT .= "If the Totem page says no effect, the macro used that totem but the icons did not change, so it waits 3 minutes (1.5 minutes for a Sundial) before trying it again. Check that totem's hotbar key.`n`n"
-FaqT .= "If it says unknown, an icon in the bottom right was not recognised. One that appears right after a totem is used counts as that totem.`n`n"
-FaqT .= "Shiny and Sparkling show the same star icon, so only one of them can be picked.`n`n"
-FaqT .= "Only one surge (Shiny, Sparkling or Mutation) can be up at a time, so a surge totem is not used while another surge is active.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "2.  AUTO TOTEM USES THE WRONG TOTEM OR MISREADS THE WEATHER`n`n"
-FaqT .= "The macro reads the time and weather icons in the bottom right of your screen. Make sure nothing covers them.`n`n"
-FaqT .= "Camera mode hides those icons, so it stays off while Auto Totem is on.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "3.  AUTO TOTEM USED A SUNDIAL I DID NOT PICK`n`n"
-FaqT .= "That is on purpose. If a totem needs a different time of day, it uses a Sundial first and waits for the time to change.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "4.  MY ROD IS NOT BACK IN MY HAND AFTER A TOTEM`n`n"
-FaqT .= "Set Rod hotbar slot key in General > Recovery. It is used to re-equip the rod after popping a totem.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "5.  AUTO TOTEM CHECKS TOO OFTEN OR NOT OFTEN ENOUGH`n`n"
-FaqT .= "Change Check every (s). Pop delay (ms) is the wait after using a totem before it checks again.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "6.  AUTO AQUARIUM SAYS IT COULD NOT FIND THE FISH FOOD PANEL`n`n"
-FaqT .= "The macro presses Aquariums at the top of the screen. Make sure that bar is visible and nothing is covering it. Camera mode hides it, so it stays off while this is on.`n`n"
-FaqT .= "If the menu is slow to open on your PC, raise Menu delay (ms).`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "7.  AUTO AQUARIUM SKIPS SOME FISH FOOD`n`n"
-FaqT .= "Raise Step delay (ms) so each press has time to register, and raise Scroll sweep (notches) if food far along the row is being missed. Cards per trip limits how many cards it handles.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "8.  AUTO AQUARIUM SPENDS TOO MUCH MONEY`n`n"
-FaqT .= "Lower Buy limit per trip. Run every (minutes) controls how often it visits.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "9.  AUTO KEEPERBOUND DOES NOTHING`n`n"
-FaqT .= "It needs the ENCHANT ANYWHERE gamepass. Without it the enchant button does nothing.`n`n"
-FaqT .= "Put your Enchant Relic in a hotbar slot and type that number into Relic hotbar key.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "10.  AUTO KEEPERBOUND SAYS IT COULD NOT OPEN THE INVENTORY`n`n"
-FaqT .= "Set Inventory key to the key that opens your inventory. It is G by default. Raise Menu delay (ms) if your inventory is slow to open.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "11.  AUTO KEEPERBOUND SAYS ENCHANT ROD DID NOTHING`n`n"
-FaqT .= "Use Set under Button positions to show the macro exactly where the Enchant Rod and Confirm buttons are.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "12.  MY HOTBAR NUMBER KEYS STOPPED WORKING`n`n"
-FaqT .= "The Enchant your Rod confirm box is probably still open. While it is open the game ignores number keys. Press Cancel on it. The macro closes it by itself before each recharge.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "13.  HOW MANY RECHARGES DO I NEED`n`n"
-FaqT .= "A Keeperbound rod loses about 0.2% power per catch, and each recharge gives back about 5%. 50 catches drain about 10%, so set Recharges per trip to 2 if Every (catches) is 50.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "14.  THE WEBHOOK TEST SAYS IT COULD NOT SEND`n`n"
-FaqT .= "Paste the full Discord webhook link into Webhook URL. It should start with https://discord.com/api/webhooks/. Check you are online.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "15.  I GET NO WEBHOOK MESSAGES`n`n"
-FaqT .= "Turn the webhook On in Utilities and on its own page, and press Send test message to check the link works.`n`n"
-FaqT .= "Catch messages need Send a message for every catch. Stopped and no-catch alerts need Send alerts. Status reports are sent every Status report every (min) minutes.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqT .= "16.  I DO NOT WANT MY NAME OR MONEY IN WEBHOOK SCREENSHOTS`n`n"
-FaqT .= "Untick Attach a screenshot to status reports. The screenshot shows your whole screen, including your username, level and cash.`n`n"
-FaqT .= "--------------------------------------------------------`n"
-FaqTexts.Push(FaqT)
-
-Gui, Font, s9 Bold c%ColorMuted%, Segoe UI
-FaqTabH := []
-FaqTabX := CARDX
-for i, nm in FaqNames
-	{
-	Gui, Add, Text, x%FaqTabX% y152 w88 h28 Center +0x100 +0x200 vFaqTab%i% gFaqTabClick HwndhFT, %nm%
-	RoundCtrl(hFT, 88, 28, 8)
-	FaqTabH.Push(hFT)
-	FaqCtrls.Push(hFT)
-	FaqTabX += 93
-	}
-
-Gui, Font, s9 Norm cFFFFFF, Consolas
-FaqStart := FaqTexts[1]
-Gui, Add, Edit, x%CARDX% y186 w%CARDW% h314 ReadOnly VScroll +0x4 vFaqBox HwndhFaqBox, %FaqStart%
-FaqCtrls.Push(hFaqBox)
-ThemedCtrls.Push(hFaqBox)
-SpecialBrushes[hFaqBox] := {brush: hBrushCard, text: 0xFFFFFF}
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-FaqTab := 1
-gosub, FaqPaintTabs
-
-return
-
-FaqTabClick:
-FaqTab := SubStr(A_GuiControl, 7) + 0
-GuiControl, 1:, FaqBox, % FaqTexts[FaqTab]
-gosub, FaqPaintTabs
-return
-
-FaqPaintTabs:
-for i, h in FaqTabH
-	{
-	if (i = FaqTab)
-		SpecialBrushes[h] := {brush: hBrushAccent, text: 0x101010}
-	else
-		SpecialBrushes[h] := {brush: hBrushBorder, text: ColorTextBGR}
-	WinSet, Redraw, , ahk_id %h%
-	}
-return
-
-;====================================================================================================;
-
-BuildAboutSection:
-
-hC := AddPanel(CARDX, 120, CARDW, 74)
-AboutCtrls.Push(hC)
-
-Gui, Font, s14 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CX% y132 w%TXW% h28 HwndhAbtHdr, 🐟 DeepFish BETA
-AboutCtrls.Push(hAbtHdr)
-SpecialBrushes[hAbtHdr] := {brush: hBrushCard, text: ColorAccentBGR}
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Text, x%CX% y162 w%TXW% h18 HwndhAbtVer, Version %DFVersion%  •  Made by Yato
-AboutCtrls.Push(hAbtVer)
-SpecialBrushes[hAbtVer] := {brush: hBrushCard, text: 0xFFFFFF}
-
-hC := AddPanel(CARDX, 204, CARDW, 106)
-AboutCtrls.Push(hC)
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y214 w%TXW% h16 HwndhAbtLinkHdr, LINKS
-AboutCtrls.Push(hAbtLinkHdr)
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-Gui, Add, Text, x%CX% y236 w%TXW% h20 +0x100 gOpenDiscord HwndhAbtDiscord, 💬  Discord  —  discord.gg/9dkmX6pAZd
-AboutCtrls.Push(hAbtDiscord)
-SpecialBrushes[hAbtDiscord] := {brush: hBrushCard, text: 0xFFFFFF}
-Gui, Add, Text, x%CX% y258 w%TXW% h20 +0x100 gOpenYouTube HwndhAbtYouTube, ▶  YouTube  —  youtube.com/@yatoark
-AboutCtrls.Push(hAbtYouTube)
-SpecialBrushes[hAbtYouTube] := {brush: hBrushCard, text: 0xFFFFFF}
-Gui, Add, Text, x%CX% y280 w%TXW% h20 +0x100 gOpenAsphalt HwndhAbtAsphalt, ▶  Original source  —  youtube.com/@AsphaltCake
-AboutCtrls.Push(hAbtAsphalt)
-SpecialBrushes[hAbtAsphalt] := {brush: hBrushCard, text: 0xFFFFFF}
-
-hC := AddPanel(CARDX, 320, CARDW, 84)
-AboutCtrls.Push(hC)
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y330 w%TXW% h16 HwndhAbtCredHdr, CREDITS
-AboutCtrls.Push(hAbtCredHdr)
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-AboutCredits := "• Yato — Creator, design and development.`n"
-AboutCredits .= "• AsphaltCake — Precision/Lines mode control method,`n"
-AboutCredits .= "   adapted from IRUS IDIOTPROOF/IRUS COMET.`n"
-Gui, Add, Text, x%CX% y352 w%TXW% h48 cFFFFFF HwndhAbtCred, %AboutCredits%
-AboutCtrls.Push(hAbtCred)
-SpecialBrushes[hAbtCred] := {brush: hBrushCard, text: 0xFFFFFF}
-
-hC := AddPanel(CARDX, 414, CARDW, 96)
-AboutCtrls.Push(hC)
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y424 w%TXW% h16 HwndhAbtDonHdr, DONATIONS
-AboutCtrls.Push(hAbtDonHdr)
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-AboutDon := "Appreciated but never required. Message me directly`n"
-AboutDon .= "on Discord for details please don't send a friend`n"
-AboutDon .= "request, I get a lot.`n"
-AboutDon .= "Accepting PayPal, Server Boosts and Discord Nitro."
-Gui, Add, Text, x%CX% y446 w%TXW% h60 cFFFFFF HwndhAbtDon, %AboutDon%
-AboutCtrls.Push(hAbtDon)
-SpecialBrushes[hAbtDon] := {brush: hBrushCard, text: 0xFFFFFF}
-
-hC := AddPanel(CARDX, 520, CARDW, 112)
-AboutCtrls.Push(hC)
-Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y530 w%TXW% h16 HwndhAbtLicHdr, LICENCE
-AboutCtrls.Push(hAbtLicHdr)
-Gui, Font, s9 Norm cFFFFFF, Segoe UI
-AboutLic := "© 2026 Yato. Personal use only. Do not redistribute,`n"
-AboutLic .= "republish a modified build, or sell this macro. Reusing`n"
-AboutLic .= "parts of it is fine as long as ""Yato"" is credited visibly`n"
-AboutLic .= "in your project's interface. Provided as is, with no`n"
-AboutLic .= "warranty — use at your own risk."
-Gui, Add, Text, x%CX% y552 w%TXW% h76 cFFFFFF HwndhAbtLic, %AboutLic%
-AboutCtrls.Push(hAbtLic)
-SpecialBrushes[hAbtLic] := {brush: hBrushCard, text: 0xFFFFFF}
-
-return
-
-;====================================================================================================;
-
-BuildReadThisSection:
-
-ReadThisGroups := [ ["FISCH SETTINGS  (Menu)"
-		, [ "Extra Brightness:   →   slider all the way to the RIGHT (max)"
-		  , "Camera Shake   →   OFF"
-		  , "Fishing Minigame Shake:   →   slider all the way to the LEFT (0)"
-		  , "Show Enchant Info   →   OFF" ] ]
-	, ["WINDOWS / ROBLOX"
-		, [ "Run Roblox in FULLSCREEN. If detection then fails on your PC, use windowed fullscreen instead."
-		  , "Windows display scale must be 100% (Settings > System > Display > Scale), then restart your PC."
-		  , "Turn OFF HDR in Windows (Settings > System > Display > HDR). HDR changes the colors the macro looks for."
-		  , "Do not resize, move or un-fullscreen the Roblox window while the macro is running - it measures the window once at Start."
-		  , "Set Roblox graphics quality to low, or leave Auto-lower graphics ticked in General." ] ] ]
-ReadThisImages := [ "Images\readthis1.png", "Images\readthis2.png", "Images\readthis3.png" ]
-
-Gui, Font, s13 Bold c%ColorRed%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w%CARDW% h30 HwndhC, ⚠  Read this first
-ReadThisCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushBG, text: ColorRedBGR}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y152 w%CARDW% h18 HwndhC, These must be set exactly like this before you press Start.
-ReadThisCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
-Gui, Font, s9 Bold c%ColorRed%, Segoe UI
-rtMsg := ReadThisAccepted ? "✔  Unlocked - you can use every tab and Start." : "🔒  Locked - tick the box below to unlock the other tabs and Start."
-Gui, Add, Text, x%CARDX% y172 w%CARDW% h18 HwndhReadThisLockMsg, %rtMsg%
-ReadThisCtrls.Push(hReadThisLockMsg)
-SpecialBrushes[hReadThisLockMsg] := {brush: hBrushBG, text: ReadThisAccepted ? ColorMutedBGR : ColorRedBGR}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
-RtY := 198
-hC := AddPanel(CARDX, RtY, CARDW, 80)
-ReadThisCtrls.Push(hC)
-Gui, Font, s8 Bold c%ColorRed%, Segoe UI
-RtLY := RtY + 10
-Gui, Add, Text, x%CX% y%RtLY% w%TXW% h16 HwndhC, UNLOCK
-ReadThisCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorRedBGR}
-Gui, Font, s9 Norm c%ColorText%, Segoe UI
-RtLY += 22
-rtChk := ReadThisAccepted ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%RtLY% w%TXW% h20 c%ColorText% vReadThisChk %rtChk% gReadThisAccept HwndhC, I have read all of this and set everything above
-ReadThisCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-RtLY += 24
-Gui, Add, Text, x%CX% y%RtLY% w%TXW% h16 HwndhC, Ticking this unlocks the other tabs and Start. It is remembered in Settings.ini.
-ReadThisCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
-RtY += 90
-for gi, grp in ReadThisGroups
-	{
-	RtCardH := 36
-	RtHeights := []
-	for i, ln in grp[2]
-		{
-		RtN := Ceil(StrLen(ln) / 88)
-		if (RtN < 1)
-			RtN := 1
-		RtHeights.Push(RtN * 16 + 8)
-		RtCardH += RtN * 16 + 8
-		}
-	hC := AddPanel(CARDX, RtY, CARDW, RtCardH)
-	ReadThisCtrls.Push(hC)
-	Gui, Font, s8 Bold c%ColorRed%, Segoe UI
-	RtLY := RtY + 10
-	Gui, Add, Text, x%CX% y%RtLY% w%TXW% h16 HwndhC, % grp[1]
-	ReadThisCtrls.Push(hC)
-	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorRedBGR}
-	Gui, Font, s9 Norm cFFFFFF, Segoe UI
-	RtLY += 24
-	for i, ln in grp[2]
-		{
-		RtH := RtHeights[i] - 8
-		Gui, Add, Text, x%CX% y%RtLY% w%TXW% h%RtH% HwndhC, % "•  " . ln
-		ReadThisCtrls.Push(hC)
-		SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
-		RtLY += RtHeights[i]
-		}
-	RtY += RtCardH + 10
-
-	if (gi = 1)
-		{
-		for pi, img in ReadThisImages
-			{
-			RtPath := A_ScriptDir . "\" . img
-			if (!FileExist(RtPath))
-				continue
-			Gui, Add, Picture, x%CARDX% y%RtY% w%CARDW% h-1 HwndhC, %RtPath%
-			ReadThisCtrls.Push(hC)
-			CtrlSnapPos(hC, RtPX, RtPY, RtPW, RtPH)
-			RtY += RtPH + 10
-			}
-		}
-	}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
-return
-
-;====================================================================================================;
-
-BuildVersionsSection:
-
-VersionNotes := []
-VersionNotes.Push(["Version 2.0", ["Info panel you can place anywhere on any monitor (replaces the old tooltips), with a Signs row for Stellarwave"
-	, "Fish scanner + Fischipedia value calculator, counts Extra! fish too"
-	, "Adaptive casting (cast X ms after the minigame closes, negative = sooner)"
-	, "Stellarwave ends the fight the moment its bar and stars are gone (no more 450 ms wait)"
-	, "Stellarwave: Wait for N signs (1-12) before clicking"
-	, "Stellarwave: Retry failed clicks reworked - never clicks a wrong-looking sign, retries sooner"
-	, "Stellarwave Max sign speed: a stray mouse move or star misread no longer stops sign clicking"
-	, "Keeperbound: auto power bar reading, read while the bobber flies, never recharges during a minigame"
-	, "Keeperbound: no longer puts the rod away after a failed recharge"
-	, "Smart cast can cast N times in a row (each cast waits Cast hold + 50 ms before the next)"
-	, "Fish value list downloads the first time you turn on the scanner, stays saved, and updates every Monday 6 PM US Eastern"
-	, "Installs check in with the owner when they start (Install ID, keyed or not, version)"
-	, "Miscellaneous tab with Pogo Jump Tech: one hotkey (any key or mouse side button) does pogo stick, wait, jump coil, jump (every key and pause adjustable)"
-	, "Stellarwave preset Ominous Ouija: reads the letter tokens and clicks them in GRIMPLANCHET order"
-	, "Ominous Ouija now finds its own bar and fish (the grey-rimmed bar on the wooden track, the planchette) and starts the minigame"
-	, "Remembrance (Living and Departed): the bar never touches the black fish line - it keeps a safe gap on its own side"
-	, "Option to hide the in-game text at all times"
-	, "Minor changes / bug fixes"]])
-VersionNotes.Push(["ULTIMATE builds 19-24", ["Smart cast, auto power bar read for Keeperbound, passive mode for every rod"
-	, "Old Max sign speed engine is back, Signs before bar is back"
-	, "New look: Fishing dashboard, themes (Mono default), live stats"]])
-VersionNotes.Push(["Version 1.1.7 (mod build 18)", ["Merged the official 1.1.7 (Dreambreaker fix, faster Stellarwave engine) into this build"
-	, "Stellarwave: Wait for all signs, then click them in one fast burst"]])
-VersionNotes.Push(["Version 1.1.7", ["Fixed Dreambreaker"
-	, "Made Stellarwave Melody WAY faster"]])
-VersionNotes.Push(["Version 1.1.6", ["Made Stellarwave Melody a lot lot lot lot lot faster"]])
-VersionNotes.Push(["Version 1.1.5", ["Fixed Stellarwave Melody"
-	, "Made Stellarwave Melody click signs faster"]])
-VersionNotes.Push(["Version 1.1.4", ["Added Stellarwave Melody"
-	, "Added extra configurability to Castbound & Tryhard Rod"
-	, "Added Play Minigame option in Halibut Harpoon"
-	, "Added extra option for a 3rd totem"
-	, "Fixed Bellonas Waraxe"
-	, "Fixed Tranquility"
-	, "Fixed Auto Totem"
-	, "Fixed Bugs"]])
-VersionNotes.Push(["Version 1.0.4", ["Added Verdant Oath"
-	, "Added Tryhard Rod"
-	, "Fixed Noiseform"
-	, "Fixed Auto Totems"]])
-VersionNotes.Push(["Version 1.0.3", ["Improved Pinions Aria Tracking"]])
-VersionNotes.Push(["Version 1.0.2", ["Added Splitbranch Twig"
-	, "Fixed the bar giving up mid-minigame"
-	, "Improved perfect casting"
-	, "Improved minigame start and end detection"
-	, "Improved tracking when the fish leaves the bar"
-	, "Smoother overlay"
-	, "Updates now install automatically"
-	, "Removed Click shake mode"]])
-VersionNotes.Push(["Version 1.0.1", ["Fixed Castbound"
-	, "Improved Pinions Aria note tracking"]])
-VersionNotes.Push(["Version 1.0.0", ["Added Remembrance Rod"
-	, "Added Castbound Rod"
-	, "Added MiguRod"
-	, "Added Halibut Harpoon Rod"
-	, "Added Color Manager"
-	, "Added Auto Update"
-	, "Updated FAQ"
-	, "Fixed Bugs"]])
-
-Gui, Font, s13 Bold c%ColorText%, Segoe UI
-Gui, Add, Text, x%CARDX% y120 w%CARDW% h30 HwndhC, Versions
-VersionsCtrls.Push(hC)
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y152 w%CARDW% h18 HwndhC, What changed in each update.
-VersionsCtrls.Push(hC)
-SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
-
-VerY := 180
-for vi, vn in VersionNotes
-	{
-	VerCardH := 44 + (vn[2].Length() * 20) + 10
-	hC := AddPanel(CARDX, VerY, CARDW, VerCardH)
-	VersionsCtrls.Push(hC)
-	Gui, Font, s11 Bold cFFFFFF, Segoe UI
-	VerTY := VerY + 12
-	Gui, Add, Text, x%CX% y%VerTY% w%TXW% h24 HwndhC, % vn[1]
-	VersionsCtrls.Push(hC)
-	SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
-	Gui, Font, s9 Norm cFFFFFF, Segoe UI
-	VerLY := VerY + 44
-	for li, ln in vn[2]
-		{
-		Gui, Add, Text, x%CX% y%VerLY% w%TXW% h20 0x80 HwndhC, % "•  " . ln
-		VersionsCtrls.Push(hC)
-		SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
-		VerLY += 20
-		}
-	VerY += VerCardH + 10
-	}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
-return
-
-;====================================================================================================;
-
-VersionsClick:
-TargetSection := "Versions"
-gosub, ShowSection
-return
-
-;====================================================================================================;
-
-OpenDiscord:
-Run, https://discord.gg/9dkmX6pAZd
-return
-
-OpenYouTube:
-Run, https://www.youtube.com/@yatoark
-return
-
-OpenAsphalt:
-Run, https://www.youtube.com/@AsphaltCake
 return
 
 ;====================================================================================================;
@@ -30836,50 +29280,6 @@ return
 SidebarClick:
 TargetSection := SubStr(A_GuiControl, 4)
 gosub, ShowSection
-return
-
-;====================================================================================================;
-
-ReadThisAccept:
-GuiControlGet, ReadThisChk, 1:, ReadThisChk
-ReadThisAccepted := ReadThisChk ? 1 : 0
-IniWrite, %ReadThisAccepted%, %SettingsFile%, GUI, ReadThisAccepted
-gosub, ApplyReadThisLock
-if (hReadThisLockMsg)
-	{
-	if (ReadThisAccepted)
-		rtMsg := "✔  Unlocked - you can use every tab and Start."
-	else
-		rtMsg := "🔒  Locked - tick the box below to unlock the other tabs and Start."
-	SpecialBrushes[hReadThisLockMsg] := {brush: hBrushBG, text: ReadThisAccepted ? ColorMutedBGR : ColorRedBGR}
-	GuiControl, 1:, %hReadThisLockMsg%, %rtMsg%
-	}
-if (ReadThisAccepted)
-	{
-	TargetSection := "General"
-	gosub, ShowSection
-	}
-return
-
-ReadThisLockedNotice:
-if (!WinExist("DeepFish BETA"))
-	Gui, 1:Show
-TargetSection := "ReadThis"
-gosub, ShowSection
-msgbox, 4144, DeepFish, Read the READ THIS page first`, then tick the box under its title to unlock Start and the other tabs.
-return
-
-ApplyReadThisLock:
-for rtI, rtD in NavDefs
-	{
-	rtK := rtD[1]
-	if (rtK = "ReadThis" or !NavHwnd.HasKey(rtK))
-		continue
-	GuiControl, % (ReadThisAccepted ? "1:Show" : "1:Hide"), % NavHwnd[rtK]
-	GuiControl, % (ReadThisAccepted ? "1:Show" : "1:Hide"), % NavHwnd["bar" . rtK]
-	}
-if (hVersionsBtn)
-	GuiControl, % (ReadThisAccepted ? "1:Show" : "1:Hide"), %hVersionsBtn%
 return
 
 ;====================================================================================================;
@@ -30894,12 +29294,27 @@ return
 
 ShowSection:
 
-if (!ReadThisAccepted and TargetSection != "ReadThis")
-	TargetSection := "ReadThis"
+; the panel shows merged pages: a page that was folded into another one opens that one
+if (UiOn)
+	{
+	if (TargetSection = "Minigame")
+		TargetSection := "Home"
+	else if (TargetSection = "Shake")
+		TargetSection := "Cast"
+	else if (TargetSection = "Misc")
+		TargetSection := "General"
+	}
+UiMerge := UiOn ? true : false
 if (GuiHwnd)
 	DllCall("SendMessage", "Ptr", GuiHwnd, "UInt", 0x000B, "Ptr", 0, "Ptr", 0)
 NeedSection := TargetSection
 gosub, EnsureSection
+if (UiMerge)
+	{
+	NeedSection := (TargetSection = "Home") ? "Minigame" : ((TargetSection = "Cast") ? "Shake" : ((TargetSection = "General") ? "Misc" : ""))
+	if (NeedSection != "")
+		gosub, EnsureSection
+	}
 
 OnUtil := (TargetSection = "Utilities")
 OnTotem := (TargetSection = "Totem")
@@ -30907,14 +29322,14 @@ OnAqua := (TargetSection = "Aquarium")
 OnKeep := (TargetSection = "Keeper")
 OnAdv := (TargetSection = "Advanced")
 OnGuess := (TargetSection = "Guess")
-OnWeb := (TargetSection = "Webhook")
-OnMini := (TargetSection = "Minigame")
+OnMini := (TargetSection = "Minigame" or (UiMerge and TargetSection = "Home"))
 OnCast := (TargetSection = "Cast")
 OnSetup := (OnMini and MiniTab != "Colors")
 OnColors := (OnMini and MiniTab = "Colors")
 SecTopEdge := (OnMini ? 158 : 120) - YS
 
 ShowList(GeneralCtrls, TargetSection = "General")
+ShowList(CreditsCtrls, TargetSection = "General")
 ShowList(HomeCtrls, TargetSection = "Home")
 if (TargetSection = "Home")
 	{
@@ -30927,13 +29342,9 @@ else
 ShowList(CastCtrls, OnCast)
 ShowList(NormalCastCtrls, OnCast and CastMode = "Normal")
 ShowList(PerfectCastCtrls, OnCast and CastMode != "Normal")
-ShowList(ShakeCtrls, TargetSection = "Shake")
+ShowList(ShakeCtrls, TargetSection = "Shake" or (UiMerge and OnCast))
 ShowList(UtilCtrls, OnUtil)
-ShowList(MiscCtrls, TargetSection = "Misc")
-ShowList(FaqCtrls, TargetSection = "Faq")
-ShowList(AboutCtrls, TargetSection = "About")
-ShowList(VersionsCtrls, TargetSection = "Versions")
-ShowList(ReadThisCtrls, TargetSection = "ReadThis")
+ShowList(MiscCtrls, TargetSection = "Misc" or (UiMerge and TargetSection = "General"))
 
 ; ---- Minigame: two faces, Setup and the Color Manager ----
 GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabSetup
@@ -31010,28 +29421,17 @@ if (OnAqua)
 else
 	SetTimer, AquariumStatusTick, Off
 
-; ---- Webhook ----
-ShowList(WebhookCtrls, OnWeb)
-if (OnWeb and !WebhookOn)
-	ShowList(WebhookBodyCtrls, false)
-
-if (TargetSection = "Faq" and hFaqBox)
-	{
-	SendMessage, 0xB1, 0, 0, , ahk_id %hFaqBox%
-	SendMessage, 0xB7, 0, 0, , ahk_id %hFaqBox%
-	}
 
 GuiControl, 1:, UtilTotemOn, % (TotemAuto ? 1 : 0)
 GuiControl, 1:, UtilAquariumOn, % (AquariumAuto ? 1 : 0)
 GuiControl, 1:, UtilKeeperOn, % (KeeperAuto ? 1 : 0)
 GuiControl, 1:, UtilGuessOn, % (SwGuessOn ? 1 : 0)
-GuiControl, 1:, UtilWebhookOn, % (WebhookOn ? 1 : 0)
 
 ; ---- sidebar highlight (the two add-on pages keep Utilities lit) ----
 NavActive := TargetSection
 if (NavActive = "Advanced")
 	NavActive := "General"
-if (NavActive = "Totem" or NavActive = "Webhook" or NavActive = "Aquarium" or NavActive = "Keeper" or NavActive = "Guess")
+if (NavActive = "Totem" or NavActive = "Aquarium" or NavActive = "Keeper" or NavActive = "Guess")
 	NavActive := "Utilities"
 for i, d in NavDefs
 	{
@@ -31040,16 +29440,15 @@ for i, d in NavDefs
 	hb := NavHwnd["bar" . nk]
 	if (nk = NavActive)
 		{
-		SpecialBrushes[hv] := {brush: hBrushBorder, text: (nk = "ReadThis") ? ColorRedBGR : ColorTextBGR}
+		SpecialBrushes[hv] := {brush: hBrushBorder, text: ColorTextBGR}
 		SpecialBrushes[hb] := {brush: hBrushAccent, text: ColorAccentBGR}
 		}
 	else
 		{
-		SpecialBrushes[hv] := {brush: hBrushPanel, text: (nk = "ReadThis") ? ColorRedBGR : ColorNavBGR}
+		SpecialBrushes[hv] := {brush: hBrushPanel, text: ColorNavBGR}
 		SpecialBrushes[hb] := {brush: hBrushPanel, text: ColorTextBGR}
 		}
 	}
-gosub, ApplyReadThisLock
 
 CollectVisible()
 ApplyScroll()
@@ -31141,7 +29540,7 @@ else if (SpecialRod = "Requiem" or SpecialRod = "Bellona's Waraxe" or SpecialRod
 	or SpecialRod = "Verdant Oath")
 	CmList := "Lines|Precision"
 else
-	CmList := "Manual|Precision|Lines"
+	CmList := "Precision|Lines"
 if (!InStr("|" . CmList . "|", "|" . ControlMode . "|"))
 	{
 	sp := InStr(CmList, "|")
@@ -31461,7 +29860,7 @@ MgCopyCode:
 
 Gui, 1:Submit, NoHide
 MgShareBad := ""
-MgShareOut := "DF1;" . MgShareSig()
+MgShareOut := "VX1;" . MgShareSig()
 for MgShareI, MgShareF in MgShareFields()
 	{
 	MgShareK := MgShareF[2]
@@ -31472,7 +29871,7 @@ for MgShareI, MgShareF in MgShareFields()
 	}
 if (MgShareBad != "")
 	{
-	msgbox, 4144, DeepFish, A settings code cannot hold a semicolon, and these fields contain one:`n`n%MgShareBad%`nTake the semicolons out, then copy again.
+	msgbox, 4144, Veltrix, A settings code cannot hold a semicolon, and these fields contain one:`n`n%MgShareBad%`nTake the semicolons out, then copy again.
 	return
 	}
 MgShareOut .= ";" . MgShareHash(MgShareOut)
@@ -31508,10 +29907,10 @@ MgShareParts := StrSplit(MgShareIn, ";")
 MgShareErr := ""
 if (MgShareIn = "")
 	MgShareErr := "That box is empty. Copy a settings code first, then paste it into the box."
-else if (MgShareParts.MaxIndex() < 3 or MgShareParts[1] != "DF1")
-	MgShareErr := "That is not a DeepFish settings code. A code starts with DF1 and is one long line of text."
+else if (MgShareParts.MaxIndex() < 3 or MgShareParts[1] != "VX1")
+	MgShareErr := "That is not a Veltrix settings code. A code starts with VX1 and is one long line of text."
 else if (MgShareParts.MaxIndex() != MgShareFlds.MaxIndex() + 3 or MgShareParts[2] != MgShareSig())
-	MgShareErr := "That code was made by a different version of DeepFish, so it cannot be read safely. Ask for a code from someone on this version."
+	MgShareErr := "That code was made by a different version of Veltrix, so it cannot be read safely. Ask for a code from someone on this version."
 else
 	{
 	MgShareChk := MgShareParts[MgShareParts.MaxIndex()]
@@ -31536,7 +29935,7 @@ if (MgShareErr = "")
 
 if (MgShareErr != "")
 	{
-	msgbox, 4144, DeepFish, %MgShareErr%
+	msgbox, 4144, Veltrix, %MgShareErr%
 	return
 	}
 
@@ -31638,7 +30037,7 @@ for i, f in ProfileFields
 	}
 if (BadFields != "")
 	{
-	msgbox, 4144, DeepFish, One or more fields contain an invalid number and were not saved:`n`n%BadFields%
+	msgbox, 4144, Veltrix, One or more fields contain an invalid number and were not saved:`n`n%BadFields%
 	return
 	}
 
@@ -31675,17 +30074,6 @@ if (ExitKeyCtrl != ExitKey)
 	ExitKey := ExitKeyCtrl
 	Hotkey, % "$" . ExitKey, HotkeyExit, %HotkeyState%
 	}
-IniWrite, %WebhookURL%, %SettingsFile%, Webhook, URL
-WhVal := WebhookOn ? 1 : 0
-IniWrite, %WhVal%, %SettingsFile%, Webhook, Enabled
-WhVal := WebhookShot ? 1 : 0
-IniWrite, %WhVal%, %SettingsFile%, Webhook, Screenshot
-IniWrite, %WebhookSummaryMin%, %SettingsFile%, Webhook, SummaryMinutes
-IniWrite, %WebhookStallMin%, %SettingsFile%, Webhook, StallMinutes
-WhVal := WebhookOnCatch ? 1 : 0
-IniWrite, %WhVal%, %SettingsFile%, Webhook, OnCatch
-WhVal := WebhookOnAlert ? 1 : 0
-IniWrite, %WhVal%, %SettingsFile%, Webhook, OnAlert
 IniWrite, %StartStopKey%, %SettingsFile%, Hotkeys, StartStop
 IniWrite, %ReloadKey%, %SettingsFile%, Hotkeys, Reload
 IniWrite, %ExitKey%, %SettingsFile%, Hotkeys, Exit
@@ -31729,13 +30117,13 @@ if (NewProfileName = "")
 	return
 if RegExMatch(NewProfileName, "[\\/:*?""<>|]")
 	{
-	msgbox, 4144, DeepFish, Profile names can't contain \ / : * ? " < > |
+	msgbox, 4144, Veltrix, Profile names can't contain \ / : * ? " < > |
 	return
 	}
 NewProfileFile := ProfilesDir . "\" . NewProfileName . ".ini"
 if FileExist(NewProfileFile)
 	{
-	msgbox, 4144, DeepFish, A profile named "%NewProfileName%" already exists.
+	msgbox, 4144, Veltrix, A profile named "%NewProfileName%" already exists.
 	return
 	}
 for i, f in ProfileFields
@@ -31769,13 +30157,13 @@ if (NewProfileName = "")
 	return
 if RegExMatch(NewProfileName, "[\\/:*?""<>|]")
 	{
-	msgbox, 4144, DeepFish, Profile names can't contain \ / : * ? " < > |
+	msgbox, 4144, Veltrix, Profile names can't contain \ / : * ? " < > |
 	return
 	}
 NewProfileFile := ProfilesDir . "\" . NewProfileName . ".ini"
 if FileExist(NewProfileFile)
 	{
-	msgbox, 4144, DeepFish, A profile named "%NewProfileName%" already exists.
+	msgbox, 4144, Veltrix, A profile named "%NewProfileName%" already exists.
 	return
 	}
 FileCopy, %ActiveProfileFile%, %NewProfileFile%
@@ -31797,15 +30185,15 @@ Loop, Files, %ProfilesDir%\*.ini
 	ProfileCount++
 if (ActiveProfile = "Default")
 	{
-	msgbox, 4144, DeepFish, The Default profile can't be deleted.
+	msgbox, 4144, Veltrix, The Default profile can't be deleted.
 	return
 	}
 if (ProfileCount <= 1)
 	{
-	msgbox, 4144, DeepFish, You can't delete the only remaining profile.
+	msgbox, 4144, Veltrix, You can't delete the only remaining profile.
 	return
 	}
-MsgBox, 4100, DeepFish, Delete profile "%ActiveProfile%"? This can't be undone.
+MsgBox, 4100, Veltrix, Delete profile "%ActiveProfile%"? This can't be undone.
 IfMsgBox, No
 	return
 FileDelete, %ActiveProfileFile%
@@ -32116,7 +30504,7 @@ CMTyped := Trim(CMTyped)
 CMTest := ColListToArray(CMTyped)
 if (!CMTest.MaxIndex())
 	{
-	msgbox, 4144, DeepFish, That is not a hex color. Use six hex digits, like 0xF1F1F1.
+	msgbox, 4144, Veltrix, That is not a hex color. Use six hex digits, like 0xF1F1F1.
 	return
 	}
 CMStore(CMSel, ColListAdd(%CMSel%, CMTest[1]))
@@ -32139,13 +30527,8 @@ gosub, FreezePick
 return
 
 OpenColorManager:
-if (!ReadThisAccepted)
-	{
-	gosub, ReadThisLockedNotice
-	return
-	}
 gosub, DisarmHotkeys
-if (!WinExist("DeepFish BETA"))
+if (!DllCall("IsWindowVisible", "Ptr", GuiHwnd))
 	Gui, 1:Show
 TargetSection := "Minigame"
 MiniTab := "Colors"
@@ -32259,7 +30642,7 @@ Gui, Frz:Font, s10 Norm c9FB4D0, Segoe UI
 Gui, Frz:Add, Text, x%FrzTX% y%FrzR4% w%FrzHintW% h24 BackgroundTrans vFrzCount, Click the color in game  ·  number keys switch
 Gui, Frz:Font, s10 Bold cFF4D4D, Segoe UI
 Gui, Frz:Add, Text, x%FrzExitX% y%FrzR4% w%FrzExitW% h24 BackgroundTrans, Right-click or Esc to finish
-Gui, Frz:Show, x%FrzVX% y%FrzVY% w%FrzVW% h%FrzVH%, DeepFishFreeze
+Gui, Frz:Show, x%FrzVX% y%FrzVY% w%FrzVW% h%FrzVH%, VeltrixFreeze
 
 LoupeSrc := 25
 LoupeZoom := 7
@@ -32269,7 +30652,7 @@ LoupeH := LoupeImgW + 12 + 28
 Gui, Loupe:New, +AlwaysOnTop -Caption +ToolWindow +E0x8000020 +HwndhLoupeGui
 Gui, Loupe:Color, 0B0E14
 Gui, Loupe:Margin, 0, 0
-Gui, Loupe:Show, x0 y0 w%LoupeW% h%LoupeH% NoActivate, DeepFishLoupe
+Gui, Loupe:Show, x0 y0 w%LoupeW% h%LoupeH% NoActivate, VeltrixLoupe
 hLoupeRgn := DllCall("CreateRoundRectRgn", "Int", 0, "Int", 0, "Int", LoupeW+1, "Int", LoupeH+1, "Int", 12, "Int", 12, "Ptr")
 DllCall("SetWindowRgn", "Ptr", hLoupeGui, "Ptr", hLoupeRgn, "Int", true)
 
@@ -32610,6 +30993,2043 @@ ShowGuiFromTray:
 gosub, DisarmHotkeys
 Gui, Show
 return
+
+;@@V1-PHASE1
+;@@V1-PHASE2
+;@@VELTRIX-PANEL-BEGIN
+;====================================================================================================;
+; New look: the Veltrix window (C#/WPF, built on this PC by Windows' own C# compiler) draws the window.
+; This script stays the brain: the old window keeps running invisible and click-through, every page is
+; sent to the panel, and whatever is done in the panel is done to the old window's control, so all of
+; the macro's own code runs exactly as before. Messages both ways are WM_COPYDATA with a small JSON text.
+;====================================================================================================;
+
+UiBoot:
+if (UseNewLook and !UiStart())
+	{
+	UseNewLook := false
+	UiOldNormal()
+	MsgBox, 4144, Veltrix, The Veltrix window could not be built on this PC (it needs the .NET Framework 4 that comes with Windows), so the classic window is used.
+	}
+return
+
+UiStart() {
+	global UiOn, UiPid, UiHwnd, UiQueue, UiSig, UiLast, UiKind, UiShown, GuiHwnd
+	if (UiOn)
+		return true
+	exe := A_ScriptDir . "\Veltrix.exe"
+	src := UiSource() . (FileExist(A_ScriptDir . "\Veltrix.ico") ? "`n// with icon" : "")
+	VarSetCapacity(u8, StrPut(src, "UTF-8"))
+	n := StrPut(src, &u8, "UTF-8") - 1
+	crc := DllCall("ntdll\RtlComputeCrc32", "UInt", 0, "Ptr", &u8, "UInt", n, "UInt")
+	FileRead, old, %exe%.stamp
+	if (!FileExist(exe) or Trim(old) != crc)
+		{
+		if (!UiBuild(src, exe))
+			return false
+		FileDelete, %exe%.stamp
+		FileAppend, %crc%, %exe%.stamp
+		}
+	UiQueue := [], UiSig := "", UiLast := {}, UiKind := {}, UiHwnd := 0, UiShown := -1
+	OnMessage(0x4A, "UiCopyData")
+	me := A_ScriptHwnd + 0
+	Run, "%exe%" %me%, %A_ScriptDir%, UseErrorLevel, UiPid
+	if (ErrorLevel)
+		return false
+	UiOn := true
+	SetTimer, UiSync, 200
+	SetTimer, UiReShow, -10
+	return true
+}
+
+; compiles the panel with csc.exe from the .NET Framework that comes with Windows
+UiBuild(src, exe) {
+	fw := A_WinDir . "\Microsoft.NET\Framework64\v4.0.30319"
+	if (!FileExist(fw . "\csc.exe"))
+		fw := A_WinDir . "\Microsoft.NET\Framework\v4.0.30319"
+	if (!FileExist(fw . "\csc.exe"))
+		return false
+	cs := A_Temp . "\VeltrixPanel.cs"
+	FileDelete, %cs%
+	FileAppend, %src%, %cs%, UTF-8
+	FileDelete, %exe%
+	refs := "/r:""" . fw . "\WPF\PresentationFramework.dll"" /r:""" . fw . "\WPF\PresentationCore.dll"" /r:""" . fw . "\WPF\WindowsBase.dll"""
+		. " /r:""" . fw . "\System.Xaml.dll"" /r:""" . fw . "\System.Web.Extensions.dll"""
+	ico := A_ScriptDir . "\Veltrix.ico"
+	if (FileExist(ico))
+		refs .= " ""/win32icon:" . ico . """"
+	RunWait, % """" . fw . "\csc.exe"" /nologo /target:winexe /optimize+ /out:""" . exe . """ " . refs . " """ . cs . """", %A_Temp%, Hide UseErrorLevel
+	FileDelete, %cs%
+	return FileExist(exe) ? true : false
+}
+
+UiStop() {
+	global UiOn, UiHwnd, UiPid, GuiHwnd
+	SetTimer, UiSync, Off
+	UiOn := false
+	if (UiPid)
+		Process, Close, %UiPid%
+	UiHwnd := 0, UiPid := 0
+	UiOldNormal()
+	SetTimer, UiReShow, -10
+}
+
+; the old window back to normal (seen and clickable)
+UiOldNormal() {
+	global GuiHwnd
+	if (!GuiHwnd)
+		return
+	WinSet, Transparent, Off, ahk_id %GuiHwnd%
+	WinSet, ExStyle, -0x20, ahk_id %GuiHwnd%
+	Gui, 1:-ToolWindow
+	if (DllCall("IsWindowVisible", "Ptr", GuiHwnd))
+		Gui, 1:Show
+	; the pages split again in the classic window
+	SetTimer, UiReShow, -10
+}
+
+UiCopyData(wParam, lParam, msg, hwnd) {
+	global UiQueue
+	code := NumGet(lParam + 0, 0, "Ptr")
+	if (code < 10 or code > 19)
+		return
+	n := NumGet(lParam + 0, A_PtrSize, "UInt"), p := NumGet(lParam + 0, 2 * A_PtrSize, "Ptr")
+	UiQueue.Push([code, StrGet(p, n, "UTF-8")])
+	SetTimer, UiProc, -1
+	return 1
+}
+
+UiProc:
+while (UiQueue.Length())
+	{
+	UiCmd := UiQueue.RemoveAt(1)
+	UiC := UiCmd[1], UiS := RTrim(UiCmd[2], "`r`n ")
+	if (UiC = 10)
+		{
+		UiHwnd := SubStr(UiS, 7) + 0
+		UiSig := "", UiShown := -1, UiLast := {}
+		UiSend(1, UiInitJson())
+		gosub, UiSync
+		}
+	else if (UiC = 11)
+		{
+		UiK := SubStr(UiS, 5)
+		if (NavHwnd.HasKey(UiK))
+			UiClick(NavHwnd[UiK])
+		}
+	else if (UiC = 12)
+		{
+		if (SubStr(UiS, 1, 6) = "click ")
+			UiClick(SubStr(UiS, 7) + 0)
+		else if (SubStr(UiS, 1, 4) = "set ")
+			{
+			UiP := StrSplit(SubStr(UiS, 5), "`t", , 2)
+			UiSet(UiP[1] + 0, UiP[2])
+			}
+		}
+	else if (UiC = 13)
+		gosub, GuiClose
+	else if (UiC = 14 and UiOn)
+		{
+		; the panel was closed some other way: the classic window comes back
+		UiOn := false, UiHwnd := 0, UiPid := 0
+		SetTimer, UiSync, Off
+		UiOldNormal()
+		}
+	}
+return
+
+UiSend(code, s) {
+	global UiHwnd
+	if (!UiHwnd)
+		return
+	VarSetCapacity(buf, StrPut(s, "UTF-8"))
+	n := StrPut(s, &buf, "UTF-8")
+	VarSetCapacity(cd, 3 * A_PtrSize, 0)
+	NumPut(code, cd, 0, "Ptr"), NumPut(n, cd, A_PtrSize, "UInt"), NumPut(&buf, cd, 2 * A_PtrSize, "Ptr")
+	DllCall("SendMessageTimeout", "Ptr", UiHwnd, "UInt", 0x4A, "Ptr", A_ScriptHwnd, "Ptr", &cd, "UInt", 2, "UInt", 3000, "Ptr*", r)
+}
+
+; what clicking a control in the old window does: the WM_COMMAND it sends to the window (runs its g-label)
+UiClick(h) {
+	global GuiHwnd
+	if (!h)
+		return
+	id := DllCall("GetDlgCtrlID", "Ptr", h, "Int")
+	PostMessage, 0x111, % id & 0xFFFF, %h%, , ahk_id %GuiHwnd%
+}
+
+UiSet(h, v) {
+	global GuiHwnd
+	WinGetClass, cls, ahk_id %h%
+	if (cls = "Edit" or cls = "msctls_hotkey32")
+		GuiControl, 1:, %h%, %v%
+	else if (cls = "Button")
+		{
+		GuiControl, 1:, %h%, % (v = "1") ? 1 : 0
+		UiClick(h)
+		}
+	else if (cls = "ComboBox")
+		GuiControl, 1:ChooseString, %h%, |%v%
+}
+
+UiJ(s) {
+	s := StrReplace(s, "\", "\\")
+	s := StrReplace(s, """", "\""")
+	s := StrReplace(s, "`r", "")
+	s := StrReplace(s, "`n", "\n")
+	s := StrReplace(s, "`t", "\t")
+	return """" . s . """"
+}
+
+UiHex(bgr) {
+	return Format("{:06X}", ((bgr & 0xFF) << 16) | (bgr & 0xFF00) | ((bgr >> 16) & 0xFF))
+}
+
+UiInitJson() {
+	global ColorBG, ColorPanel, ColorCard, ColorInput, ColorAccent, ColorText, ColorMuted, ColorBorder, ColorNav, ColorRed, ColorGreen
+	global NavDefs, SIDEW, TOPH, VxVersion
+	t := "{""bg"":" . UiJ(ColorBG) . ",""panel"":" . UiJ(ColorPanel) . ",""card"":" . UiJ(ColorCard) . ",""input"":" . UiJ(ColorInput)
+		. ",""accent"":" . UiJ(ColorAccent) . ",""text"":" . UiJ(ColorText) . ",""muted"":" . UiJ(ColorMuted) . ",""border"":" . UiJ(ColorBorder)
+		. ",""nav"":" . UiJ(ColorNav) . ",""red"":" . UiJ(ColorRed) . ",""green"":" . UiJ(ColorGreen) . "}"
+	; tabs: Reel / Cast / Tools / Setup, with icons of Windows' icon font (the panel draws them with it)
+	nav := "{""k"":""Home"",""icon"":" . UiJ(Chr(0xE7FC)) . ",""label"":""Reel""},{""k"":""Cast"",""icon"":" . UiJ(Chr(0xE724)) . ",""label"":""Cast""}"
+		. ",{""k"":""Utilities"",""icon"":" . UiJ(Chr(0xE90F)) . ",""label"":""Tools""},{""k"":""General"",""icon"":" . UiJ(Chr(0xE713)) . ",""label"":""Setup""}"
+	return "{""title"":" . UiJ("Veltrix") . ",""ver"":" . UiJ("v" . VxVersion) . ",""sidew"":" . SIDEW . ",""toph"":" . TOPH
+		. ",""theme"":" . t . ",""nav"":[" . nav . "],""extra"":[]}"
+}
+
+; the controls the panel never shows: its own title, credit (it shows them itself), window buttons, the sidebar
+UiSkipped(h) {
+	global SbTrack, SbThumb, hLogoTile, hTitleText, hSubtitle, hShellMin, hShellClose, hDiv1, SIDEW, TOPH, HomeCtrls, CtrlBaseY
+	static homeTop := ""
+	if (h = SbTrack or h = SbThumb or h = hLogoTile or h = hTitleText or h = hSubtitle or h = hShellMin or h = hShellClose or h = hDiv1)
+		return true
+	if (!IsObject(homeTop) and IsObject(HomeCtrls) and HomeCtrls.Length())
+		{
+		homeTop := {}
+		for i, c in HomeCtrls
+			{
+			if (CtrlBaseY.HasKey(c) and CtrlBaseY[c] < 290)
+				homeTop[c] := 1
+			}
+		}
+	if (IsObject(homeTop) and homeTop.HasKey(h))
+		return true
+	CtrlSnapPos(h, x, y, w, ht)
+	; the sidebar, and lines across the whole window (the panel has its own)
+	return (x < SIDEW or ht > 400 or (y < TOPH and (w <= 3 or ht <= 3)))
+}
+
+UiPos(h, ByRef x, ByRef y, ByRef w, ByRef ht) {
+	global CtrlBaseX, CtrlBaseY, CtrlW, CtrlH
+	if (CtrlBaseY.HasKey(h))
+		{
+		x := CtrlBaseX[h], y := CtrlBaseY[h], w := CtrlW[h], ht := CtrlH[h]
+		return
+		}
+	CtrlSnapPos(h, x, y, w, ht)
+}
+
+UiKindOf(h) {
+	global SpecialBrushes, hBrushCard, IconTips
+	WinGetClass, cls, ahk_id %h%
+	st := DllCall("GetWindowLong", "Ptr", h, "Int", -16)
+	if (cls = "Static")
+		{
+		if ((st & 0x1F) = 0x0E or (st & 0x1F) = 0x03)
+			return ""
+		ControlGetText, tx, , ahk_id %h%
+		UiPos(h, x, y, w, ht)
+		if (tx = "" and (w <= 3 or ht <= 3))
+			return "line"
+		if (tx = "" and SpecialBrushes.HasKey(h) and SpecialBrushes[h].brush = hBrushCard and w >= 60 and ht >= 24)
+			return "card"
+		if (tx = "?" and IconTips.HasKey(h))
+			return "help"
+		; a block of color with no text (a status pill, the info panel's screen shape and box)
+		if (tx = "" and SpecialBrushes.HasKey(h) and SpecialBrushes[h].brush != hBrushCard)
+			return "box"
+		if (tx = "")
+			return ""
+		return (st & 0x100) ? "button" : "label"
+		}
+	if (cls = "Button")
+		{
+		t := st & 0xF
+		if (t = 2 or t = 3 or t = 5 or t = 6)
+			return "check"
+		if (t = 4 or t = 9)
+			return "radio"
+		return (t = 7) ? "label" : "button"
+		}
+	if (cls = "Edit")
+		return "edit"
+	if (cls = "ComboBox")
+		return "dd"
+	if (cls = "msctls_hotkey32")
+		return "hotkey"
+	if (cls = "msctls_progress32")
+		return "swatch"
+	return ""
+}
+
+; what changes while a page is open: text, value, color, enabled - one line per control
+UiValue(h, k) {
+	global SpecialBrushes
+	if (k = "card" or k = "line" or k = "help")
+		return ""
+	if (k = "box")
+		return SpecialBrushes[h].brush
+	if (k = "swatch")
+		return UiSwatch(h)
+	GuiControlGet, v, 1:, %h%
+	tx := ""
+	if (k = "check" or k = "radio")
+		ControlGetText, tx, , ahk_id %h%
+	fc := SpecialBrushes.HasKey(h) ? SpecialBrushes[h].text : ""
+	dis := (DllCall("GetWindowLong", "Ptr", h, "Int", -16) & 0x8000000) ? 1 : 0
+	return v . Chr(1) . tx . Chr(1) . fc . Chr(1) . dis
+}
+
+UiSwatch(h) {
+	global
+	local nm, var, lst, n
+	GuiControlGet, nm, 1:Name, %h%
+	; the Color Manager's rows: that color of the list being edited
+	if (SubStr(nm, 1, 4) = "CMSw")
+		{
+		lst := ColListToArray(%CMSel%)
+		n := SubStr(nm, 5) + 0
+		return (n >= 1 and n <= lst.MaxIndex()) ? Format("{:06X}", lst[n]) : ""
+		}
+	if (nm = "CastGreenSwatch")
+		var := "PerfectGreenColor"
+	else if (nm = "CastWhiteSwatch")
+		var := "PerfectWhiteColor"
+	else if (SubStr(nm, -5) = "Swatch")
+		var := SubStr(nm, 1, StrLen(nm) - 6)
+	else
+		return ""
+	return ColCount(%var%) ? Format("{:06X}", ColMain(%var%)) : ""
+}
+
+UiItemJson(h, k) {
+	global UiBrushHex, SpecialBrushes, IconTips, TOPH, hBrushCard, hBrushBG, hBrushPanel, UiGrp
+	UiPos(h, x, y, w, ht)
+	j := "{""h"":" . h . ",""k"":" . UiJ(k) . ",""x"":" . x . ",""y"":" . y . ",""w"":" . w . ",""ht"":" . ht . ",""g"":" . (UiGrp.HasKey(h) ? UiGrp[h] : 0)
+	if (y < TOPH)
+		j .= ",""a"":""hd"""
+	st := DllCall("GetWindowLong", "Ptr", h, "Int", -16)
+	if (k = "card" or k = "line")
+		return j . "}"
+	if (k = "box")
+		return j . ",""bgc"":" . UiJ(UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : "") . "}"
+	; font: size in px and bold
+	hf := DllCall("SendMessage", "Ptr", h, "UInt", 0x31, "Ptr", 0, "Ptr", 0, "Ptr")
+	if (hf)
+		{
+		VarSetCapacity(lf, 92, 0)
+		DllCall("GetObject", "Ptr", hf, "Int", 92, "Ptr", &lf)
+		px := Abs(NumGet(lf, 0, "Int"))
+		if (px)
+			j .= ",""fs"":" . Round(px / ((A_ScreenDPI > 0) ? A_ScreenDPI / 96 : 1), 1)
+		if (NumGet(lf, 16, "Int") >= 600)
+			j .= ",""fw"":""1"""
+		}
+	if (SpecialBrushes.HasKey(h))
+		{
+		j .= ",""fc"":" . UiJ(UiHex(SpecialBrushes[h].text))
+		b := SpecialBrushes[h].brush
+		if (b != hBrushCard and b != hBrushBG and b != hBrushPanel and UiBrushHex.HasKey(b))
+			j .= ",""bgc"":" . UiJ(UiBrushHex[b])
+		}
+	if (IconTips.HasKey(h))
+		j .= ",""tip"":" . UiJ(IconTips[h])
+	if (st & 0x8000000)
+		j .= ",""dis"":""1"""
+	if (k = "label" or k = "button")
+		{
+		if ((st & 0x3) = 1)
+			j .= ",""al"":""c"""
+		else if ((st & 0x3) = 2)
+			j .= ",""al"":""r"""
+		}
+	if (k = "edit")
+		j .= ((st & 0x2000) ? ",""num"":""1""" : "") . ((st & 0x4) ? ",""multi"":""1""" : "") . ((st & 0x800) ? ",""ro"":""1""" : "")
+	if (k = "swatch")
+		return j . ",""v"":" . UiJ(UiSwatch(h)) . "}"
+	GuiControlGet, v, 1:, %h%
+	if (k = "label" or k = "button")
+		return j . ",""tx"":" . UiJ(v) . UiStyle(h, v) . "}"
+	if (k = "check" or k = "radio")
+		{
+		ControlGetText, tx, , ahk_id %h%
+		return j . ",""tx"":" . UiJ(tx) . ",""v"":" . UiJ(v ? "1" : "0") . "}"
+		}
+	if (k = "dd")
+		{
+		ControlGet, lst, List, , , ahk_id %h%
+		o := ""
+		Loop, Parse, lst, `n
+			o .= (o = "" ? "" : ",") . UiJ(A_LoopField)
+		return j . ",""v"":" . UiJ(v) . ",""o"":[" . o . "]}"
+		}
+	return j . ",""v"":" . UiJ(v) . "}"
+}
+
+UiUpdJson(h, k) {
+	global UiBrushHex, SpecialBrushes
+	if (k = "swatch")
+		return "{""h"":" . h . ",""v"":" . UiJ(UiSwatch(h)) . "}"
+	if (k = "box")
+		return "{""h"":" . h . ",""v"":" . UiJ(UiBrushHex.HasKey(SpecialBrushes[h].brush) ? UiBrushHex[SpecialBrushes[h].brush] : "") . "}"
+	GuiControlGet, v, 1:, %h%
+	j := "{""h"":" . h
+	if (k = "label" or k = "button")
+		j .= ",""tx"":" . UiJ(v) . UiStyle(h, v)
+	else if (k = "check" or k = "radio")
+		{
+		ControlGetText, tx, , ahk_id %h%
+		j .= ",""tx"":" . UiJ(tx) . ",""v"":" . UiJ(v ? "1" : "0")
+		}
+	else if (k = "dd")
+		{
+		ControlGet, lst, List, , , ahk_id %h%
+		o := ""
+		Loop, Parse, lst, `n
+			o .= (o = "" ? "" : ",") . UiJ(A_LoopField)
+		j .= ",""v"":" . UiJ(v) . ",""o"":[" . o . "]"
+		}
+	else
+		j .= ",""v"":" . UiJ(v)
+	if (SpecialBrushes.HasKey(h))
+		j .= ",""fc"":" . UiJ(UiHex(SpecialBrushes[h].text))
+	j .= ",""dis"":" . UiJ((DllCall("GetWindowLong", "Ptr", h, "Int", -16) & 0x8000000) ? "1" : "0")
+	return j . "}"
+}
+
+; the Color Manager gets its own look in the panel: its color list as a side list, its two tabs as a switch
+UiStyle(h, v) {
+	global CMNavH, MiniTabSetupH, MiniTabColorsH, MiniTab
+	if (h and (h = MiniTabSetupH or h = MiniTabColorsH))
+		return ",""st"":""seg"",""sel"":""" . (((MiniTab = "Colors") = (h = MiniTabColorsH)) ? 1 : 0) . """"
+	if (!IsObject(CMNavH))
+		return ""
+	for i, c in CMNavH
+		{
+		if (c != h)
+			continue
+		sel := InStr(v, "▸") ? 1 : 0
+		t := Trim(StrReplace(v, "▸"))
+		cnt := ""
+		if (RegExMatch(t, "^(.*?)\s{3,}(\S.*)$", m))
+			t := m1, cnt := m2
+		return ",""st"":""nav"",""sel"":""" . sel . """,""name"":" . UiJ(t) . ",""cnt"":" . UiJ(cnt)
+		}
+	return ""
+}
+
+UiNavTitle(sec) {
+	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
+		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry"}
+	return t.HasKey(sec) ? t[sec] : sec
+}
+
+UiSync:
+if (!UiOn)
+	return
+if (UiPid)
+	{
+	Process, Exist, %UiPid%
+	if (!ErrorLevel)
+		{
+		UiOn := false, UiHwnd := 0, UiPid := 0
+		SetTimer, UiSync, Off
+		UiOldNormal()
+		return
+		}
+	}
+if (!UiHwnd or !GuiHwnd)
+	return
+; the old window: shown when the macro shows it (the panel follows), but invisible and click-through
+UiOld := DllCall("IsWindowVisible", "Ptr", GuiHwnd) and !DllCall("IsIconic", "Ptr", GuiHwnd)
+if (UiOld)
+	{
+	WinGet, UiTr, Transparent, ahk_id %GuiHwnd%
+	if (UiTr != 0)
+		{
+		WinSet, Transparent, 0, ahk_id %GuiHwnd%
+		WinSet, ExStyle, +0x20, ahk_id %GuiHwnd%
+		Gui, 1:+ToolWindow
+		}
+	}
+if (UiOld != UiShown)
+	{
+	UiShown := UiOld
+	UiSend(4, "{""show"":""" . (UiOld ? 1 : 0) . """}")
+	}
+if (!UiOld)
+	return
+if (!IsObject(UiBrushHex))
+	{
+	UiBrushHex := {}
+	for UiI, UiB in [[hBrushBorder, ColorBorder], [hBrushInput, ColorInput], [hBrushGreen, ColorGreen], [hBrushRed, ColorRed], [hBrushAmber, ColorAmber]
+		, [hBrushPanel, ColorPanel], [hBrushBG, ColorBG], [hBrushCard, ColorCard]]
+		UiBrushHex[UiB[1]] := UiB[2]
+	}
+; which controls are showing now - a new set means a new page (or a block that came or went)
+WinGet, UiL, ControlListHwnd, ahk_id %GuiHwnd%
+UiVis := []
+UiNewSig := TargetSection . "|" . MiniTab
+Loop, Parse, UiL, `n
+	{
+	UiH := A_LoopField + 0
+	if (!(DllCall("GetWindowLong", "Ptr", UiH, "Int", -16) & 0x10000000))
+		continue
+	; "x" = never shown; "" = nothing to show yet (a label still empty) - looked at again next time
+	if (!UiKind.HasKey(UiH) or UiKind[UiH] = "")
+		UiKind[UiH] := UiSkipped(UiH) ? "x" : UiKindOf(UiH)
+	if (UiKind[UiH] = "" or UiKind[UiH] = "x")
+		continue
+	UiVis.Push(UiH)
+	UiNewSig .= "," . UiH
+	}
+UiStatsSend()
+if (UiNewSig != UiSig)
+	{
+	UiSig := UiNewSig
+	UiGroups()
+	UiJs := ""
+	for UiI, UiH in UiVis
+		{
+		UiJs .= (UiJs = "" ? "" : ",") . UiItemJson(UiH, UiKind[UiH])
+		UiLast[UiH] := UiValue(UiH, UiKind[UiH])
+		}
+	UiSend(2, "{""sec"":" . UiJ(TargetSection) . ",""navsec"":" . UiJ(UiNavSec(TargetSection)) . ",""title"":" . UiJ(UiNavTitle(UiNavSec(TargetSection)))
+		. ",""items"":[" . UiJs . "]}")
+	return
+	}
+UiJs := ""
+for UiI, UiH in UiVis
+	{
+	UiV := UiValue(UiH, UiKind[UiH])
+	if (UiV != UiLast[UiH])
+		{
+		UiLast[UiH] := UiV
+		UiJs .= (UiJs = "" ? "" : ",") . UiUpdJson(UiH, UiKind[UiH])
+		}
+	}
+if (UiJs != "")
+	UiSend(3, "{""items"":[" . UiJs . "]}")
+return
+
+; pages that are opened from another one light up that one in the sidebar
+UiNavSec(sec) {
+	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess")
+		return "Utilities"
+	if (sec = "Advanced" or sec = "Misc")
+		return "General"
+	if (sec = "Minigame")
+		return "Home"
+	if (sec = "Shake")
+		return "Cast"
+	return sec
+}
+
+; which part of a merged page each control belongs to: the panel keeps each part together, in order
+UiGroups() {
+	global UiGrp, HomeCtrls, GeneralCtrls, CastCtrls, NormalCastCtrls, PerfectCastCtrls, MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls, CreditsCtrls
+	global MiniTabSetupH, MiniTabColorsH
+	UiGrp := {}
+	for g, lists in [[MgAllCtrls, CMCtrls, ShakeCtrls, MiscCtrls], [CreditsCtrls]]
+		{
+		for i, lst in lists
+			{
+			if (!IsObject(lst))
+				continue
+			for j, h in lst
+				UiGrp[h] := g
+			}
+		}
+	if (MiniTabSetupH)
+		UiGrp[MiniTabSetupH] := 1, UiGrp[MiniTabColorsH] := 1
+}
+
+; the stats bar: phase, rod, caught, per hour, session, rod power - sent when one of them changes
+UiStatsSend() {
+	global
+	local j
+	static last := ""
+	gosub, HomeCompute
+	j := "{""phase"":" . UiJ(HmV1) . ",""rod"":" . UiJ(HmV4) . ",""caught"":" . UiJ(HmV5) . ",""perhour"":" . UiJ(HmV6)
+		. ",""session"":" . UiJ(HmV7) . ",""power"":" . UiJ(HmV8) . ",""running"":" . UiJ(MacroRunning ? "1" : "0") . "}"
+	if (j == last)
+		return
+	last := j
+	UiSend(6, j)
+}
+
+UiReShow:
+gosub, ShowSection
+return
+
+; the panel's C# source, built on each PC by UiBuild (do not edit here - see the Veltrix panel source)
+UiSource() {
+ui1 =
+(% Join`n
+// Veltrix - the window you see. It only draws: every page, setting and button comes from the
+// AutoHotkey macro (the brain), and everything you do here is handed back to it.
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Markup;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using System.Web.Script.Serialization;
+
+public static class Program {
+    [STAThread]
+    public static void Main(string[] args) {
+        long h = 0;
+        if (args.Length < 1 || !long.TryParse(args[0], out h)) return;
+        var app = new Application();
+        app.ShutdownMode = ShutdownMode.OnMainWindowClose;
+        app.Run(new PanelWindow(new IntPtr(h)));
+    }
+}
+
+public class PanelWindow : Window {
+    [StructLayout(LayoutKind.Sequential)]
+    struct COPYDATA { public IntPtr dwData; public int cbData; public IntPtr lpData; }
+    [DllImport("user32.dll")]
+    static extern IntPtr SendMessageTimeout(IntPtr h, int msg, IntPtr w, ref COPYDATA l, int flags, int timeout, out IntPtr res);
+    [DllImport("user32.dll")]
+    static extern bool IsWindow(IntPtr h);
+
+    readonly IntPtr ahk;
+    IntPtr me;
+    readonly JavaScriptSerializer js = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+    readonly Dictionary<string, Color> col = new Dictionary<string, Color>();
+    Border rootBorder;
+    StackPanel tabPanel, headRight, extraPanel;
+    Grid colsGrid;
+    ScrollViewer pageScroll;
+    TextBlock verText, pageTitle, brandName;
+    readonly Dictionary<long, Item> items = new Dictionary<long, Item>();
+    readonly Dictionary<string, Button> navButtons = new Dictionary<string, Button>();
+    readonly Dictionary<string, double> scrollOf = new Dictionary<string, double>();
+    readonly Dictionary<string, TextBlock> statVals = new Dictionary<string, TextBlock>();
+    Dictionary<string, object> lastPage;
+    Border runDot;
+    string curSec = "";
+    int sideW = 64, topH = 48;
+    bool quiet;
+    readonly DispatcherTimer alive = new DispatcherTimer();
+
+    class Item {
+        public long h;
+        public string kind = "";
+        public FrameworkElement el;
+        public TextBlock text, icon;
+        public Dictionary<string, object> it;
+        public double fs;
+        public string last = "";
+        public DispatcherTimer debounce;
+    }
+
+    public PanelWindow(IntPtr ahkHwnd) {
+        ahk = ahkHwnd;
+        Title = "Veltrix";
+        Width = 1220; Height = 780; MinWidth = 700; MinHeight = 480;
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        FontFamily = new FontFamily("Segoe UI, Segoe UI Emoji, Segoe UI Symbol");
+        SetTheme(null);
+        Build();
+        SourceInitialized += (s, e) => {
+            me = new WindowInteropHelper(this).Handle;
+            HwndSource.FromHwnd(me).AddHook(Hook);
+            Send(10, "hello " + me.ToInt64());
+        };
+        alive.Interval = TimeSpan.FromSeconds(1);
+        alive.Tick += (s, e) => { if (!IsWindow(ahk)) Close(); };
+        alive.Start();
+        Closing += (s, e) => { Send(14, "closed"); };
+    }
+
+    // ---------------------------------------------------------------- theme
+    static Color Hex(string s, Color d) {
+        if (string.IsNullOrEmpty(s)) return d;
+        s = s.Trim().TrimStart('#');
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s.Substring(2);
+        if (s.Length != 6) return d;
+        try {
+            return Color.FromRgb(Convert.ToByte(s.Substring(0, 2), 16), Convert.ToByte(s.Substring(2, 2), 16), Convert.ToByte(s.Substring(4, 2), 16));
+        } catch { return d; }
+    }
+    SolidColorBrush B(string k) { return new SolidColorBrush(col[k]); }
+    static Color Mix(Color a, Color b, double t) {
+        return Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
+    }
+
+    void SetTheme(Dictionary<string, object> t) {
+        Func<string, string, Color> g = (k, d) => Hex(t != null && t.ContainsKey(k) ? Convert.ToString(t[k]) : null, Hex(d, Colors.Black));
+        col["bg"] = g("bg", "0F1115");
+        col["panel"] = g("panel", "15181E");
+        col["card"] = g("card", "1A1E25");
+        col["input"] = g("input", "232833");
+        col["accent"] = g("accent", "38BDF8");
+        col["text"] = g("text", "E5E7EB");
+        col["muted"] = g("muted", "8B93A1");
+        col["border"] = g("border", "2A303B");
+        col["nav"] = g("nav", "C9CED6");
+        col["red"] = g("red", "EF4444");
+        col["green"] = g("green", "22C55E");
+        col["hover"] = Mix(col["card"], col["text"], 0.07);
+        col["cardEdge"] = Mix(col["card"], col["text"], 0.06);
+        Resources.MergedDictionaries.Clear();
+        Resources.MergedDictionaries.Add(Styles());
+    }
+
+    string C(string k) { var c = col[k]; return string.Format("#{0:X2}{1:X2}{2:X2}", c.R, c.G, c.B); }
+
+    ResourceDictionary Styles() {
+        string x = @"<ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+<Style TargetType='ToolTip'><Setter Property='Background' Value='INPUT'/><Setter Property='Foreground' Value='TEXT'/><Setter Property='BorderBrush' Value='BORDER'/>
+<Setter Property='Padding' Value='10,7'/><Setter Property='FontSize' Value='12'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ToolTip'>
+<Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='8' Padding='{TemplateBinding Padding}'>
+<ContentPresenter/></Border></ControlTemplate></Setter.Value></Setter></Style>
+<Style x:Key='Box' TargetType='TextBox'><Setter Property='Background' Value='INPUT'/><Setter Property='Foreground' Value='TEXT'/><Setter Property='CaretBrush' Value='TEXT'/>
+<Setter Property='BorderBrush' Value='BORDER'/><Setter Property='FontSize' Value='12.5'/><Setter Property='Padding' Value='8,0'/><Setter Property='VerticalContentAlignment' Value='Center'/>
+<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='b' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='8'>
+<ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border>
+<ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='ACCENT'/></Trigger>
+<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='MUTED'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+<Style x:Key='Toggle' TargetType='CheckBox'><Setter Property='Foreground' Value='TEXT'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FontSize' Value='12.5'/>
+<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><StackPanel Orientation='Horizontal' Background='Transparent'>
+<Border x:Name='track' Width='34' Height='18' CornerRadius='9' Background='BORDER' VerticalAlignment='Center'>
+<Ellipse x:Name='knob' Width='12' Height='12' Fill='MUTED' HorizontalAlignment='Left' Margin='3,0,0,0'/></Border>
+<ContentPresenter Margin='9,0,0,0' VerticalAlignment='Center'/></StackPanel>
+<ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='track' Property='Background' Value='ACCENT'/>
+<Setter TargetName='knob' Property='Fill' Value='#FFFFFF'/><Setter TargetName='knob' Property='HorizontalAlignment' Value='Right'/><Setter TargetName='knob' Property='Margin' Value='0,0,3,0'/></Trigger>
+<Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+<Style x:Key='Radio' TargetType='RadioButton'><Setter Property='Foreground' Value='TEXT'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FontSize' Value='12.5'/>
+<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='RadioButton'><StackPanel Orientation='Horizontal' Background='Transparent'>
+<Border x:Name='o' Width='16' Height='16' CornerRadius='8' BorderBrush='MUTED' BorderThickness='2' VerticalAlignment='Center'><Ellipse x:Name='d' Width='6' Height='6' Fill='ACCENT' Visibility='Collapsed'/></Border>
+<ContentPresenter Margin='8,0,0,0' VerticalAlignment='Center'/></StackPanel><ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'>
+)
+ui2 =
+(% Join`n
+<Setter TargetName='d' Property='Visibility' Value='Visible'/><Setter TargetName='o' Property='BorderBrush' Value='ACCENT'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+<Style x:Key='ItemS' TargetType='ComboBoxItem'><Setter Property='Foreground' Value='TEXT'/><Setter Property='Padding' Value='10,6'/><Setter Property='Template'><Setter.Value>
+<ControlTemplate TargetType='ComboBoxItem'><Border x:Name='b' Background='Transparent' CornerRadius='6' Padding='{TemplateBinding Padding}' Margin='4,1'><ContentPresenter/></Border>
+<ControlTemplate.Triggers><Trigger Property='IsHighlighted' Value='True'><Setter TargetName='b' Property='Background' Value='HOVER'/></Trigger>
+<Trigger Property='IsSelected' Value='True'><Setter Property='Foreground' Value='ACCENT'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+<Style x:Key='Drop' TargetType='ComboBox'><Setter Property='Foreground' Value='TEXT'/><Setter Property='FontSize' Value='12.5'/><Setter Property='Cursor' Value='Hand'/>
+<Setter Property='ItemContainerStyle' Value='{StaticResource ItemS}'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBox'><Grid>
+<ToggleButton Focusable='False' ClickMode='Press' IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
+<ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border x:Name='b' Background='INPUT' BorderBrush='BORDER' BorderThickness='1' CornerRadius='8'>
+<Path HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,10,0' Data='M0,0 L4,4 L8,0' Stroke='MUTED' StrokeThickness='1.6'/></Border>
+<ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='MUTED'/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template></ToggleButton>
+<ContentPresenter IsHitTestVisible='False' Margin='10,0,26,0' VerticalAlignment='Center' Content='{TemplateBinding SelectionBoxItem}'/>
+<Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Fade'>
+<Border Background='INPUT' BorderBrush='BORDER' BorderThickness='1' CornerRadius='10' Margin='0,4,0,0' Padding='0,4' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}' MaxHeight='300'>
+<ScrollViewer><StackPanel IsItemsHost='True'/></ScrollViewer></Border></Popup></Grid></ControlTemplate></Setter.Value></Setter></Style>
+<Style TargetType='ScrollBar'><Setter Property='Width' Value='8'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ScrollBar'>
+<Track x:Name='PART_Track' IsDirectionReversed='True'><Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType='Thumb'>
+<Border Background='BORDER' CornerRadius='4' Margin='1,2'/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb></Track></ControlTemplate></Setter.Value></Setter></Style>
+</ResourceDictionary>";
+        x = x.Replace("INPUT", C("input")).Replace("TEXT", C("text")).Replace("BORDER", C("border")).Replace("ACCENT", C("accent"))
+             .Replace("MUTED", C("muted")).Replace("HOVER", C("hover"));
+        return (ResourceDictionary)XamlReader.Parse(x);
+    }
+
+    // ---------------------------------------------------------------- shell
+    void Build() {
+        rootBorder = new Border { CornerRadius = new CornerRadius(14), Background = B("bg"), BorderBrush = B("border"), BorderThickness = new Thickness(1) };
+        rootBorder.SizeChanged += (s, e) => {
+            rootBorder.Clip = new RectangleGeometry(new Rect(0, 0, rootBorder.ActualWidth, rootBorder.ActualHeight), 14, 14);
+            if (lastPage != null && e.WidthChanged) Layout(false);
+        };
+        var dock = new DockPanel();
+        rootBorder.Child = dock;
+
+        // top bar: name and version, the tabs, the macro's own Start / status, window buttons
+        var top = new Grid { Height = 56, Background = B("panel") };
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition());
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.MouseLeftButtonDown += (s, e) => { if (e.OriginalSource == top || e.OriginalSource is TextBlock && ((TextBlock)e.OriginalSource).Parent is StackPanel && ((StackPanel)((TextBlock)e.OriginalSource).Parent).Tag as string == "brand") try { DragMove(); } catch { } };
+        DockPanel.SetDock(top, Dock.Top);
+        dock.Children.Add(top);
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 22, 0), Tag = "brand" };
+        brandName = new TextBlock { Text = "Veltrix", FontSize = 17, FontWeight = FontWeights.Bold, Foreground = B("text"), VerticalAlignment = VerticalAlignment.Center };
+        brand.Children.Add(brandName);
+        verText = new TextBlock { Text = "", FontSize = 11, Foreground = B("muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 3, 0, 0) };
+        brand.Children.Add(verText);
+        top.Children.Add(brand);
+        tabPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var tabWrap = new Border { Background = B("bg"), CornerRadius = new CornerRadius(11), Padding = new Thickness(4), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Child = tabPanel };
+        Grid.SetColumn(tabWrap, 1);
+        top.Children.Add(tabWrap);
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        Grid.SetColumn(right, 2);
+        top.Children.Add(right);
+        extraPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        right.Children.Add(extraPanel);
+        headRight = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        right.Children.Add(headRight);
+        right.Children.Add(WinButton("–", false, () => WindowState = WindowState.Minimized));
+        right.Children.Add(WinButton("✕", true, () => Send(13, "close")));
+
+        // stats bar: always on screen
+        var stats = new Border { Background = B("bg"), Padding = new Thickness(14, 10, 14, 8), BorderBrush = B("border"), BorderThickness = new Thickness(0, 0, 0, 1) };
+        DockPanel.SetDock(stats, Dock.Top);
+        dock.Children.Add(stats);
+        var sg = new UniformGrid { Rows = 1 };
+        stats.Child = sg;
+        foreach (var k in new[] { "phase|Phase", "rod|Rod", "caught|Caught", "perhour|Per hour", "session|Session", "power|Rod power" }) {
+            var kv = k.Split('|');
+            var tile = new Border { Background = B("card"), CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(4, 0, 4, 0) };
+            var sp = new StackPanel();
+            var lab = new StackPanel { Orientation = Orientation.Horizontal };
+            if (kv[0] == "phase") {
+                runDot = new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Background = B("muted"), Margin = new Thickness(0, 1, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+                lab.Children.Add(runDot);
+            }
+            lab.Children.Add(new TextBlock { Text = kv[1].ToUpper(), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = B("muted") });
+            sp.Children.Add(lab);
+            var v = new TextBlock { Text = "---", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = B("text"), Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+            sp.Children.Add(v);
+            statVals[kv[0]] = v;
+            tile.Child = sp;
+            sg.Children.Add(tile);
+        }
+
+        // the page: its title, then its cards in columns
+        var page = new DockPanel();
+        dock.Children.Add(page);
+        pageTitle = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = B("muted"), Margin = new Thickness(22, 12, 0, 0) };
+        DockPanel.SetDock(pageTitle, Dock.Top);
+        page.Children.Add(pageTitle);
+        colsGrid = new Grid { Margin = new Thickness(14, 8, 14, 18) };
+        pageScroll = new ScrollViewer { Content = colsGrid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        pageScroll.ScrollChanged += (s, e) => { if (curSec != "") scrollOf[curSec] = pageScroll.VerticalOffset; };
+        page.Children.Add(pageScroll);
+        Content = rootBorder;
+    }
+
+    Button WinButton(string t, bool red, Action a) {
+        var b = new Button { Width = 30, Height = 30, Margin = new Thickness(4, 0, 0, 0), Cursor = Cursors.Hand, Focusable = false };
+)
+ui3 =
+(% Join`n
+        b.Template = BtnTemplate(Colors.Transparent, red ? col["red"] : col["hover"], 8);
+        b.Content = new TextBlock { Text = t, Foreground = B("muted"), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        b.Click += (s, e) => a();
+        return b;
+    }
+
+    static ControlTemplate BtnTemplate(Color bg, Color hover, double r) {
+        var t = new ControlTemplate(typeof(Button));
+        var bd = new FrameworkElementFactory(typeof(Border), "b");
+        bd.SetValue(Border.BackgroundProperty, new SolidColorBrush(bg));
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(r));
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Stretch);
+        bd.AppendChild(cp);
+        t.VisualTree = bd;
+        var tr = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        tr.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(hover), "b"));
+        t.Triggers.Add(tr);
+        return t;
+    }
+
+    // ---------------------------------------------------------------- messages
+    IntPtr Hook(IntPtr hwnd, int msg, IntPtr w, IntPtr l, ref bool handled) {
+        if (msg != 0x4A) return IntPtr.Zero;
+        var cd = (COPYDATA)Marshal.PtrToStructure(l, typeof(COPYDATA));
+        byte[] buf = new byte[cd.cbData];
+        if (cd.cbData > 0) Marshal.Copy(cd.lpData, buf, 0, cd.cbData);
+        string s = Encoding.UTF8.GetString(buf).TrimEnd('\0');
+        int code = cd.dwData.ToInt32();
+        handled = true;
+        Dispatcher.BeginInvoke(new Action(() => { try { OnMessage(code, s); } catch (Exception ex) { Send(19, "error " + ex.Message); } }));
+        return new IntPtr(1);
+    }
+
+    void Send(int code, string s) {
+        if (!IsWindow(ahk)) return;
+        byte[] b = Encoding.UTF8.GetBytes(s + "\0");
+        IntPtr p = Marshal.AllocHGlobal(b.Length);
+        try {
+            Marshal.Copy(b, 0, p, b.Length);
+            var cd = new COPYDATA { dwData = new IntPtr(code), cbData = b.Length, lpData = p };
+            IntPtr r;
+            SendMessageTimeout(ahk, 0x4A, me, ref cd, 2, 3000, out r);
+        } finally { Marshal.FreeHGlobal(p); }
+    }
+
+    static string S(Dictionary<string, object> d, string k) { return d.ContainsKey(k) && d[k] != null ? Convert.ToString(d[k]) : ""; }
+    static double N(Dictionary<string, object> d, string k) { double v; return d.ContainsKey(k) && d[k] != null && double.TryParse(Convert.ToString(d[k]), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v) ? v : 0; }
+
+    void OnMessage(int code, string s) {
+        var d = js.Deserialize<Dictionary<string, object>>(s);
+        if (code == 1) Init(d);
+        else if (code == 2) Page(d);
+        else if (code == 3) Update(d);
+        else if (code == 4) { if (S(d, "show") == "1") { Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; } else Hide(); }
+        else if (code == 5) { Activate(); }
+        else if (code == 6) Stats(d);
+    }
+
+    void Init(Dictionary<string, object> d) {
+        if (d.ContainsKey("theme")) {
+            SetTheme(d["theme"] as Dictionary<string, object>);
+            var keep = lastPage;
+            Build();
+            lastPage = keep;
+        }
+        sideW = (int)N(d, "sidew"); topH = (int)N(d, "toph");
+        if (S(d, "title") != "") { Title = S(d, "title"); brandName.Text = S(d, "title"); }
+        verText.Text = S(d, "ver");
+        tabPanel.Children.Clear(); navButtons.Clear(); extraPanel.Children.Clear();
+        var nav = d.ContainsKey("nav") ? d["nav"] as ArrayList : null;
+        if (nav != null) foreach (Dictionary<string, object> n in nav) {
+            string k = S(n, "k");
+            var b = TabButton(S(n, "icon"), S(n, "label"));
+            b.Click += (s2, e2) => Send(11, "nav " + k);
+            navButtons[k] = b;
+            tabPanel.Children.Add(b);
+        }
+        var extra = d.ContainsKey("extra") ? d["extra"] as ArrayList : null;
+        if (extra != null) foreach (Dictionary<string, object> n in extra) {
+            long h = (long)N(n, "h");
+            var b = new Button { Width = 32, Height = 32, Cursor = Cursors.Hand, Focusable = false, ToolTip = S(n, "label") };
+            b.Template = BtnTemplate(Colors.Transparent, col["hover"], 9);
+            b.Content = new TextBlock { Text = S(n, "icon"), FontFamily = IconFont, FontSize = 15, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = B("muted") };
+            b.Click += (s2, e2) => Send(12, "click " + h);
+            extraPanel.Children.Add(b);
+        }
+        if (lastPage != null) Layout(true);
+    }
+
+    Button TabButton(string icon, string label) {
+        var b = new Button { Height = 34, Margin = new Thickness(0, 0, 2, 0), Cursor = Cursors.Hand, Focusable = false, Padding = new Thickness(14, 0, 16, 0) };
+        b.Template = BtnTemplate(Colors.Transparent, col["hover"], 8);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 16, 0) };
+        sp.Children.Add(new TextBlock { Text = icon, FontFamily = IconFont, FontSize = 14, Foreground = B("nav"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 8, 0) });
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = B("nav"), VerticalAlignment = VerticalAlignment.Center });
+        b.Content = sp;
+        return b;
+    }
+
+    void MarkNav(string sec) {
+        foreach (var kv in navButtons) {
+            bool on = kv.Key == sec;
+            kv.Value.Template = BtnTemplate(on ? col["accent"] : Colors.Transparent, on ? col["accent"] : col["hover"], 8);
+            foreach (TextBlock t in ((StackPanel)kv.Value.Content).Children)
+                t.Foreground = on ? new SolidColorBrush(Color.FromRgb(16, 16, 16)) : B("nav");
+        }
+    }
+
+    // ---------------------------------------------------------------- pages
+    // The page's cards are laid out again: everything inside a card keeps its place in it, a title above a card
+    // goes with that card, and the cards fill two columns (one on a narrow window), each part of a merged page
+    // in its own order.
+    class Block { public int g; public double x, y, w, h, top, bottom; public List<Dictionary<string, object>> its = new List<Dictionary<string, object>>(); public Dictionary<string, object> card; }
+
+    void Page(Dictionary<string, object> d) {
+        string sec = S(d, "sec");
+        bool same = sec == curSec;
+        lastPage = d;
+        curSec = sec;
+        pageTitle.Text = S(d, "title").ToUpper();
+        MarkNav(S(d, "navsec") != "" ? S(d, "navsec") : sec);
+        Layout(same);
+    }
+
+    void Layout(bool keepScroll) {
+        var d = lastPage;
+        if (d == null) return;
+        double keep = pageScroll.VerticalOffset;
+        items.Clear();
+        headRight.Children.Clear();
+        colsGrid.Children.Clear();
+        colsGrid.ColumnDefinitions.Clear();
+        var list = d.ContainsKey("items") ? d["items"] as ArrayList : new ArrayList();
+        var cards = new List<Block>();
+        var loose = new List<Dictionary<string, object>>();
+        var head = new List<Dictionary<string, object>>();
+        foreach (Dictionary<string, object> it in list) {
+            if (S(it, "a") == "hd") { head.Add(it); continue; }
+            if (S(it, "k") == "card") cards.Add(new Block { g = (int)N(it, "g"), x = N(it, "x"), y = N(it, "y"), w = N(it, "w"), h = N(it, "ht"), card = it });
+            else loose.Add(it);
+        }
+        // the header: the macro's Start and status, left to right
+        head.Sort((a, b) => N(a, "x").CompareTo(N(b, "x")));
+        foreach (var it in head) {
+            var el = Make(it);
+            if (el == null) continue;
+            el.Margin = new Thickness(4, 0, 4, 0);
+            el.VerticalAlignment = VerticalAlignment.Center;
+            headRight.Children.Add(el);
+        }
+        // each item into the card it sits in, or else the next card below it (titles above cards)
+        foreach (var it in loose) {
+            double cx = N(it, "x") + N(it, "w") / 2, cy = N(it, "y") + N(it, "ht") / 2;
+            int g = (int)N(it, "g");
+            Block home = null;
+            foreach (var b in cards) if (b.g == g && cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h && (home == null || b.w * b.h < home.w * home.h)) home = b;
+            if (home == null) foreach (var b in cards) if (b.g == g && b.y >= N(it, "y") && (home == null || b.y < home.y)) home = b;
+            if (home == null) foreach (var b in cards) if (b.g == g && (home == null || b.y > home.y)) home = b;
+            if (home == null) {
+)
+ui4 =
+(% Join`n
+                home = new Block { g = g, x = N(it, "x"), y = N(it, "y"), w = Math.Max(N(it, "w"), 200), h = N(it, "ht") };
+                cards.Add(home);
+            }
+            home.its.Add(it);
+        }
+        foreach (var b in cards) {
+            b.top = 0; b.bottom = b.h;
+            foreach (var it in b.its) { b.top = Math.Min(b.top, N(it, "y") - b.y); b.bottom = Math.Max(b.bottom, N(it, "y") - b.y + N(it, "ht")); }
+        }
+        cards.Sort((a, b) => a.g != b.g ? a.g.CompareTo(b.g) : (Math.Abs(a.y - b.y) > 4 ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x)));
+        double cardW = 0;
+        foreach (var b in cards) cardW = Math.Max(cardW, b.w);
+        double avail = Math.Max(300, (ActualWidth > 0 ? ActualWidth : Width) - 44);
+        int ncol = avail >= cardW * 2 + 16 ? 2 : 1;
+        var colPanels = new List<StackPanel>();
+        var colH = new double[ncol];
+        for (int i = 0; i < ncol; i++) {
+            colsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var sp = new StackPanel { Margin = new Thickness(i == 0 ? 0 : 16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+            Grid.SetColumn(sp, i);
+            colsGrid.Children.Add(sp);
+            colPanels.Add(sp);
+        }
+        colsGrid.HorizontalAlignment = HorizontalAlignment.Center;
+        foreach (var b in cards) {
+            double bh = b.bottom - b.top;
+            int col = 0;
+            for (int i = 1; i < ncol; i++) if (colH[i] < colH[col] - 1) col = i;
+            var cv = new Canvas { Width = cardW, Height = bh, Margin = new Thickness(0, 0, 0, 16), ClipToBounds = false };
+            if (b.card != null) {
+                var ce = Make(b.card);
+                if (ce != null) { ((FrameworkElement)ce).Width = cardW; Canvas.SetLeft(ce, 0); Canvas.SetTop(ce, -b.top); cv.Children.Add(ce); }
+            }
+            b.its.Sort((a1, a2) => N(a1, "y").CompareTo(N(a2, "y")));
+            foreach (var it in b.its) {
+                var el = Make(it);
+                if (el == null) continue;
+                if (b.card != null && b.w < cardW && N(it, "w") >= b.w * 0.8) el.Width = N(it, "w") + (cardW - b.w);
+                Canvas.SetLeft(el, N(it, "x") - b.x);
+                Canvas.SetTop(el, N(it, "y") - b.y - b.top);
+                cv.Children.Add(el);
+            }
+            colPanels[col].Children.Add(cv);
+            colH[col] += bh + 16;
+        }
+        pageScroll.UpdateLayout();
+        double off = keepScroll ? keep : (scrollOf.ContainsKey(curSec) ? scrollOf[curSec] : 0);
+        pageScroll.ScrollToVerticalOffset(off);
+    }
+
+    void Stats(Dictionary<string, object> d) {
+        foreach (var kv in statVals) if (d.ContainsKey(kv.Key)) kv.Value.Text = S(d, kv.Key) == "" ? "---" : S(d, kv.Key);
+        if (runDot != null) runDot.Background = S(d, "running") == "1" ? B("green") : B("muted");
+    }
+
+    // emoji -> the matching line icon of Windows' icon font (Segoe Fluent Icons, or Segoe MDL2 Assets on Windows 10)
+    static readonly FontFamily IconFont = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+    static readonly string[][] IconMap = {
+        new[] { "▶", "\uE768" }, new[] { "⏹", "\uE71A" }, new[] { "🎨", "\uE790" }, new[] { "↶", "\uE7A7" }, new[] { "✅", "\uE73E" },
+        new[] { "⇄", "\uE8AB" }, new[] { "💾", "\uE74E" }, new[] { "➕", "\uE710" }, new[] { "＋", "\uE710" }, new[] { "📄", "\uE8C8" },
+        new[] { "🗑", "\uE74D" }, new[] { "📋", "\uE77F" }, new[] { "🔑", "\uE8D7" }, new[] { "🔁", "\uE8EE" }, new[] { "👁", "\uE890" },
+        new[] { "🫥", "\uED1A" }, new[] { "⏱", "\uE916" }, new[] { "🪟", "\uE8A7" }, new[] { "◻", "\uE739" }, new[] { "▭", "\uE70F" },
+        new[] { "❔", "\uE897" }, new[] { "↺", "\uE72C" }, new[] { "🎯", "\uE81D" }, new[] { "🐟", "\uE721" }, new[] { "🐠", "\uE721" },
+        new[] { "⚙", "\uE713" }, new[] { "🧰", "\uE90F" }, new[] { "🎮", "\uE7FC" }, new[] { "🏠", "\uE80F" }, new[] { "🎣", "\uE7FC" },
+        new[] { "🧩", "\uE74C" }, new[] { "📜", "\uE81C" }, new[] { "🔒", "\uE72E" }, new[] { "💬", "\uE8BD" }, new[] { "✕", "\uE711" }
+    };
+
+    // the icon a text starts with (and the text after it), or "" when it starts with none
+    static string SplitIcon(string s, out string rest) {
+        s = s ?? "";
+        string t = s.TrimStart();
+        foreach (var m in IconMap) {
+            if (t.StartsWith(m[0], StringComparison.Ordinal)) {
+                rest = t.Substring(m[0].Length).TrimStart(' ', '\uFE0F', '\u00A0');
+                return m[1];
+            }
+        }
+        rest = s;
+        return "";
+    }
+
+    // a text with its icon in front: the icon in the icon font, the text as it was
+    FrameworkElement IconText(Item r, string text, Color fc, double fs, bool bold, HorizontalAlignment ha) {
+        string rest;
+        string ic = SplitIcon(Amp(text), out rest);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = ha, VerticalAlignment = VerticalAlignment.Center };
+        var it = new TextBlock { Text = ic, FontFamily = IconFont, FontSize = fs + 1, Foreground = new SolidColorBrush(fc), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 1, rest == "" ? 0 : 8, 0), Visibility = ic == "" ? Visibility.Collapsed : Visibility.Visible };
+        var tt = new TextBlock { Text = rest, Foreground = new SolidColorBrush(fc), FontSize = fs, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        sp.Children.Add(it);
+        sp.Children.Add(tt);
+        r.icon = it;
+        r.text = tt;
+        return sp;
+    }
+
+    void SetText(Item r, string text) {
+        string rest;
+        string ic = SplitIcon(Amp(text), out rest);
+        if (r.icon != null) {
+            r.icon.Text = ic;
+            r.icon.Visibility = ic == "" ? Visibility.Collapsed : Visibility.Visible;
+            r.icon.Margin = new Thickness(0, 1, rest == "" ? 0 : 8, 0);
+            r.text.Text = rest;
+        } else if (r.text != null) r.text.Text = Amp(text);
+    }
+
+    // Windows text: && shows one &, a single & only underlines the next letter
+    static string Amp(string s) {
+        if (s.IndexOf('&') < 0) return s;
+        return s.Replace("&&", "\u0001").Replace("&", "").Replace("\u0001", "&");
+    }
+
+    FrameworkElement Make(Dictionary<string, object> it) {
+        var r = new Item { h = (long)N(it, "h"), kind = S(it, "k") };
+        double w = Math.Max(1, N(it, "w")), h = Math.Max(1, N(it, "ht"));
+        string tx = Amp(S(it, "tx")), tip = S(it, "tip");
+        Color fc = Hex(S(it, "fc"), col["text"]);
+        double fs = N(it, "fs") > 0 ? N(it, "fs") : 12.5;
+        bool bold = S(it, "fw") == "1";
+        bool dis = S(it, "dis") == "1";
+        FrameworkElement el = null;
+        switch (r.kind) {
+            case "card": {
+                el = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(12), Background = B("card"), BorderBrush = new SolidColorBrush(col["cardEdge"]), BorderThickness = new Thickness(1) };
+                break;
+            }
+            case "line": {
+                el = new Rectangle { Width = w, Height = h, Fill = B("border"), RadiusX = 1, RadiusY = 1 };
+                break;
+            }
+            case "label": {
+                string restL;
+                bool hasIcon = SplitIcon(tx, out restL) != "" && h <= fs * 2.2;
+                if (hasIcon) {
+                    var gi = new Grid { Width = w, Height = h, Background = Brushes.Transparent };
+                    if (S(it, "bgc") != "") { gi.Children.Add(new Border { CornerRadius = new CornerRadius(Math.Min(10, h / 2)), Background = new SolidColorBrush(Hex(S(it, "bgc"), col["card"])) }); }
+                    gi.Children.Add(IconText(r, tx, fc, fs, bold, S(it, "al") == "c" ? HorizontalAlignment.Center : (S(it, "al") == "r" ? HorizontalAlignment.Right : HorizontalAlignment.Left)));
+                    el = gi;
+                    break;
+                }
+                var t = new TextBlock { Text = tx, Foreground = new SolidColorBrush(fc), FontSize = fs, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+                    TextWrapping = h > fs * 2.2 ? TextWrapping.Wrap : TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+                    TextAlignment = S(it, "al") == "c" ? TextAlignment.Center : (S(it, "al") == "r" ? TextAlignment.Right : TextAlignment.Left) };
+                var g = new Grid { Width = w, Height = h, Background = Brushes.Transparent };
+                if (S(it, "bgc") != "") { g.Children.Add(new Border { CornerRadius = new CornerRadius(Math.Min(10, h / 2)), Background = new SolidColorBrush(Hex(S(it, "bgc"), col["card"])) }); }
+                g.Children.Add(t);
+                r.text = t;
+                el = g;
+                break;
+            }
+            case "help": {
+                var g = new Grid { Width = 18, Height = 18, Cursor = Cursors.Help, VerticalAlignment = VerticalAlignment.Center };
+)
+ui5 =
+(% Join`n
+                g.Children.Add(new Ellipse { Fill = new SolidColorBrush(Mix(col["card"], col["accent"], 0.18)) });
+                g.Children.Add(new TextBlock { Text = "?", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = B("accent"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+                var wrap = new Grid { Width = w, Height = h, Background = Brushes.Transparent };
+                wrap.Children.Add(g);
+                el = wrap;
+                break;
+            }
+            case "button": {
+                string bst = S(it, "st");
+                if (bst == "nav" || bst == "seg") {
+                    var sb = new Button { Width = w, Height = h, Cursor = Cursors.Hand, Focusable = false };
+                    r.kind = bst; r.it = new Dictionary<string, object>(it); r.fs = fs;
+                    StyleSpecial(sb, r.it, fs);
+                    long sh = r.h;
+                    sb.Click += (s, e) => Send(12, "click " + sh);
+                    el = sb;
+                    break;
+                }
+                Color bg = Hex(S(it, "bgc"), Mix(col["card"], col["text"], 0.08));
+                var b = new Button { Width = w, Height = h, Cursor = Cursors.Hand, Focusable = false };
+                b.Template = BtnTemplate(bg, Mix(bg, col["text"], 0.12), Math.Min(10, h / 2));
+                b.Content = IconText(r, tx, fc, fs, bold, HorizontalAlignment.Center);
+                long hh = r.h;
+                b.Click += (s, e) => Send(12, "click " + hh);
+                el = b;
+                break;
+            }
+            case "check":
+            case "radio": {
+                ToggleButton c = r.kind == "check" ? (ToggleButton)new CheckBox { Style = (Style)Resources["Toggle"] } : new RadioButton { Style = (Style)Resources["Radio"], GroupName = "g" + r.h };
+                c.Content = IconText(r, tx, fc, fs, false, HorizontalAlignment.Left);
+                c.IsChecked = S(it, "v") == "1";
+                c.Width = Math.Max(w + 30, 40); c.Height = h; c.VerticalContentAlignment = VerticalAlignment.Center;
+                long hh = r.h;
+                bool radio = r.kind == "radio";
+                RoutedEventHandler changed = (s, e) => { if (!quiet && (!radio || c.IsChecked == true)) Send(12, "set " + hh + "\t" + (c.IsChecked == true ? "1" : "0")); };
+                c.Checked += changed;
+                c.Unchecked += changed;
+                el = c;
+                break;
+            }
+            case "edit":
+            case "hotkey": {
+                var t = new TextBox { Style = (Style)Resources["Box"], Text = S(it, "v"), Width = w, Height = Math.Max(h, 24) };
+                if (S(it, "multi") == "1") { t.AcceptsReturn = true; t.TextWrapping = TextWrapping.Wrap; t.VerticalContentAlignment = VerticalAlignment.Top; t.Padding = new Thickness(8, 6, 8, 6); }
+                if (S(it, "ro") == "1") t.IsReadOnly = true;
+                bool num = S(it, "num") == "1";
+                if (num) t.PreviewTextInput += (s, e) => { foreach (char ch in e.Text) if (!char.IsDigit(ch)) e.Handled = true; };
+                r.last = t.Text;
+                long hh = r.h;
+                var deb = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
+                deb.Tick += (s, e) => { deb.Stop(); if (t.Text != r.last) { r.last = t.Text; Send(12, "set " + hh + "\t" + t.Text); } };
+                r.debounce = deb;
+                t.TextChanged += (s, e) => { if (quiet) return; deb.Stop(); deb.Start(); };
+                t.LostKeyboardFocus += (s, e) => { deb.Stop(); if (t.Text != r.last) { r.last = t.Text; Send(12, "set " + hh + "\t" + t.Text); } };
+                t.KeyDown += (s, e) => { if (e.Key == Key.Enter && !t.AcceptsReturn) { deb.Stop(); if (t.Text != r.last) { r.last = t.Text; Send(12, "set " + hh + "\t" + t.Text); } Keyboard.ClearFocus(); } };
+                el = t;
+                break;
+            }
+            case "dd": {
+                var c = new ComboBox { Style = (Style)Resources["Drop"], Width = w, Height = Math.Max(h, 24) };
+                var opts = it.ContainsKey("o") ? it["o"] as ArrayList : null;
+                if (opts != null) foreach (var o in opts) c.Items.Add(Convert.ToString(o));
+                c.SelectedItem = S(it, "v");
+                long hh = r.h;
+                c.SelectionChanged += (s, e) => { if (!quiet && c.SelectedItem != null) Send(12, "set " + hh + "\t" + c.SelectedItem); };
+                el = c;
+                break;
+            }
+            case "box": {
+                el = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(Math.Min(8, Math.Min(w, h) / 2)), Background = new SolidColorBrush(Hex(S(it, "bgc"), col["border"])) };
+                break;
+            }
+            case "swatch": {
+                el = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(Math.Min(9, h / 2)), Background = new SolidColorBrush(Hex(S(it, "v"), Mix(col["card"], col["text"], 0.1))),
+                    BorderBrush = new SolidColorBrush(Mix(col["card"], col["text"], 0.15)), BorderThickness = new Thickness(1) };
+                break;
+            }
+            default:
+                return null;
+        }
+        if (dis) el.IsEnabled = false;
+        if (tip != "") { el.ToolTip = tip; ToolTipService.SetInitialShowDelay(el, 250); ToolTipService.SetShowDuration(el, 60000); }
+        r.el = el;
+        if (r.h != 0) items[r.h] = r;
+        return el;
+    }
+
+    // the Color Manager's list rows ("nav") and its Setup / Color Manager switch ("seg")
+    void StyleSpecial(Button b, Dictionary<string, object> it, double fs) {
+        bool sel = S(it, "sel") == "1";
+        Color acc = col["accent"], card = col["card"], text = col["text"], muted = col["muted"];
+        if (S(it, "st") == "seg") {
+            Color sbg = sel ? acc : Mix(card, text, 0.06);
+            b.Template = BtnTemplate(sbg, sel ? acc : Mix(card, text, 0.12), Math.Min(10, b.Height / 2));
+            b.Content = new TextBlock { Text = Amp(S(it, "tx")), FontSize = fs, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(sel ? col["bg"] : muted),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            return;
+        }
+        Color nbg = sel ? Mix(card, acc, 0.16) : card;
+        b.Template = BtnTemplate(nbg, sel ? nbg : Mix(card, text, 0.07), 8);
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.Children.Add(new Border { Width = 3, Margin = new Thickness(0, 6, 0, 6), CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(acc),
+            HorizontalAlignment = HorizontalAlignment.Left, Visibility = sel ? Visibility.Visible : Visibility.Collapsed });
+        g.Children.Add(new TextBlock { Text = Amp(S(it, "name")), FontSize = fs, Foreground = new SolidColorBrush(sel ? acc : text), FontWeight = sel ? FontWeights.SemiBold : FontWeights.Normal,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 8, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+        string cnt = S(it, "cnt");
+        int n;
+        FrameworkElement right;
+        if (int.TryParse(cnt, out n))
+            right = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(sel ? Mix(card, acc, 0.3) : Mix(card, text, 0.1)),
+                Child = new TextBlock { Text = cnt, FontSize = fs - 1, Foreground = new SolidColorBrush(sel ? acc : muted) } };
+        else
+            right = new TextBlock { Text = cnt, FontSize = fs - 1, FontStyle = FontStyles.Italic, Foreground = new SolidColorBrush(muted), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        Grid.SetColumn(right, 1);
+        g.Children.Add(right);
+        b.Content = g;
+    }
+
+    void Update(Dictionary<string, object> d) {
+        var list = d.ContainsKey("items") ? d["items"] as ArrayList : null;
+        if (list == null) return;
+        quiet = true;
+        try {
+            foreach (Dictionary<string, object> u in list) {
+                long h = (long)N(u, "h");
+                Item r;
+                if (!items.TryGetValue(h, out r)) continue;
+                if (r.kind == "nav" || r.kind == "seg") {
+                    foreach (var kv in u) r.it[kv.Key] = kv.Value;
+                    StyleSpecial((Button)r.el, r.it, r.fs);
+                    continue;
+                }
+                if (u.ContainsKey("tx")) SetText(r, S(u, "tx"));
+                if (u.ContainsKey("fc") && r.text != null) r.text.Foreground = new SolidColorBrush(Hex(S(u, "fc"), col["text"]));
+                if (u.ContainsKey("dis")) r.el.IsEnabled = S(u, "dis") != "1";
+)
+ui6 =
+(% Join`n
+                if (!u.ContainsKey("v")) continue;
+                string v = S(u, "v");
+                if (r.el is ToggleButton) ((ToggleButton)r.el).IsChecked = v == "1";
+                else if (r.el is TextBox) { var t = (TextBox)r.el; if (!t.IsKeyboardFocused && t.Text != v) { t.Text = v; r.last = v; } }
+                else if (r.el is ComboBox) { var c = (ComboBox)r.el; if (u.ContainsKey("o")) { c.Items.Clear(); foreach (var o in (ArrayList)u["o"]) c.Items.Add(Convert.ToString(o)); } c.SelectedItem = v; }
+                else if (r.kind == "swatch" || r.kind == "box") ((Border)r.el).Background = new SolidColorBrush(Hex(v, Mix(col["card"], col["text"], 0.1)));
+            }
+        } finally { quiet = false; }
+    }
+}
+
+)
+	return ui1 . "`n" . ui2 . "`n" . ui3 . "`n" . ui4 . "`n" . ui5 . "`n" . ui6
+}
+;@@VELTRIX-PANEL-END
+
+; the Veltrix icon (.ico, base64) - written next to the script as Veltrix.ico; the publisher reads it from here too
+VxIconB64() {
+ic1 =
+(Join
+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
+)
+ic2 =
+(Join
+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
+)
+ic3 =
+(Join
++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
+)
+ic4 =
+(Join
+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
+)
+ic5 =
+(Join
+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
+)
+ic6 =
+(Join
+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
+)
+ic7 =
+(Join
+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
+)
+ic8 =
+(Join
+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
+)
+ic9 =
+(Join
+rpSqAQ5JFJAgwVCHAhxt0+7l6BQ/rvFt7wBkqbT1MVDXJVFAggTDAub0V9dp26al87dz6q9QSv7Ufj8QrzBBggR7DHrKT9v0Dva8
+vQMIAVEu99yuVHSrEMIhiQISJBiqCIUQjlLRreVyz+1oB9DPnp91+EcI/kMpVTdPSmoBCRIMLShAKKXqQvAfz/agnTmACHD6+vqW
+KcXVQghJEgUkSDDUEAohpFJc3dfXtwxd1N+B4PdsOb4EVC6XGyOEs0QI0W4em9QEEiQY/FCAUkr1KBXOrlQqG9mu+m/xbClABMhK
+pbIBxPlJFJAgwZBCqG1WnK9tuH/lvxXPd6I7QFgoFP8uhDxFKRWa2xIkSDA4YQt//yiV+k7F2PCzPfj5FIAUIKQU5yqlyi23JUiQ
+YPBBASilylKKc9mFAv7zOYAIkL29vauEUB9L2oIJEgxqhEIIRwj1sd7e3lU8R+hvsatFPRcI8vm2n0sp3qeUCsxtCRIkGBwIhBBu
+FKlflMu978fY7PM9aVdFQEPAKRSyH1NKLRJCuCSRQIIEgwWhEMJVSi0qFLIf43ny/la8kLaeBKJ8vvNgIYLbQXS03J4gQYK9AxPi
+q26l3FeUy9sWsQuhv8UL7es7QFgsFo9VStyNKRK+iJ+TIEGClw5lvoQQ6vi+vr55vIDTH1746R0Crv6PonMNPyAi6QwkSDDQUGiZ
+LwnRucb4X3Bq/mLC9wAtHnKZUnzIdAYSJ5AgwcDBGr+jFB8qlUqXsYtFv+3xYvN34wR6EieQIMHAYjvj73nRxg8vPXd3gaBQaP+g
+EPxUKWVzkqQwmCDB7kcECCGE2B3GDy/dUPtFAuj8I5kbSJBg9yO2rd1l/LD7qvcmEigcD+IGIWRnQhZKkGC3IdB9/mgbqNeVSqW7
+2Q3GD7svVLeFwbujSJ6ilHqohSyU1AUSJHhxUDRJPg9FkTxldxo/7N5cPQCcSqXnoXTaezmoy01xMBEXTZDghSNE5/sOqMvTae/l
+lUrPQ+g+/24xftgzBJ6YiFAotJ8D6ttCiHaTEliHkCBBgp2j9dTvAfHJUqnncnPfbh/G21PGKDAFi2KxOF0pLhFCnq6bBCSOIEGC
+HaEwRDuzw+8WIfiPvr6+5TTlvHZ7Or2njTD2WPl828eE4PNCiNHGESTiIgkSaISAow1fbVKKr5bLvZea+/boCP5AnMK2zhBls9kJ
+juNdAJwthEgppaxXkwP0WhIkGCxQNPv6UinVAK4MQ//8arW6jha72ZMvYiCNriUayM8RwrlICPEagCQ1SLAPoV+oD6CUukmp8FPl
+cnmxecyACe8MtLHFtQGAfL7tVULwbuDfTEQAzV88iQoSDBfY0x6aoX4DuEYpriiXe/9m72OAKfV7y8Ds+nEFcUTwHuDdQogxEEcF
+iTNIMFSxg9EDKKU2AlcoFf6q5cS3I/V7NNzfGfa2UdkioE0NxkjpngHqDUrxaiFEGmJnEBFvMO73lSDB3oba7ksCssXo60JwM4jr
+oyj4a7lc3mie1+/63xsYLAYkzVdMcCgUCjOFcI5VSr1RKXWClHKEvc84BOjvZUXL34Pl90owvBBHrS1/x9GpNXiAKIq2CiHuEkL8
+SalwXqlUWtryc1yaB9pexWAzFEEzD4rfnLa2thFhKA4VQp0I6lilmCGEGA8ibd/z/j4hQYI9BX3B9b/uVF0p9bQQLAMxTylxp+Oo
+h3t7e7e2PNEecoOKHj/YHEAr7Btmq6atyOXzndOkDCZHEccKIXJKcZwQylVKFIVgxsC/3ATDHUqxTAjVp5QIhOAepVRFSuZFkftU
+ubztcaCy3VNsV2tQnPY7w/8HCT1lUXd/V5MAAAAASUVORK5CYII=
+)
+	return ic1 . ic2 . ic3 . ic4 . ic5 . ic6 . ic7 . ic8 . ic9
+}
+
+; writes Veltrix.ico next to the script (when missing or different) and gives back its path
+VxIconFile() {
+	f := A_ScriptDir . "\Veltrix.ico"
+	b64 := VxIconB64()
+	n := 0
+	DllCall("crypt32\CryptStringToBinaryW", "Str", b64, "UInt", 0, "UInt", 1, "Ptr", 0, "UInt*", n, "Ptr", 0, "Ptr", 0)
+	if (!n)
+		return FileExist(f) ? f : ""
+	FileGetSize, have, %f%
+	if (FileExist(f) and have = n)
+		return f
+	VarSetCapacity(bin, n, 0)
+	DllCall("crypt32\CryptStringToBinaryW", "Str", b64, "UInt", 0, "UInt", 1, "Ptr", &bin, "UInt*", n, "Ptr", 0, "Ptr", 0)
+	h := FileOpen(f, "w")
+	if (!IsObject(h))
+		return FileExist(f) ? f : ""
+	h.RawWrite(bin, n)
+	h.Close()
+	return f
+}
 
 GuiClose:
 gosub, DoExit
