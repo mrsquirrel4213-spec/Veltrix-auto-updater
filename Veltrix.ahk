@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 76
+VxBuild := 77
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -54,19 +54,19 @@ SettingsFile := A_ScriptDir . "\Settings.ini"
 DefaultProfileFile := ProfilesDir . "\Default.ini"
 
 ProfileFields := []
-ProfileFields.Push( ["General","RestartDelay","1000","num"]
+ProfileFields.Push( ["General","RestartDelay","0","num"]
                   , ["General","TimeOffset","0","num"]
                   , ["General","HideOverlay","false","bool"]
                   , ["General","HideTextAlways","false","bool"]
                   , ["General","PassiveAll","false","bool"]
-                  , ["General","PassiveMs","500","num"]
+                  , ["General","PassiveMs","1","num"]
                   , ["General","InfoPanelOn","true","bool"]
                   , ["General","FishScanOn","false","bool"]
                   , ["General","InfoPanelX","0.02","num"]
                   , ["General","InfoPanelY","0.35","num"]
-                  , ["Update","AutoUpdate","false","bool"]
+                  , ["Update","AutoUpdate","true","bool"]
                   , ["Advanced","AdvancedOn","false","bool"]
-                  , ["General","HoldRodCastDuration","1000","num"]
+                  , ["General","HoldRodCastDuration","150","num"]
                   , ["General","WaitForBobberDelay","0","num"]
                   , ["General","NavigationKey","\","str"]
                   , ["General","RodSlotKey","1","str"]
@@ -81,7 +81,7 @@ ProfileFields.Push( ["Cast","CastMode","Normal","castmode"]
                   , ["Cast","PerfectReleaseTiming","0","num"]
                   , ["Cast","PerfectWaitCycles","1","num"]
                   , ["Cast","SmartCast","true","bool"]
-                  , ["Cast","SmartCastN","1","num"]
+                  , ["Cast","SmartCastN","3","num"]
                   , ["Cast","AdaptiveCast","true","bool"]
                   , ["Cast","AdaptiveCastMs","0","num"] )
 ProfileFields.Push( ["Shake","ShakeMode","Navigation","shakemode"]
@@ -252,7 +252,7 @@ gosub, LoadSettingsFile
 IniRead, NativeCapture, %SettingsFile%, Capture, Native, 1
 NativeCapture := (NativeCapture = "0") ? 0 : 1
 VxNativeInit()
-IniRead, DbgOn, %SettingsFile%, Debug, On, 0
+IniRead, DbgOn, %SettingsFile%, Debug, On, 1
 IniRead, DbgFps, %SettingsFile%, Debug, ScanFps, 1
 IniRead, DbgBar, %SettingsFile%, Debug, BarPositions, 1
 DbgOn := (DbgOn = "1") ? 1 : 0
@@ -3454,7 +3454,7 @@ OverlayWinEvent(hHook, event, hwnd, idObject, idChild, thread, time) {
 
 VxCheckForUpdate:
 SetTimer, VxCheckForUpdate, 600000
-if (!AutoUpdate or VxUpdateRepo = "" or VxUpdBusy or MacroRunning)
+if (VxUpdateRepo = "" or VxUpdBusy or MacroRunning)
 	return
 VxUpdBusy := true
 VxLatestBuild := ""
@@ -3555,16 +3555,16 @@ IniDelete, %SettingsFile%, Access
 
 IniRead, ActiveProfile, %SettingsFile%, Profiles, ActiveProfile, Default
 IniRead, TotemGlobal, %SettingsFile%, Totem, Global, 0
-IniRead, StartStopKey, %SettingsFile%, Hotkeys, StartStop, p
-IniRead, ReloadKey, %SettingsFile%, Hotkeys, Reload, o
-IniRead, ExitKey, %SettingsFile%, Hotkeys, Exit, m
+IniRead, StartStopKey, %SettingsFile%, Hotkeys, StartStop, F4
+IniRead, ReloadKey, %SettingsFile%, Hotkeys, Reload, F1
+IniRead, ExitKey, %SettingsFile%, Hotkeys, Exit, F8
 IniRead, GuiAlwaysOnTop, %SettingsFile%, GUI, AlwaysOnTop, 0
 if (GuiAlwaysOnTop != 1)
 	GuiAlwaysOnTop := 0
 IniRead, GuiKeepOpen, %SettingsFile%, GUI, KeepOpen, 0
 if (GuiKeepOpen != 1)
 	GuiKeepOpen := 0
-IniRead, GuiAutoSave, %SettingsFile%, GUI, AutoSave, 0
+IniRead, GuiAutoSave, %SettingsFile%, GUI, AutoSave, 1
 if (GuiAutoSave != 1)
 	GuiAutoSave := 0
 IniRead, ReadThisAccepted, %SettingsFile%, GUI, ReadThisAccepted, 0
@@ -3621,6 +3621,8 @@ gosub, RefreshControlModes
 TryhardBarColors := (Trim(TryhardBarColors) = "") ? "0x33030B, 0x5F020A, 0xBE0C0E" : TryhardBarColors
 TryhardFishColors := (Trim(TryhardFishColors) = "") ? "0x2F020C" : TryhardFishColors
 TryhardTrackColors := (Trim(TryhardTrackColors) = "") ? "0x3A0608" : TryhardTrackColors
+; auto update is always on
+AutoUpdate := true
 ; Precision steering is not shown: always its defaults
 Kp := 0.5, Kd := 0.3, VelocitySmoothing := 0.2, StoppingDistanceMultiplier := 3.0
 
@@ -6963,6 +6965,8 @@ AdvRegistry() {
 	r.Push(["Stellarwave Melody", "L", "swtnudge", 2, "ms|Turbo clicks: wait after the nudge"])
 	r.Push(["Stellarwave Melody", "L", "swthold", 12, "ms|Turbo clicks: click hold"])
 	r.Push(["Stellarwave Melody", "L", "swtafter", 0, "ms|Turbo clicks: pause after the click"])
+	r.Push(["Stellarwave Melody", "L", "swresume", 900, "ms|No star lit this long while signs are missing: read the signs again and carry on"])
+	r.Push(["Stellarwave Melody", "L", "swmaxper", 3, "|Clicks on one sign at most, per sign round"])
 	r.Push(["Stellarwave Melody", "L", "swsettle", 60, "ms|Start on the signs once the minigame has been still this long"])
 	r.Push(["Stellarwave Melody", "L", "swchain", 30, "ms|Max sign speed: next sign while a star is still lighting, after"])
 	r.Push(["Keeperbound recharge", "V", "KeeperOpenDelay", 0, "ms|Menu delay"])
@@ -17524,7 +17528,7 @@ SwPhaseReset() {
 	global SwOverK, SwOverT, SwOverL, SwOverR, SwOverS, SwTryAt
 	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwRetry, SwFailN, SwFailAt, SwRetryK, SwGuessTried, SwGuessDone, SwMem
 	global SwStop, SwStopWhy, SwLastClick, SwTie, SwLastOnset, SwGradOk, SwPurpleN, SwClickTook, SwTieWas
-	global SwAllN, SwAllT, SwAllI
+	global SwAllN, SwAllT, SwAllI, SwSlotClicks
 	SwPreEnd("reset")
 	SwAllN := 0
 	SwAllI := 0
@@ -17578,6 +17582,7 @@ SwPhaseReset() {
 	SwStopWhy := ""
 	SwLastClick := 0
 	SwLastOnset := 0
+	SwSlotClicks := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	SwGradOk := false
 }
 
@@ -18510,6 +18515,7 @@ OjAnd(a, b) {
 }
 
 SwScan() {
+	global SwLitSeen, SwLitChangeT, SwResumeT, SwStopWhy
 	global SwDarkSeen, SwFrStillT, SwStarStableT
 	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh, SwFrameT, SwPreset
 	global SwFound, SwBarL, SwBarW, SwFishX, SwPhase, SwPhaseT, SwInvalidT, SwUndarkT, SwStarsValid, SwLit, SwLitPrev, SwLastStep, SwK0, SwClicks, SwStop, SwStopWhy, SwGradOk, SwWRing, SwStarStableT, SwLastClick
@@ -18550,6 +18556,7 @@ SwScan() {
 			SwWMeas := false
 			SwMeasN := 0
 			SwLitPrev := SwLit
+			SwLitSeen := SwLit, SwLitChangeT := now, SwResumeT := 0
 			SwLog("phase start lit=" . SwLit . (dark ? "" : " (before dark)"))
 			}
 		}
@@ -18590,6 +18597,18 @@ SwScan() {
 			}
 		if (SwStarsValid)
 			SwLitPrev := SwLit
+		; stuck: no star has lit for a while although signs are still missing (a stop, a click that went nowhere,
+		; a retry on one sign) - read the signs again from scratch (the ones done stay done) and carry on
+		if (SwStarsValid and SwLit != SwLitSeen)
+			SwLitSeen := SwLit, SwLitChangeT := now
+		swStall := TA("swresume", 900) / 1000.0
+		if (SwPhase and SwStarsValid and SwLit < 12 and SwLitChangeT and now - SwLitChangeT >= swStall
+			and now - SwResumeT >= swStall and now - SwPhaseT >= swStall)
+			{
+			SwLog("resume: no star for " . Round((now - SwLitChangeT) * 1000) . " ms at lit " . SwLit . (SwStop ? " (stopped: " . SwStopWhy . ")" : ""))
+			SwPhaseReset()
+			SwResumeT := now
+			}
 		}
 	if (SwPhase and SwFound)
 		{
@@ -20097,9 +20116,15 @@ SwPurpleTarget() {
 
 SwRetryClick(k) {
 	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY
-	global SwClickAt, SwClickLit, SwClickSlot, SwLastClick, SwLastStep, SwClickTook, SwLit, SwBurstN, SwPreK, SwFailN
+	global SwClickAt, SwClickLit, SwClickSlot, SwLastClick, SwLastStep, SwClickTook, SwLit, SwBurstN, SwPreK, SwFailN, SwSlotClicks
 	if (!RobloxHwnd)
 		return false
+	if (IsObject(SwSlotClicks) and k >= 1 and k <= 12)
+		{
+		if (SwSlotClicks[k] >= TA("swmaxper", 3))
+			return false
+		SwSlotClicks[k] := SwSlotClicks[k] + 1
+		}
 	t0 := SwNow()
 	if (!WinActive("ahk_id " . RobloxHwnd))
 		{
@@ -20930,7 +20955,14 @@ SwBurstMax(i, k, now) {
 }
 
 SwDoClickMax(k, now, slow := false) {
-	global SwMaxSigns, SwBurstN, SwNextI
+	global SwMaxSigns, SwBurstN, SwNextI, SwSlotClicks
+	; one sign clicked over and over is going nowhere: leave it (the watchdog reads the signs again)
+	if (IsObject(SwSlotClicks) and k >= 1 and k <= 12)
+		{
+		if (SwSlotClicks[k] >= TA("swmaxper", 3))
+			return false
+		SwSlotClicks[k] := SwSlotClicks[k] + 1
+		}
 	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY, SwClickAt, SwClickLit, SwClickSlot, SwClicks, SwLastClick, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwClickTook, SwFastClicks
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwK0, SwOrder, SwSlotSt, ControlMode, MacroRunning
 	global SwLockStrk, SwLockT, SwTurbo
@@ -26789,17 +26821,6 @@ Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 GeneralCtrls.Push(hQ)
 IconTips[hQ] := "Shifts EVERY wait in the macro by this many ms.`n0 is normal.`n`nNegative is faster: -50 makes every wait 50ms`nshorter (a wait never goes below 0). Positive is`nslower and safer if the game misses inputs.`n`nCovers menus, camera setup, casting waits,`nrecharge, aquarium, totem and sign clicks.`nBar control and cast power timings are left alone`nso reeling and casting still work."
-Y += RH
-Gui, Font, s9 c%ColorText%, Segoe UI
-AuChk := AutoUpdate ? "Checked" : ""
-AuLbl := "Auto update" . ((VxBuild > 0) ? "   (v" . VxVersion . ")" : "")
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vAutoUpdate %AuChk% gAutoUpdateChanged HwndhC, %AuLbl%
-GeneralCtrls.Push(hC)
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-GeneralCtrls.Push(hQ)
-IconTips[hQ] := "ON - when a new build is published, Veltrix`ndownloads it and restarts on it by itself. It checks`nwhen it starts and every 10 minutes, but never`nwhile the macro is fishing. Your old file is kept`nnext to it as .bak.`n`nOFF (default) - never updates by itself."
 Y += RH
 Gui, Font, s9 c%ColorText%, Segoe UI
 AdvChk := AdvancedOn ? "Checked" : ""
