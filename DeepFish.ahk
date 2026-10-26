@@ -27,8 +27,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 70
-; for copies from before the rename (their updater looks for these): DFModBuild := 70
+VxBuild := 71
+; for copies from before the rename (their updater looks for these): DFModBuild := 71
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -230,7 +230,9 @@ ProfileFields.Push( ["Misc","PogoOn","false","bool"]
                   , ["Misc","PogoCoilKey","2","str"]
                   , ["Misc","PogoCoilWait","0","num"]
                   , ["Misc","PogoJumpKey","Space","str"]
-                  , ["Misc","PogoHold","30","num"] )
+                  , ["Misc","PogoHold","30","num"]
+                  , ["Misc","ScanCap","0","num"]
+                  , ["Misc","PressCap","15","num"] )
 
 ; a copy with another file name (from before the rename) moves itself to Veltrix.ahk once
 if (A_ScriptName != "Veltrix.ahk" and !FileExist(A_ScriptDir . "\Veltrix.ahk"))
@@ -1513,6 +1515,7 @@ return
 
 BarMinigame:
 MgInPlay := true
+gosub, SpeedCaps
 DbX0 := -1
 DbSeenQ := 0
 DbMoveQ := 0
@@ -1881,6 +1884,11 @@ if (ForceReset == true)
 	{
 	MgOverWhy := "forcereset"
 	goto BarMinigameOver
+	}
+if (ScanGapMs > 0 and PfPrev)
+	{
+	DllCall("QueryPerformanceCounter", "Int64*", ScanNowQ)
+	PreciseSleep(ScanGapMs - (ScanNowQ - PfPrev) * 1000.0 / QpcFreq)
 	}
 DllCall("QueryPerformanceCounter", "Int64*", PfA)
 PfDt := PfPrev ? Round((PfA - PfPrev) * 1000.0 / QpcFreq, 1) : 0
@@ -2629,6 +2637,12 @@ if (!PrecisionDown)
 		}
 	if (SwParkAt and SwParkWait())
 		return
+	if (PressGapMs > 0 and PrecisionDownAt)
+		{
+		DllCall("QueryPerformanceCounter", "Int64*", ReelNow)
+		if (((ReelNow - PrecisionDownAt) * 1000.0 / QpcFreq) < PressGapMs)
+			return
+		}
 	send {lbutton down}
 	PrecisionDown := true
 	DllCall("QueryPerformanceCounter", "Int64*", PrecisionDownAt)
@@ -6706,6 +6720,18 @@ ClampPct(v, lo, hi) {
 		return hi
 	return v
 }
+
+; Tools > Speed: the shortest time between two scans and between two presses (0 = no limit)
+SpeedCaps:
+ScanGapMs := 0
+if ScanCap is number
+	if (ScanCap > 0)
+		ScanGapMs := 1000.0 / ((ScanCap < 5) ? 5 : ScanCap)
+PressGapMs := 0
+if PressCap is number
+	if (PressCap > 0)
+		PressGapMs := 1000.0 / ((PressCap < 5) ? 5 : ((PressCap > 60) ? 60 : PressCap))
+return
 
 PreciseSleep(ms) {
 	global QpcFreq
@@ -27352,6 +27378,34 @@ for i, d in UtilRowDefs
 	Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 	UtilRowY += 64
 	}
+
+hC := AddPanel(CARDX, UtilRowY, CARDW, 104)
+UtilCtrls.Push(hC)
+Gui, Font, s10 Bold c%ColorText%, Segoe UI
+SpY := UtilRowY + 14
+Gui, Add, Text, x%CX% y%SpY% w240 h20 HwndhC, Speed
+UtilCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+SpY += 30
+for i, d in [["Max scans per second", "ScanCap", "How many times a second it looks at the fish bar`nwhile reeling.`n`n0 = no limit (as fast as your PC goes, often`n300-400 a second).`nLower it if the macro uses too much CPU.`nBelow 60 the bar control gets slow."]
+	, ["Max presses per second", "PressCap", "A soft limit on how often it presses the mouse`nwhile reeling - pressing too often makes the bar`nshake and the fish gets away.`n`n10-20 works best (15 is the default).`n0 = no limit. Never below 5 or above 60.`nHolding or letting go is never delayed, only a`nnew press."]]
+	{
+	Gui, Font, s9 Norm c%ColorText%, Segoe UI
+	Gui, Add, Text, x%CX% y%SpY% w%LW% h20 +0x200 HwndhC, % d[1] . ":"
+	UtilCtrls.Push(hC)
+	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+	SpVar := d[2]
+	Gui, Add, Edit, x%IX% y%SpY% w%IW% h20 v%SpVar% gQueueAutoSave Number Limit3 HwndhC, % %SpVar%
+	UtilCtrls.Push(hC)
+	ThemedCtrls.Push(hC)
+	Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+	Gui, Add, Text, x%QX% y%SpY% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+	UtilCtrls.Push(hQ)
+	IconTips[hQ] := d[3]
+	SpY += 26
+	}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+UtilRowY += 114
 
 UtilNoteY := UtilRowY + 4
 Gui, Font, s8 c%ColorMuted%, Segoe UI
