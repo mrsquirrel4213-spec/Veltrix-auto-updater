@@ -27,8 +27,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 69
-; for copies from before the rename (their updater looks for these): DFModBuild := 69
+VxBuild := 70
+; for copies from before the rename (their updater looks for these): DFModBuild := 70
 ; DFBetaVersion :=
 VxVersion := VxVerName(VxBuild)
 ; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
@@ -70,7 +70,7 @@ ProfileFields.Push( ["General","RestartDelay","1000","num"]
                   , ["Update","AutoUpdate","false","bool"]
                   , ["Advanced","AdvancedOn","false","bool"]
                   , ["General","HoldRodCastDuration","1000","num"]
-                  , ["General","WaitForBobberDelay","1000","num"]
+                  , ["General","WaitForBobberDelay","0","num"]
                   , ["General","NavigationKey","\","str"]
                   , ["General","RodSlotKey","1","str"]
                   , ["General","BagSlotKey","2","str"]
@@ -148,6 +148,7 @@ ProfileFields.Push( ["Rods","TryhardBarColors","","str"]
 				  , ["Rods","HalibutPlayMinigame","true","bool"]
 				  , ["Rods","SwClickSigns","true","bool"]
 				  , ["Rods","SwFastClicks","false","bool"]
+				  , ["Rods","SwTurbo","false","bool"]
 				  , ["Rods","SwRetryFails","false","bool"]
 				  , ["Rods","SwPreset","Normal","str"]
 				  , ["Rods","SwMaxSigns","false","bool"]
@@ -982,16 +983,17 @@ if (KeeperAuto and !KbBusy)
 				KbAutoAt := KeeperAutoPct
 				if KbAutoAt is not number
 					KbAutoAt := 15
-				gosub, KbWaitUiClear
+				; one quick look - the bar is often hidden right after a catch, and the next cast reads it anyway
 				KbFound := false
-				Loop 8
+				Loop 2
 					{
 					if (KbAutoRead(KbPct))
 						{
 						KbFound := true
 						break
 						}
-					Sleep, 120
+					if (A_Index < 2)
+						Sleep, 30
 					}
 				KbHandled := true
 				if (KbFound)
@@ -1137,16 +1139,32 @@ else
 	ScN := Round(ScN)
 	if (ScN > 10)
 		ScN := 10
+	CastMgN := 0
+	KbPreTried := false
 	if (SmartCast and ScN > 1)
 		{
 		Loop % ScN - 1
 			{
 			VxTip(8, "Action: Cast " . A_Index . "/" . ScN . " (" . HoldRodCastDuration . "ms)")
 			send {lbutton down}
-			Sleep, %HoldRodCastDuration%
+			CastT0 := A_TickCount
+			while (A_TickCount - CastT0 < HoldRodCastDuration)
+				{
+				gosub, CastMgPoll
+				if (CastMgHit)
+					goto CastMgGo
+				}
 			send {lbutton up}
-			; wait the cast hold time plus 50 ms before the next cast
-			Sleep, % HoldRodCastDuration + TA("castgap", 50)
+			; wait the cast hold time plus 50 ms before the next cast - still watching for the minigame
+			CastT0 := A_TickCount
+			gosub, KbPreMaybe
+			CastGapMs := HoldRodCastDuration + TA("castgap", 50)
+			while (A_TickCount - CastT0 < CastGapMs)
+				{
+				gosub, CastMgPoll
+				if (CastMgHit)
+					goto CastMgGo
+				}
 			}
 		}
 	send {lbutton down}
@@ -1159,8 +1177,9 @@ else
 			{
 			if (!CastSeen)
 				CastSeen := CastBarSeen()
-			else
-				Sleep, 1
+			gosub, CastMgPoll
+			if (CastMgHit)
+				goto CastMgGo
 			}
 		}
 	else
@@ -1170,7 +1189,19 @@ else
 		{
 		CastPostT := A_TickCount
 		while (!CastSeen and A_TickCount - CastPostT < TA("castpost", 120))
+			{
 			CastSeen := CastBarSeen()
+			gosub, CastMgPoll
+			if (CastMgHit)
+				goto CastMgGo
+			}
+		}
+	if (SmartCast)
+		{
+		; one last look before the bobber wait / shaking
+		gosub, CastMgPoll
+		if (CastMgHit)
+			goto CastMgGo
 		}
 	if (SmartCast and CastSeen)
 		{
@@ -1200,13 +1231,7 @@ VxTip(8, "Action: Waiting For Bobber (" . WaitForBobberDelay . "ms)")
 KbPreT0 := A_TickCount
 KbPreWait := Tm(WaitForBobberDelay)
 ; read the Keeperbound power bar now, while the bobber flies - so the end of the fight never waits on it
-if (KeeperAuto and KeeperAutoBar and !KbBusy)
-	{
-	if (KbPreSkip > 0)
-		KbPreSkip := KbPreSkip - 1
-	else if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
-		gosub, KbPreRead
-	}
+gosub, KbPreMaybe
 ; the totem check reads its icons now too, while nothing else happens - only if the read fits in the wait
 if (TotemAuto and !TotemPreDone and (!TotemLastCheck or A_TickCount - TotemLastCheck >= TotemPollSec * 1000))
 	{
@@ -1310,6 +1335,44 @@ if (RobloxHwnd and !WinActive("ahk_id " . RobloxHwnd))
 	WinWaitActive, ahk_id %RobloxHwnd%, , 1
 	}
 return
+
+; Smart cast: one look for the minigame while casting - the same test shaking uses, no waiting
+CastMgPoll:
+CastMgHit := false
+if (!SmartCast or !MacroRunning)
+	return
+gosub, CaptureFishBar
+if (SpecialRod = "Tranquility")
+	{
+	CastMgN := ManiaVisible() ? CastMgN + 1 : 0
+	CastMgHit := (CastMgN >= 2)
+	}
+else if (FishLineVisible())
+	CastMgHit := true
+else
+	{
+	CastMgN := MinigameVisible(6) ? CastMgN + 1 : 0
+	CastMgHit := (CastMgN >= ((SpecialRod = "Stellarwave Melody") ? 1 : 2))
+	}
+if (CastMgHit and !(SpecialRod = "Tranquility" or SpecialRod = "Lullaby" or SpecialRod = "Stellarwave Melody" or UiStartGate()))
+	CastMgHit := false
+if (!CastMgHit)
+	UiPhantomT := 0
+return
+
+; the minigame is up mid-cast: stop casting and play it now (no bobber wait, no shaking)
+CastMgGo:
+send {lbutton up}
+CastHolding := false
+CastSeenN := CastSeenN + 1
+CastMissN := 0
+VxTip(8, "Action: Minigame up - playing it")
+MgInPlay := false
+if (SpecialRod = "Tranquility")
+	TqResetAll()
+if (SpecialRod = "Stellarwave Melody" and ShakeMode != "Disabled")
+	SwFightReset()
+goto BarMinigame
 
 NavigationShakeFailsafe:
 NavigationFailsafeCount++
@@ -2658,10 +2721,18 @@ if (AdaptiveCast)
 	AcNeed := (AcMs < 0) ? 1 : 2
 	AcT0 := A_TickCount
 	AcClear := 0
-	while (MacroRunning and A_TickCount - AcT0 < 4000)
+	; the end of the fight already saw the minigame go (its frame, or Stellarwave's star row): cast at once
+	AcGone := (MgOverWhy = "swend" or MgOverWhy = "ojend" or MgOverWhy = "uigone")
+	while (!AcGone and MacroRunning and A_TickCount - AcT0 < 1500)
 		{
 		gosub, CaptureFishBar
-		AcVis := (SpecialRod = "Tranquility") ? ManiaVisible() : (BarPresent() or FishLineVisible())
+		if (SpecialRod = "Tranquility")
+			AcVis := ManiaVisible()
+		else if (SpecialRod = "Stellarwave Melody")
+			; its bar is held a moment after it goes - the star row is what shows while the minigame does
+			AcVis := (SwScan() and SwStarsValid)
+		else
+			AcVis := (BarPresent() or FishLineVisible())
 		AcClear := AcVis ? 0 : AcClear + 1
 		if (AcClear >= AcNeed)
 			break
@@ -6773,6 +6844,12 @@ AdvRegistry() {
 	r.Push(["Stellarwave Melody", "L", "swgchover", 8, "ms|Auto retry guess: hover before the nudge"])
 	r.Push(["Stellarwave Melody", "L", "swgcwait", 8, "ms|Auto retry guess: wait before clicking"])
 	r.Push(["Stellarwave Melody", "L", "swgchold", 25, "ms|Auto retry guess: click hold"])
+	r.Push(["Stellarwave Melody", "L", "swthover", 4, "ms|Turbo clicks: hover before the nudge"])
+	r.Push(["Stellarwave Melody", "L", "swtnudge", 2, "ms|Turbo clicks: wait after the nudge"])
+	r.Push(["Stellarwave Melody", "L", "swthold", 12, "ms|Turbo clicks: click hold"])
+	r.Push(["Stellarwave Melody", "L", "swtafter", 0, "ms|Turbo clicks: pause after the click"])
+	r.Push(["Stellarwave Melody", "L", "swsettle", 60, "ms|Start on the signs once the minigame has been still this long"])
+	r.Push(["Stellarwave Melody", "L", "swchain", 30, "ms|Max sign speed: next sign while a star is still lighting, after"])
 	r.Push(["Keeperbound recharge", "V", "KeeperOpenDelay", 0, "ms|Menu delay"])
 	r.Push(["Keeperbound recharge", "V", "KeeperStepDelay", 0, "ms|Step delay"])
 	r.Push(["Keeperbound recharge", "V", "KeeperBetweenDelay", 0, "ms|Between relics"])
@@ -11642,7 +11719,7 @@ KbAutoFind() {
 ; purple = filled here, navy that is NOT part of a letter outline = empty here. The reading is the split point
 ; that best separates the two (a step fit), which also sees through the gaps between the letters.
 KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
-	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH, KbBarTop, KbBarBot
+	global RobloxHwnd, KbBarY, KbBarL, KbBarR, KbBarWW, KbBarWH, KbBarTop, KbBarBot, KbLastFill
 	pct := -1
 	lo := -1
 	hi := -1
@@ -11802,6 +11879,13 @@ KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
 			KbBarY := -1
 			continue
 			}
+		if (totF = 0 and !(KbLastFill != "" and KbLastFill < 30))
+			{
+			; no purple at all and the bar was never seen nearly empty: dark water or a night scene (or a rod with
+			; no power bar), not an empty bar - read as 0% it held up every catch checking a recharge
+			KbBarY := -1
+			return false
+			}
 		costL := 0
 		costR := totF
 		best := 0x7FFFFFFF
@@ -11829,6 +11913,8 @@ KbAutoRead(ByRef pct, ByRef lo := "", ByRef hi := "") {
 		lo := bx0 * 100.0 / w
 		hi := bx1 * 100.0 / w
 		pct := (lo + hi) / 2
+		if (totF > 0)
+			KbLastFill := pct
 		return true
 		}
 	return false
@@ -11895,6 +11981,17 @@ return
 
 ; reads the power bar while the bobber is out (casting). KbPreState: 0 = no reading or it looked low (the
 ; restart after the catch reads it the old way and decides), 1 = read and fine - no read needed after the catch
+; the power bar read while casting - once per cast (KbPreTried is cleared when a cast starts)
+KbPreMaybe:
+if (KbPreTried or !KeeperAuto or !KeeperAutoBar or KbBusy)
+	return
+KbPreTried := true
+if (KbPreSkip > 0)
+	KbPreSkip := KbPreSkip - 1
+else if (KbOcrCatches >= ((Round(KeeperOcrEvery) < 1) ? 1 : Round(KeeperOcrEvery)))
+	gosub, KbPreRead
+return
+
 KbPreRead:
 KbPreOld := KbOcrCatches
 KbOcrCatches := 0
@@ -11911,7 +12008,7 @@ Loop 2
 		break
 		}
 	if (A_Index < 2)
-		Sleep, 60
+		Sleep, 30
 	}
 if (!KbPreOk)
 	{
@@ -16356,6 +16453,19 @@ TryhardScanX() {
 ; -------------------------------------------------- Stellarwave Melody
 
 SwLog(m) {
+	global DbgOn
+	static f := ""
+	if (!DbgOn)
+		return
+	if (f = "")
+		{
+		f := A_ScriptDir . "\stellarwave_log.txt"
+		FileGetSize, sz, %f%
+		if (!ErrorLevel and sz > 2000000)
+			FileDelete, %f%
+		FileAppend, % "---- " . A_Now . "`n", %f%
+		}
+	FileAppend, % Format("{:.3f} ", SwNow()) . m . "`n", %f%
 }
 
 SwSetup() {
@@ -17906,6 +18016,7 @@ OjAnd(a, b) {
 }
 
 SwScan() {
+	global SwDarkSeen, SwFrStillT, SwStarStableT
 	global SwScanned, SwReady, pCaptureBits, CaptureW, CaptureH, pNoteBits, NoteFresh, SwFrameT, SwPreset
 	global SwFound, SwBarL, SwBarW, SwFishX, SwPhase, SwPhaseT, SwInvalidT, SwUndarkT, SwStarsValid, SwLit, SwLitPrev, SwLastStep, SwK0, SwClicks, SwStop, SwStopWhy, SwGradOk, SwWRing, SwStarStableT, SwLastClick
 	global SwW, SwWMeas, SwMeasN, SwPostT, SwBarHold, SwCleanL, SwCleanW
@@ -17927,10 +18038,16 @@ SwScan() {
 	SwBarScan(now)
 	SwFishScan(now)
 	dark := SwDarkTest()
+	if (dark)
+		SwDarkSeen := true
 	if (SwPhase = 0)
 		{
-		if (SwStarsValid and dark and SwFound)
+		; the screen fades to dark over ~0.4 s while the first sign is already up: start once the frame has
+		; settled - until the screen is dark, only the signs inside the bar are read (outside it is still the world)
+		SwSettled := (SwFrStillT and now - SwFrStillT >= TA("swsettle", 60) / 1000.0 and SwStarStableT and now - SwStarStableT >= TA("swsettle", 60) / 1000.0)
+		if (SwStarsValid and SwFound and (dark or SwSettled))
 			{
+			SwDarkSeen := dark
 			SwPhase := 1
 			SwPhaseT := now
 			SwInvalidT := 0
@@ -17939,7 +18056,7 @@ SwScan() {
 			SwWMeas := false
 			SwMeasN := 0
 			SwLitPrev := SwLit
-			SwLog("phase start lit=" . SwLit)
+			SwLog("phase start lit=" . SwLit . (dark ? "" : " (before dark)"))
 			}
 		}
 	else
@@ -19100,12 +19217,14 @@ SwSlotWhite(k) {
 
 SwSlotsScan(now, held := false) {
 	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ
-	global SwSlotBlind, SwFishX, SwSB, SwMaxSigns
+	global SwSlotBlind, SwFishX, SwSB, SwMaxSigns, SwDarkSeen, SwBarL, SwBarW
 	Loop 12
 		{
 		k := A_Index
 		st := SwSlotSt[k]
 		if (st >= 2)
+			continue
+		if (!SwDarkSeen and (SwSlotX(k) < SwBarL or SwSlotX(k) > SwBarL + SwBarW))
 			continue
 		c := SwSlotStrokes(k)
 		if (c >= 1)
@@ -19925,6 +20044,7 @@ SwGuessRun(lit) {
 }
 
 SwClickStepMax() {
+	global SwNextI
 	global SwVetoM, SwVetoZ, SwRecZ
 	global SwMaxSigns, SwRetryFails
 	global SwClickSigns, SwStop, SwStopWhy, SwPhase, SwStarsValid, SwFound, SwFishX, SwLit, SwK0, SwOrder, SwSlotSt, SwSlotFirst, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwFastClicks
@@ -19951,6 +20071,8 @@ SwClickStepMax() {
 		}
 	if (SwPhase and SwClickSigns)
 		SwCursorGuard()
+	if (SwChainMax())
+		return
 	if (!SwClickSigns or SwStop or SwLockFail or !SwPhase or !SwStarsValid or !SwFound or (SwFishX < 0 and !SwSignsFirst))
 		return
 	now := SwNow()
@@ -20221,6 +20343,63 @@ SwClickStepMax() {
 	SwLog("stop: " . SwStopWhy)
 }
 
+; Max sign speed: a sign that came up while the last click's star is still lighting is clicked now, not after it.
+; true = it clicked (nothing else this step)
+SwChainMax() {
+	global SwMaxSigns, SwClickAt, SwFailN, SwStop, SwLockFail, SwPhase, SwClickSigns, SwK0, SwLit, SwLitRaw, SwClickLit, SwBurstN, SwClickSlot
+	global SwOrder, SwSlotSt, SwTie, SwLastClick, SwFrMiss, SwFrMoveT, SwNextI, SwGuessOn, SwGuessGuess, SwFound
+	static waitK := 0, waitWhy := ""
+	if (!SwMaxSigns or !SwClickAt or SwFailN or SwStop or SwLockFail or !SwPhase or !SwClickSigns or SwK0 < 0)
+		return false
+	; the star already lit (or is changing) - the normal step takes it from here
+	if (SwLit != SwClickLit or SwLitRaw != SwLit)
+		return false
+	j := SwClickLit - SwK0 + SwBurstN + 1
+	cap := SwGuessOn ? 12 - (SwGuessGuess ? SwGuessN() : 1) : 12
+	if (j < 1 or j > SwOrder.Length() or SwClickLit + SwBurstN >= cap)
+		return false
+	kk := SwOrder[j]
+	now := SwNow()
+	why := ""
+	if (SwSlotSt[kk] != 2)
+		why := "state " . SwSlotSt[kk]
+	else if (now - SwLastClick < TA("swchain", 30) / 1000.0)
+		return false
+	else if (!SwFound)
+		why := "bar"
+	else if (SwFrMiss or (SwFrMoveT and now - SwFrMoveT < 0.05))
+		why := "frame moving"
+	else if (SwTie[kk])
+		why := "tie"
+	else if (SwSlotWhite(kk))
+		why := "white"
+	else if (SwTplOk(kk, Mod(SwK0 + j - 1, 12)) = 0)
+		why := "shape"
+	if (why != "")
+		{
+		if (kk != waitK or why != waitWhy)
+			SwLog("chain wait slot " . kk . ": " . why)
+		waitK := kk
+		waitWhy := why
+		return false
+		}
+	waitK := 0
+	waitWhy := ""
+	cl := SwClickLit
+	cs := SwClickSlot
+	bn := SwBurstN
+	SwNextI := j + 1
+	ok := SwDoClickMax(kk, now, false)
+	SwNextI := 0
+	if (!ok)
+		return false
+	SwClickLit := cl
+	SwClickSlot := cs
+	SwBurstN := bn + 1
+	SwLog("chain slot " . kk . " burst " . SwBurstN . " from lit " . cl)
+	return true
+}
+
 SwBurstMax(i, k, now) {
 	global SwOrder, SwSlotSt, SwTie, SwK0, SwLit, SwStop, SwBurstN, SwNextI, SwClickLit, SwClickSlot
 	global SwSignsFirst, SwFishX, SwBarL, SwBarW, SwSB, SwRetryFails, SwGuessOn, SwGuessGuess
@@ -20260,7 +20439,12 @@ SwDoClickMax(k, now, slow := false) {
 	global SwMaxSigns, SwBurstN, SwNextI
 	global RobloxHwnd, PrecisionDown, PrecisionUpAt, SwFishX, SwSB, SwFrTop, FishBarTop, LookDownX, LookDownY, SwClickAt, SwClickLit, SwClickSlot, SwClicks, SwLastClick, SwLit, SwLockFail, SwLockN, SwStop, SwStopWhy, SwLastStep, SwClickTook, SwFastClicks
 	global SwPreK, SwPreX, SwPreY, SwPreAt, SwPreNudge, SwPreNudgeAt, SwK0, SwOrder, SwSlotSt, ControlMode, MacroRunning
-	global SwLockStrk, SwLockT
+	global SwLockStrk, SwLockT, SwTurbo
+	; hover before the nudge, after the nudge, hold, pause after - Turbo clicks: the shortest Roblox still takes
+	hv := SwTurbo ? TA("swthover", 4) : (SwMaxSigns ? 10 : 40)
+	nd := SwTurbo ? TA("swtnudge", 2) : (SwMaxSigns ? 5 : 30)
+	hd := SwTurbo ? TA("swthold", 12) : (SwMaxSigns ? 20 : 50)
+	af := SwTurbo ? TA("swtafter", 0) : (SwMaxSigns ? 5 : 40)
 	if (!RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
 		return false
 	; the cursor was just pulled away - give it a moment before trying again
@@ -20311,23 +20495,23 @@ SwDoClickMax(k, now, slow := false) {
 		{
 		if (!SwPreNudge)
 			{
-			PreciseSleep(SwMs((SwMaxSigns ? 10 : 40)) - (SwNow() - SwPreAt) * 1000)
+			PreciseSleep(SwMs(hv) - (SwNow() - SwPreAt) * 1000)
 			MouseMove, % sx + 1, % sy, 0
-			PreciseSleep(SwMs(SwMaxSigns ? 5 : 30))
+			PreciseSleep(SwMs(nd))
 			}
 		else
-			PreciseSleep(SwMs((SwMaxSigns ? 5 : 30)) - (SwNow() - SwPreNudgeAt) * 1000)
+			PreciseSleep(SwMs(nd) - (SwNow() - SwPreNudgeAt) * 1000)
 		}
 	else
 		{
 		MouseMove, %sx%, %sy%, 0
 		if (SwFastClicks or 1)
-			PreciseSleep(SwMs(SwMaxSigns ? 10 : 40))
+			PreciseSleep(SwMs(hv))
 		else
 			PreciseSleep(SwMs(75))
 		MouseMove, % sx + 1, % sy, 0
 		if (SwFastClicks or 1)
-			PreciseSleep(SwMs(SwMaxSigns ? 5 : 30))
+			PreciseSleep(SwMs(nd))
 		else
 			PreciseSleep(SwMs(75))
 		}
@@ -20353,12 +20537,12 @@ SwDoClickMax(k, now, slow := false) {
 	if (slow)
 		PreciseSleep(80)
 	else if (SwFastClicks or 1)
-		PreciseSleep(SwMs(SwMaxSigns ? 20 : 50))
+		PreciseSleep(SwMs(hd))
 	else
 		PreciseSleep(SwMs(90))
 	send {lbutton up}
 	if (SwFastClicks or 1)
-		PreciseSleep(SwMs(SwMaxSigns ? 5 : 40))
+		PreciseSleep(SwMs(af))
 	else
 		PreciseSleep(SwMs(60))
 	nk := 0
@@ -20422,6 +20606,12 @@ SwClickStep() {
 		{
 		SwClickStepMax()
 		return
+		}
+	static slowLog := 0
+	if (SwMaxSigns and SwPhase and SwNow() - slowLog > 0.5)
+		{
+		slowLog := SwNow()
+		SwLog("max path off: press " . SwPressK . " want " . SwWantK)
 		}
 	if (SwPhase and SwClickSigns)
 		SwCursorGuard()
@@ -26261,16 +26451,14 @@ IconTips[hQ] := "How the rod is cast.`n`nNORMAL - holds the mouse for a fixed ti
 CastGroupTop := 202
 
 ; ---- Normal group ----
-hC := AddPanel(CARDX, 192, CARDW, 104)
+hC := AddPanel(CARDX, 192, CARDW, 104 - RH)
 NormalCastCtrls.Push(hC)
-hC := AddPanel(CARDX, 306, CARDW, 108)
+hC := AddPanel(CARDX, 306 - RH, CARDW, 108)
 NormalCastCtrls.Push(hC)
 
 Y := CastGroupTop
 NormalCastDefs := [ ["Cast hold (ms)","HoldRodCastDuration"
-	, "How long the mouse is held down to cast.`n`nHIGHER = casts further out.`nLOWER  = casts closer in."]
-	, ["Bobber wait (ms)","WaitForBobberDelay"
-	, "How long to wait after casting before it`nstarts looking for the shake button.`n`nRaise it if shaking starts before the`nbobber has landed."] ]
+	, "How long the mouse is held down to cast.`n`nHIGHER = casts further out.`nLOWER  = casts closer in."] ]
 for i, d in NormalCastDefs
 	{
 	lbl := d[1]
@@ -26305,17 +26493,18 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 NormalCastCtrls.Push(hQ)
-IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nThe box: casts that many times in a row - each`ncast holds for Cast hold, then waits Cast hold +`n50 ms before the next. 2 is a double cast.`n`nOFF - plain timed cast."
+IconTips[hQ] := "ON - while the mouse is held it watches for the`ncast power bar. Once it has seen the bar on a few`ncasts, a cast with NO power bar is treated as a`nclick the game ignored (rod not out yet, catch`nanimation) and it recasts straight away instead`nof waiting for the bar failsafe. The 2nd miss in a`nrow also re-equips the rod.`n`nIf your game's power bar is never spotted it`nnever kicks in, so it cannot make casting worse.`n`nThe box: casts that many times in a row - each`ncast holds for Cast hold, then waits Cast hold +`n50 ms before the next. 2 is a double cast.`n`nThrough every cast it also looks for the minigame:`nthe moment it shows, casting stops and it plays.`n`nOFF - plain timed cast."
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y316 w%TXW% h16 HwndhNCTipHdr, TIPS
+NcTipY := 316 - RH
+Gui, Add, Text, x%CX% y%NcTipY% w%TXW% h16 HwndhNCTipHdr, TIPS
 NormalCastCtrls.Push(hNCTipHdr)
 Gui, Font, s9 Norm cFFFFFF, Segoe UI
 NormalCastTips := "• Casts a fixed distance every time.`n"
 NormalCastTips .= "• Raise the hold duration to cast further out.`n"
-NormalCastTips .= "• Raise the bobber delay on laggy servers.`n"
 NormalCastTips .= "• No colors to calibrate — this always works."
-Gui, Add, Text, x%CX% y338 w%TXW% h68 cFFFFFF HwndhNCTips, %NormalCastTips%
+NcTipY := 338 - RH
+Gui, Add, Text, x%CX% y%NcTipY% w%TXW% h52 cFFFFFF HwndhNCTips, %NormalCastTips%
 NormalCastCtrls.Push(hNCTips)
 SpecialBrushes[hNCTips] := {brush: hBrushCard, text: 0xFFFFFF}
 
@@ -26733,7 +26922,7 @@ MgAdd("halicol", hQ)
 IconTips[hQ] := "ON - the bar goes for the exclamation mark`nwhen it appears (the harpoon minigame).`n`nOFF - the bar stays on the fish line the whole`ntime and ignores the exclamation mark."
 
 ; ------------------------------------------------------------------- Stellarwave Melody
-MgBlockOpen("stellar", 204, 284)
+MgBlockOpen("stellar", 204, 284 + RH)
 Y := 219
 SwChk := SwClickSigns ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwClickSigns %SwChk% gSwClickChanged HwndhC, Click the signs
@@ -26802,6 +26991,16 @@ Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
 IconTips[hQ] := "ON - pushes sign detection and clicking to the`nlimit: the stars are trusted almost the moment`nthey change, the start of the signs is locked in`nsooner, and each click is held and hovered for`nabout half as long.`n`nExtreme: star changes are read every frame and`ntrusted instantly, every sign already showing is`nclicked in ONE burst without waiting for each star,`nclicks are 10ms hover / 20ms hold, and failed`nclicks are spotted and retried twice as fast.`n`nThe fastest setting, but the most likely to misread`na star or have a click not register. Pair it with`nRetry failed clicks."
+Y += RH
+SwTurboChk := SwTurbo ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwTurbo %SwTurboChk% gSwTurboChanged HwndhC, Turbo clicks
+MgAdd("stellar", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+MgAdd("stellar", hQ)
+IconTips[hQ] := "ON - each sign click is about half as long: 4ms hover,`n2ms nudge, 12ms hold, no pause after (was 10 / 5 / 20 / 5).`nA burst of signs goes through much faster.`n`nIf clicks start to miss (a star does not light), turn it`noff - or raise the times in Advanced settings.`nWorks with Max sign speed."
 Y += RH
 SwPasChk := SwPassive ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwPassive %SwPasChk% gSwPassiveChanged HwndhC, Passive mode
@@ -29864,6 +30063,13 @@ if (!ErrorLevel)
 gosub, QueueAutoSave
 return
 
+SwTurboChanged:
+GuiControlGet, SwTurboV, 1:, SwTurbo
+if (!ErrorLevel)
+	SwTurbo := SwTurboV ? true : false
+gosub, QueueAutoSave
+return
+
 SwPresetChanged:
 GuiControlGet, SwPreset, 1:, SwPreset
 if (SwPreset != SwPresetCur)
@@ -31801,7 +32007,7 @@ Gui, Add, Text, x%QX% y220 w16 h20 Center +0x100 +0x200 HwndhQ, ?
 DebugCtrls.Push(hQ)
 IconTips[hQ] := "Where the macro sees the bar: a line at its LEFT and RIGHT side`nand one at the fish (LINE), each labelled, just above the bar."
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y252 w%TXW% h34 HwndhC, They show while the macro runs, with Debug on (Extra). The markers sit just above the bar, so they never cover what the macro reads.
+Gui, Add, Text, x%CX% y252 w%TXW% h34 HwndhC, They show while the macro runs, with Debug on (Extra). The markers sit just above the bar, so they never cover what the macro reads. With Debug on, Stellarwave also writes stellarwave_log.txt next to Veltrix.
 DebugCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorMutedBGR}
 return
