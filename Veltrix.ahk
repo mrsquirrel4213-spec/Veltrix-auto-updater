@@ -27,11 +27,8 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 72
-; for copies from before the rename (their updater looks for these): DFModBuild := 72
-; DFBetaVersion :=
+VxBuild := 73
 VxVersion := VxVerName(VxBuild)
-; the new look is always on (the classic window only shows if the panel cannot be built on a PC)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
 
