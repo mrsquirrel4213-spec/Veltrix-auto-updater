@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 75
+VxBuild := 76
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -6918,6 +6918,9 @@ AdvRegistry() {
 	r.Push(["Shake and failsafes", "V", "BarCalculationFailsafe", 0, "s|Bar failsafe - recast if the bar never shows after"])
 	r.Push(["Auto Nuke", "L", "nukelead", 80, "ms|Aim where the needle will be this far ahead"])
 	r.Push(["Auto Nuke", "L", "nukegreen", 4, "%|The minigame counts as up with this much of its green on screen"])
+	r.Push(["Tranquility", "L", "tqhaze", 70, "|Through a haze: a note stands this far from its lane's colour"])
+	r.Push(["Tranquility", "L", "tqlift", 30, "|...and is this much lighter than its lane"])
+	r.Push(["Tranquility", "L", "tqhue", 85, "%|A hazy note's colour must point this close to its lane's (100 = the same)"])
 	r.Push(["Tranquility", "L", "tqbright", 45, "|A note must be this much brighter than its lane's background (or far from its colour)"])
 	r.Push(["Tranquility", "L", "tqdist", 120, "|...or this far from the lane's colour (sum of red, green, blue differences)"])
 	r.Push(["Lullaby", "L", "lullsame", 10, "deg|A pillar within this of a clicked one is the same pillar (not clicked again)"])
@@ -7438,13 +7441,35 @@ TqLaneBg(cx) {
 ; a note / ring pixel: bright for this lane, coloured, and well away from the lane's background colour
 TqNotePx(cr, cg, cb) {
 	global TqBgR, TqBgG, TqBgB, TqBgT
+	d := Abs(cr - TqBgR) + Abs(cg - TqBgG) + Abs(cb - TqBgB)
+	; through a haze (a boss washing the screen out): a note still stands well clear of its lane and lighter than it
+	if (d >= TA("tqhaze", 70) and (cr + cg + cb) - (TqBgR + TqBgG + TqBgB) >= TA("tqlift", 30))
+		return true
 	mx := (cr > cg) ? ((cr > cb) ? cr : cb) : ((cg > cb) ? cg : cb)
 	mn := (cr < cg) ? ((cr < cb) ? cr : cb) : ((cg < cb) ? cg : cb)
 	if (mx <= 90 or (mx - mn) <= 35)
 		return false
 	; far from the lane's colour (on a dark lane: any coloured note), or clearly brighter than it (a note on a lane
 	; tinted near its own colour)
-	return (Abs(cr - TqBgR) + Abs(cg - TqBgG) + Abs(cb - TqBgB) > TA("tqdist", 120) or mx > TqBgT)
+	return (d > TA("tqdist", 120) or mx > TqBgT)
+}
+
+; a note's colour by how it differs from its lane's background - a haze over both cancels out: the lane's colour
+; (the share of red / green / blue close to its ring's), or red
+TqDiffOk(pr, pg, pb, rf) {
+	global TqBgR, TqBgG, TqBgB
+	dr := pr - TqBgR, dg := pg - TqBgG, db := pb - TqBgB
+	dr := (dr < 0) ? 0 : dr, dg := (dg < 0) ? 0 : dg, db := (db < 0) ? 0 : db
+	sd := dr + dg + db
+	if (sd < TA("tqlift", 30))
+		return false
+	if (dr >= 40 and dr > dg + 40 and dr > db + 20)
+		return true
+	; the same direction of colour as the lane's (cosine of the two)
+	nd := Sqrt(dr * dr + dg * dg + db * db), nr := Sqrt(rf[1] * rf[1] + rf[2] * rf[2] + rf[3] * rf[3])
+	if (nd <= 0 or nr <= 0)
+		return false
+	return ((dr * rf[1] + dg * rf[2] + db * rf[3]) / (nd * nr) >= TA("tqhue", 85) / 100.0)
 }
 
 ; the red notes some fights send down any lane
@@ -7570,7 +7595,7 @@ ManiaStep(t) {
 							dmax := dg
 						if (db > dmax)
 							dmax := db
-						if ((kr >= 0.35 and kr <= 0.90 and dmax <= 0.06) or TqPurple(pr, pg, pb) or TqRed(pr, pg, pb))
+						if ((kr >= 0.35 and kr <= 0.90 and dmax <= 0.06) or TqPurple(pr, pg, pb) or TqRed(pr, pg, pb) or TqDiffOk(pr, pg, pb, rf))
 							{
 							if (rh <= maxOne)
 								{
