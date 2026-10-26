@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 74
+VxBuild := 75
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -229,7 +229,12 @@ ProfileFields.Push( ["Misc","PogoOn","false","bool"]
                   , ["Misc","PogoJumpKey","Space","str"]
                   , ["Misc","PogoHold","30","num"]
                   , ["Misc","ScanCap","0","num"]
-                  , ["Misc","PressCap","0","num"] )
+                  , ["Misc","PressCap","10","num"]
+                  , ["Misc","NukeAuto","false","bool"]
+                  , ["Misc","NukeEveryMs","100","num"]
+                  , ["Misc","NukeZone","8","num"]
+                  , ["Misc","NukeTapMs","30","num"]
+                  , ["Misc","NukeSwap","false","bool"] )
 
 ; a copy with another file name (from before the rename) moves itself to Veltrix.ahk once
 if (A_ScriptName != "Veltrix.ahk" and !FileExist(A_ScriptDir . "\Veltrix.ahk"))
@@ -254,6 +259,7 @@ DbgOn := (DbgOn = "1") ? 1 : 0
 DbgFps := (DbgFps = "0") ? 0 : 1
 DbgBar := (DbgBar = "0") ? 0 : 1
 gosub, LoadActiveProfile
+gosub, NukeTimerRefresh
 ; leftover: the copy kept while the last update was put in place
 FileDelete, %A_ScriptFullPath%.bak
 VxIco := VxIconFile()
@@ -392,7 +398,7 @@ CMTargetHint.StellarFishColors := "The light blue line of the fish on the bar.`n
 CMTargetHint.StellarHeadColors := "The white note head of the fish, just above`nthe bar. 0xFFFFFF is the normal color."
 gosub, CMApplyTargets
 MiniTab := "Setup"
-MiniTop := 162
+MiniTop := 124
 MiniTabSetupH := 0
 MiniTabColorsH := 0
 FreezeActive := false
@@ -548,7 +554,7 @@ Hotkey, % "$" . ReloadKey, HotkeyReload, Off
 Hotkey, % "$" . ExitKey, HotkeyExit, Off
 ForceReEquip := false
 RodEquippedOnce := false
-Hotkey, $F9, FreezePickHotkey, On
+Hotkey, $F9, FreezePickHotkey, Off
 GroupAdd, RobloxGrp, ahk_exe RobloxPlayerBeta.exe
 GroupAdd, RobloxGrp, ahk_exe Windows10Universal.exe
 PogoHkNow := ""
@@ -6910,6 +6916,8 @@ AdvRegistry() {
 	r.Push(["Shake and failsafes", "V", "NavigationSpamDelay", 0, "ms|Shake: delay between Enter presses"])
 	r.Push(["Shake and failsafes", "V", "NavigationShakeFailsafe", 0, "s|Shake failsafe - recast if no fish after"])
 	r.Push(["Shake and failsafes", "V", "BarCalculationFailsafe", 0, "s|Bar failsafe - recast if the bar never shows after"])
+	r.Push(["Auto Nuke", "L", "nukelead", 80, "ms|Aim where the needle will be this far ahead"])
+	r.Push(["Auto Nuke", "L", "nukegreen", 4, "%|The minigame counts as up with this much of its green on screen"])
 	r.Push(["Tranquility", "L", "tqbright", 45, "|A note must be this much brighter than its lane's background (or far from its colour)"])
 	r.Push(["Tranquility", "L", "tqdist", 120, "|...or this far from the lane's colour (sum of red, green, blue differences)"])
 	r.Push(["Lullaby", "L", "lullsame", 10, "deg|A pillar within this of a clicked one is the same pillar (not clicked again)"])
@@ -11726,6 +11734,129 @@ KbGrab(x, y, w, h, ByRef hdcM, ByRef hbm, ByRef old) {
 	DllCall("ReleaseDC", "Ptr", 0, "Ptr", hdcS)
 	return pBits
 }
+
+; ---- Auto Nuke: "Balance The Nuke!" - a white needle over a red / yellow / green half circle, Q and E push it.
+; The needle turns on a fixed point of the screen (just above the text); every check finds it by sweeping angles
+; round that point (the one with the most white along it), and presses the key that pushes it back to the green.
+NukeTimerRefresh:
+NukeMs := NukeEveryMs
+if NukeMs is not number
+	NukeMs := 100
+NukeMs := (NukeMs < 20) ? 20 : Round(NukeMs)
+if (NukeAuto)
+	SetTimer, NukeTick, %NukeMs%
+else
+	SetTimer, NukeTick, Off
+return
+
+NukeTick:
+gosub, NukeTimerRefresh
+if (!NukeAuto or NukeBusy or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+	return
+NukeBusy := true
+NukeA := NukeNeedle()
+NukeBusy := false
+DllCall("QueryPerformanceCounter", "Int64*", NukeNowQ)
+NukeNow := NukeNowQ / QpcFreq
+if (NukeA = "")
+	{
+	NukePrevT := 0
+	NukeSeen := false
+	return
+	}
+NukeSeen := true
+; where it is about to be: its drift since the last look (a press throws that off, so not right after one)
+NukePred := NukeA
+if (NukePrevT and NukeNow - NukePrevT < 0.4 and NukeNow - NukePressT > 0.15)
+	NukePred := NukeA + (NukeA - NukePrevA) / (NukeNow - NukePrevT) * TA("nukelead", 80) / 1000.0
+NukePrevA := NukeA
+NukePrevT := NukeNow
+NukeZoneD := NukeZone
+if NukeZoneD is not number
+	NukeZoneD := 8
+if (NukePred > NukeZoneD)
+	NukeKey := NukeSwap ? "e" : "q"
+else if (NukePred < -NukeZoneD)
+	NukeKey := NukeSwap ? "q" : "e"
+else
+	return
+NukeTap := NukeTapMs
+if NukeTap is not number
+	NukeTap := 30
+Send, {%NukeKey% down}
+Sleep, % (NukeTap < 5) ? 5 : Round(NukeTap)
+Send, {%NukeKey% up}
+NukePressT := NukeNow
+NukePrevT := 0
+NukePresses := NukePresses + 1
+NukeLast := Format("needle {:+d} deg - pressed {} ({} presses)", Round(NukeA), Format("{:U}", NukeKey), NukePresses)
+return
+
+; the needle's angle in degrees (0 = straight up, + = leaning right), "" when the Nuke minigame is not up
+NukeNeedle() {
+	global RobloxHwnd
+	RobloxClientRect(RobloxHwnd, wx, wy, ww, wh)
+	if (ww < 200 or wh < 200)
+		return ""
+	px := ww * 0.501, py := wh * 0.8352
+	half := Round(wh * 0.17), up := Round(wh * 0.15), dn := Round(wh * 0.03)
+	gx := Round(px) - half, gy := Round(py) - up, gw := 2 * half, gh := up + dn
+	pBits := KbGrab(wx + gx, wy + gy, gw, gh, hdcM, hbm, old)
+	if (!pBits)
+		return ""
+	; the half circle is there: enough of its green
+	gn := 0, n := 0, y := 0
+	while (y < gh)
+		{
+		x := 0
+		while (x < gw)
+			{
+			v := NumGet(pBits + (y * gw + x) * 4, 0, "UInt")
+			b := v & 0xFF, g := (v >> 8) & 0xFF, r := (v >> 16) & 0xFF
+			gn += (g > 170 and r < 150 and b < 150)
+			n++
+			x += 6
+			}
+		y += 6
+		}
+	best := -1, bestA := 0
+	if (n and gn * 100 >= n * TA("nukegreen", 4))
+		{
+		cx := px - gx, cy := py - gy
+		r0 := wh * 0.035, r1 := wh * 0.14
+		a := -85
+		while (a <= 85)
+			{
+			s := Sin(a * 0.0174533), c := Cos(a * 0.0174533), w := 0
+			Loop 24
+				{
+				rr := r0 + (r1 - r0) * (A_Index - 1) / 23
+				x := Round(cx + rr * s), y := Round(cy - rr * c)
+				if (x < 0 or y < 0 or x >= gw or y >= gh)
+					continue
+				v := NumGet(pBits + (y * gw + x) * 4, 0, "UInt")
+				b := v & 0xFF, g := (v >> 8) & 0xFF, r := (v >> 16) & 0xFF
+				w += ((r < g ? (r < b ? r : b) : (g < b ? g : b)) >= 220)
+				}
+			if (w > best)
+				best := w, bestA := a
+			a += 1
+			}
+		}
+	KbGrabEnd(hdcM, hbm, old)
+	; a real needle is white most of the way along
+	return (best >= 18) ? bestA : ""
+}
+
+NukeStatusTick:
+if (!NukeAuto)
+	NukeLine := "Off."
+else if (!NukeSeen)
+	NukeLine := "Watching for the Nuke minigame (every " . NukeMs . " ms)."
+else
+	NukeLine := "Balancing - " . NukeLast
+GuiControl, 1:, NukeStatLine, %NukeLine%
+return
 
 KbGrabEnd(hdcM, hbm, old) {
 	DllCall("SelectObject", "Ptr", hdcM, "Ptr", old)
@@ -24412,7 +24543,7 @@ MgAdd(name, h) {
 LayoutMinigame() {
 	global MgBlocks, MgVisible, SpecialRod, ControlMode, CARDX, MiniTop, ProfCtrls, ProfPosX, ProfPosY, ProfCardH
 	MgVisible := {}
-	vis := ["mode"]
+	vis := ["tip", "mode", "presets"]
 	if (SpecialRod = "Halibut Harpoon")
 		vis.Push("halicol")
 	if (SpecialRod = "Remembrance")
@@ -24693,6 +24824,8 @@ KeeperCtrls := []
 KeeperBodyCtrls := []
 AdvCtrls := []
 GuessCtrls := []
+NukeCtrls := []
+NukeBodyCtrls := []
 GuessBodyCtrls := []
 FaqCtrls := []
 AboutCtrls := []
@@ -24989,6 +25122,11 @@ else if (NeedSection = "Aquarium")
 	{
 	gosub, BuildAquariumSection
 	NewLists := [AquariumCtrls]
+	}
+else if (NeedSection = "Nuke")
+	{
+	gosub, BuildNukeSection
+	NewLists := [NukeCtrls]
 	}
 else if (NeedSection = "Keeper")
 	{
@@ -26985,6 +27123,45 @@ BuildMinigameSection:
 
 MgBlocks := {}
 
+; ------------------------------------------------- the camera tip
+MgBlockOpen("tip", 120, 34)
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y128 w%TXW% h18 +0x200 HwndhL, Tip: the macro works best zoomed all the way out and looking straight down.
+MgAdd("tip", hL)
+SpecialBrushes[hL] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+
+; ------------------------------------------------- colour presets (every rod)
+MgBlockOpen("presets", 204, 2 * RH + 24)
+Y := 216
+; presets: the rod's default colours and your own saved ones (skins), per rod
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Preset:
+MgAdd("presets", hL)
+Gui, Add, DropDownList, x%IX% y%Y% w%IW% h200 vColPreset gColPresetChosen HwndhC, % ColPresetList()
+ColPresetDdl := hC
+MgAdd("presets", hC)
+ThemedCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%SWX% y%Y% w%SWW% h20 Center +0x100 +0x200 gColPresetDelete HwndhC, Delete
+MgAdd("presets", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+MgAdd("presets", hQ)
+IconTips[hQ] := "Colour sets for this rod - for rod skins. Every rod has`nits own list, and a set holds all of the rod's colour`nboxes on this page.`n`nDEFAULT - the rod's own colours (its normal skin).`nYour saved ones - pick one to fill in its colours.`n`nTo save one: set the colours below, type a name`nunder Save as, then Save. Delete removes the`npicked one (Default always stays)."
+Y += RH
+Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Save as:
+MgAdd("presets", hL)
+Gui, Add, Edit, x%IX% y%Y% w%IW% h20 vColPresetName Limit30 HwndhC,
+MgAdd("presets", hC)
+ThemedCtrls.Push(hC)
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%SWX% y%Y% w%SWW% h20 Center +0x100 +0x200 gColPresetSave HwndhC, Save
+MgAdd("presets", hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Y += RH
+
 ; ------------------------------------------------- detection mode, special rod, edge fallback
 MgBlockOpen("mode", 120, 90 - RH)
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -27007,7 +27184,7 @@ MgAdd("mode", hQ)
 IconTips[hQ] := "Extra behaviour for rods with their own`nmechanics.`n`nUse the DEFAULT rod skin. Other skins`nchange how the bar looks and break detection.`n`nSPLITBRANCH TWIG - clicks one of the two fish`nwhen the rod asks you to choose. The minigame`nitself is unchanged.`n`nSTELLARWAVE MELODY - clicks the zodiac signs on`nthe bar in the order shown above it, then reels`nas normal. Keep the cursor free (no shift lock`nor first person)."
 
 ; -------------------------------------------------------------------------------- bar colors
-MgBlockOpen("colors", 204, 276 - 3 * RH)
+MgBlockOpen("colors", 204, 4 * RH + 80)
 Y := 220
 ColorFieldDefs := [ ["Fish line color","FishColor","FishColorSwatch"
 	, "The thin marker that slides along the bar."]
@@ -27043,30 +27220,14 @@ for i, d in ColorFieldDefs
 	}
 
 Y += 4
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CX% y%Y% w200 h26 Center +0x100 +0x200 gOpenColorManager HwndhC, 🎨  Color Manager  (F9)
-MgAdd("colors", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
-RoundCtrl(hC, 200, 26, 7)
 Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x412 y%Y% w316 h26 +0x200 HwndhL, Every entry holds a LIST — add each shade.
-MgAdd("colors", hL)
-SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
-
-Y += 30
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CX% y%Y% w200 h26 Center +0x100 +0x200 gMgRestoreDefaults HwndhC, ↺  Restore defaults
-MgAdd("colors", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
-RoundCtrl(hC, 200, 26, 7)
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x412 y%Y% w316 h26 +0x200 HwndhL, Resets Setup and every Color Manager color.
+Gui, Add, Text, x%CX% y%Y% w%TXW% h46 HwndhL, COLOR CODES: take a screenshot (Win + Shift + S), open imagecolorpicker.com in your browser and paste it (Ctrl + V). Click the part you need, copy its HEX code and type it here as 0x + the code (FFFFFF = 0xFFFFFF). More shades: separate them with commas.
 MgAdd("colors", hL)
 SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 
 ; --------------------------------------------------------------------- falling notes (Pinions)
-MgBlockOpen("notes", 204, 162 - RH)
+MgBlockOpen("notes", 204, 132 - RH)
 Y := 220
 Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Note color:
 MgAdd("notes", hL)
@@ -27106,20 +27267,8 @@ for i, d in NoteFieldDefs
 	Y += RH
 	}
 
-Y += 4
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%CX% y%Y% w200 h26 Center +0x100 +0x200 gOpenColorManager HwndhC, 🎨  Color Manager  (F9)
-MgAdd("notes", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
-RoundCtrl(hC, 200, 26, 7)
-Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-Gui, Add, Text, x412 y%Y% w316 h26 +0x200 HwndhL, Notes are hunted across the Shake search area.
-MgAdd("notes", hL)
-SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-
 ; -------------------------------------------------- extra colors (Tryhard Rod, Castbound)
-RodColTip := "Leave empty if this rod already works for you.`n`nOnly for screens where the rod's own detection`nnever picks this up: open the Color Manager,`nPick from screen, and click it in game.`n`nThe rod's own detection still runs - these`nare added to it. Empty = nothing changes."
+RodColTip := "Leave empty if this rod already works for you.`n`nOnly for screens where the rod's own detection`nnever picks this up: take a screenshot, find the`ncolour's code on imagecolorpicker.com and type it`nhere as 0x + the code.`n`nThe rod's own detection still runs - these`nare added to it. Empty = nothing changes."
 RodTolTip := "How closely a pixel must match one of the`nextra colors above. Leave at the default.`n`nHIGHER = more forgiving.`nTOO HIGH = scenery gets mistaken for it."
 ; the Stellarwave color boxes hold the picked preset's colours; the other preset's are kept aside.
 ; Settings from before this saved the zodiac colours there even with Ominous Ouija picked - move them aside once
@@ -27168,7 +27317,7 @@ for RcI, RcD in RodColBlockDefs
 			RcRows.Push(d)
 		}
 	RcHead := RcD[3]
-	MgBlockOpen(RcName, 204, 94 + RcRows.MaxIndex() * RH)
+	MgBlockOpen(RcName, 204, 64 + RcRows.MaxIndex() * RH)
 	Y := 218
 	Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
 	Gui, Add, Text, x%CX% y%Y% w520 h16 HwndhL, %RcHead%
@@ -27217,16 +27366,6 @@ for RcI, RcD in RodColBlockDefs
 		IconTips[hQ] := RcTip
 		Y += RH
 		}
-	Y += 4
-	Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-	Gui, Add, Text, x%CX% y%Y% w200 h26 Center +0x100 +0x200 gOpenColorManager HwndhC, 🎨  Color Manager  (F9)
-	MgAdd(RcName, hC)
-	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
-	RoundCtrl(hC, 200, 26, 7)
-	Gui, Font, s8 Norm c%ColorMuted%, Segoe UI
-	Gui, Add, Text, x412 y%Y% w316 h26 +0x200 HwndhL, Pick from screen, then click that part in game.
-	MgAdd(RcName, hL)
-	SpecialBrushes[hL] := {brush: hBrushCard, text: ColorMutedBGR}
 	Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 	}
 
@@ -27637,7 +27776,8 @@ Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 UtilRowDefs := [ ["Auto Totem","UtilTotemOn","UtilTotemToggle","UtilOpenTotem"]
 	, ["Auto Aquarium","UtilAquariumOn","UtilAquariumToggle","UtilOpenAquarium"]
 	, ["Auto Keeperbound Recharge","UtilKeeperOn","UtilKeeperToggle","UtilOpenKeeper"]
-	, ["Stellarwave Auto Retry","UtilGuessOn","UtilGuessToggle","UtilOpenGuess"] ]
+	, ["Stellarwave Auto Retry","UtilGuessOn","UtilGuessToggle","UtilOpenGuess"]
+	, ["Auto Nuke","UtilNukeOn","UtilNukeToggle","UtilOpenNuke"] ]
 
 UtilRowY := 120
 for i, d in UtilRowDefs
@@ -27662,6 +27802,8 @@ for i, d in UtilRowDefs
 		uchk := KeeperAuto ? "Checked" : ""
 	else if (cvar = "UtilGuessOn")
 		uchk := SwGuessOn ? "Checked" : ""
+	else if (cvar = "UtilNukeOn")
+		uchk := NukeAuto ? "Checked" : ""
 	Gui, Add, CheckBox, x572 y%UtilLblY% w58 h20 c%ColorText% v%cvar% %uchk% g%ctog% HwndhC, On
 	UtilCtrls.Push(hC)
 	SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
@@ -27684,7 +27826,7 @@ UtilCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
 SpY += 30
 for i, d in [["Max scans per second", "ScanCap", "How many times a second it looks at the fish bar`nwhile reeling.`n`n0 = no limit (as fast as your PC goes, often`n300-400 a second).`nLower it if the macro uses too much CPU.`nBelow 60 the bar control gets slow."]
-	, ["Max presses per second", "PressCap", "A soft limit on how often it presses the mouse`nwhile reeling - pressing too often makes the bar`nshake and the fish gets away.`n`n0 = no limit (the default - the fine centring`npresses as often as it needs). 10-20 if you want`nfewer presses. Never below 5 or above 60.`nHolding or letting go is never delayed, only a`nnew press."]]
+	, ["Max presses per second", "PressCap", "A soft limit on how often it presses the mouse`nwhile reeling - pressing too often makes the bar`nshake and the fish gets away.`n`n10 is the default. 0 = no limit (the fine centring`npresses as often as it needs). Never below 5 or`nabove 60.`nHolding or letting go is never delayed, only a`nnew press."]]
 	{
 	Gui, Font, s9 Norm c%ColorText%, Segoe UI
 	Gui, Add, Text, x%CX% y%SpY% w%LW% h20 +0x200 HwndhC, % d[1] . ":"
@@ -27751,6 +27893,20 @@ return
 
 UtilOpenKeeper:
 TargetSection := "Keeper"
+gosub, ShowSection
+return
+
+UtilNukeToggle:
+GuiControlGet, UtilNukeOn, 1:, UtilNukeOn
+NukeAuto := UtilNukeOn ? true : false
+GuiControl, 1:, NukeAuto, %UtilNukeOn%
+gosub, NukeTimerRefresh
+gosub, ShowSection
+gosub, QueueAutoSave
+return
+
+UtilOpenNuke:
+TargetSection := "Nuke"
 gosub, ShowSection
 return
 
@@ -27935,6 +28091,7 @@ GuiControlGet, SwGuessV, 1:, SwGuessOn
 if (!ErrorLevel)
 	SwGuessOn := SwGuessV ? true : false
 GuiControl, 1:, UtilGuessOn, % (SwGuessOn ? 1 : 0)
+GuiControl, 1:, UtilNukeOn, % (NukeAuto ? 1 : 0)
 gosub, ShowSection
 gosub, QueueAutoSave
 return
@@ -29035,6 +29192,105 @@ return
 
 ;====================================================================================================;
 
+BuildNukeSection:
+
+Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%CARDX% y120 w220 h18 +0x100 gUtilBack HwndhC, ‹  Tools
+NukeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushBG, text: ColorAccentBGR}
+
+hC := AddPanel(CARDX, 140, CARDW, 54)
+NukeCtrls.Push(hC)
+Gui, Font, s11 Bold c%ColorText%, Segoe UI
+Gui, Add, Text, x%CX% y157 w220 h20 HwndhC, Auto Nuke
+NukeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+NkChk := NukeAuto ? "Checked" : ""
+Gui, Add, CheckBox, x572 y157 w58 h20 c%ColorText% vNukeAuto %NkChk% gNukeAutoChanged HwndhC, On
+NukeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x642 y153 w86 h28 Center +0x100 +0x200 gUtilBack HwndhC, Hide
+NukeCtrls.Push(hC)
+SpecialBrushes[hC] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(hC, 86, 28, 7)
+
+hC := AddPanel(CARDX, 204, CARDW, 170)
+NukeCtrls.Push(hC)
+NukeBodyCtrls.Push(hC)
+
+NkFieldDefs := [ ["Check every (ms)","NukeEveryMs"
+	, "How often it looks at the needle.`n`n100 is plenty - the needle drifts about 10`ndegrees a second at first. Lower it if the`nneedle runs away late in the minigame."]
+	, ["Green zone (degrees)","NukeZone"
+	, "How far the needle may lean from straight up`nbefore it presses.`n`nOne press moves the needle about 15 degrees,`nso around 8 keeps it in the middle of the green."]
+	, ["Key tap (ms)","NukeTapMs"
+	, "How long Q / E is held for one press."] ]
+NkY := 220
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+for i, d in NkFieldDefs
+	{
+	lbl := d[1]
+	var := d[2]
+	Gui, Add, Text, x%CX% y%NkY% w%LW% h20 HwndhNC, %lbl%:
+	NukeCtrls.Push(hNC)
+	NukeBodyCtrls.Push(hNC)
+	SpecialBrushes[hNC] := {brush: hBrushCard, text: ColorTextBGR}
+	Gui, Add, Edit, x%IX% y%NkY% w%IW% h20 v%var% gNukeFieldChanged Number HwndhNC, % %var%
+	NukeCtrls.Push(hNC)
+	NukeBodyCtrls.Push(hNC)
+	ThemedCtrls.Push(hNC)
+	Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+	Gui, Add, Text, x%QX% y%NkY% w16 h20 Center +0x100 +0x200 HwndhNQ, ?
+	Gui, Font, s9 Norm c%ColorText%, Segoe UI
+	NukeCtrls.Push(hNQ)
+	NukeBodyCtrls.Push(hNQ)
+	SpecialBrushes[hNQ] := {brush: hBrushCard, text: ColorAccentBGR}
+	IconTips[hNQ] := d[3]
+	NkY += 26
+	}
+NkSw := NukeSwap ? "Checked" : ""
+Gui, Add, CheckBox, x%CX% y%NkY% w300 h20 c%ColorText% vNukeSwap %NkSw% gNukeFieldChanged HwndhNC, Swap Q / E
+NukeCtrls.Push(hNC)
+NukeBodyCtrls.Push(hNC)
+SpecialBrushes[hNC] := {brush: hBrushCard, text: ColorTextBGR}
+Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
+Gui, Add, Text, x%QX% y%NkY% w16 h20 Center +0x100 +0x200 HwndhNQ, ?
+Gui, Font, s9 Norm c%ColorText%, Segoe UI
+NukeCtrls.Push(hNQ)
+NukeBodyCtrls.Push(hNQ)
+SpecialBrushes[hNQ] := {brush: hBrushCard, text: ColorAccentBGR}
+IconTips[hNQ] := "OFF - Q pushes the needle left, E pushes it right.`nTurn it on if it pushes the wrong way."
+NkY += 32
+Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CX% y%NkY% w520 h20 vNukeStatLine HwndhNC, Off.
+NukeCtrls.Push(hNC)
+NukeBodyCtrls.Push(hNC)
+SpecialBrushes[hNC] := {brush: hBrushCard, text: ColorMutedBGR}
+
+Gui, Font, s8 c%ColorMuted%, Segoe UI
+Gui, Add, Text, x%CARDX% y384 w%CARDW% h48 HwndhNC, When "Balance The Nuke!" shows`, it keeps the needle in the green with Q and E. It watches all the time while it is on`n(only while Roblox is the window in front)`, also between fishing.
+NukeCtrls.Push(hNC)
+SpecialBrushes[hNC] := {brush: hBrushBG, text: ColorMutedBGR}
+Gui, Font, s9 c%ColorMuted%, Segoe UI
+return
+
+NukeAutoChanged:
+GuiControlGet, NukeAuto, 1:, NukeAuto
+NukeAuto := NukeAuto ? true : false
+GuiControl, 1:, UtilNukeOn, % (NukeAuto ? 1 : 0)
+gosub, NukeTimerRefresh
+gosub, ShowSection
+gosub, QueueAutoSave
+return
+
+NukeFieldChanged:
+Gui, Submit, NoHide
+NukeSwap := NukeSwap ? true : false
+gosub, NukeTimerRefresh
+gosub, QueueAutoSave
+return
+
 BuildAquariumSection:
 
 Gui, Font, s9 Norm c%ColorAccent%, Segoe UI
@@ -29918,7 +30174,7 @@ return
 ;====================================================================================================;
 
 MiniTabClick:
-MiniTab := (A_GuiControl = "MiniTabColors") ? "Colors" : "Setup"
+MiniTab := "Setup"
 TargetSection := "Minigame"
 gosub, ShowSection
 return
@@ -29950,6 +30206,7 @@ if (UiMerge)
 OnUtil := (TargetSection = "Utilities")
 OnTotem := (TargetSection = "Totem")
 OnAqua := (TargetSection = "Aquarium")
+OnNuke := (TargetSection = "Nuke")
 OnKeep := (TargetSection = "Keeper")
 OnAdv := (TargetSection = "Advanced")
 OnGuess := (TargetSection = "Guess")
@@ -29957,7 +30214,7 @@ OnMini := (TargetSection = "Minigame" or (UiMerge and TargetSection = "Home"))
 OnCast := (TargetSection = "Cast")
 OnSetup := (OnMini and MiniTab != "Colors")
 OnColors := (OnMini and MiniTab = "Colors")
-SecTopEdge := (OnMini ? 158 : 120) - YS
+SecTopEdge := 120 - YS
 
 ShowList(GeneralCtrls, TargetSection = "General")
 ShowList(CreditsCtrls, TargetSection = "General")
@@ -29985,8 +30242,8 @@ if (IsObject(ClDetailCtrls))
 	}
 
 ; ---- Minigame: two faces, Setup and the Color Manager ----
-GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabSetup
-GuiControl, % (OnMini ? "1:Show" : "1:Hide"), MiniTabColors
+GuiControl, 1:Hide, MiniTabSetup
+GuiControl, 1:Hide, MiniTabColors
 if (OnSetup)
 	LayoutMinigame()
 ShowList(ProfCtrls, OnSetup)
@@ -30048,6 +30305,18 @@ if (OnGuess and !SwGuessOn)
 if (OnGuess)
 	gosub, SwGuessRefresh
 
+; ---- Auto Nuke ----
+ShowList(NukeCtrls, OnNuke)
+if (OnNuke and !NukeAuto)
+	ShowList(NukeBodyCtrls, false)
+if (OnNuke)
+	{
+	gosub, NukeStatusTick
+	SetTimer, NukeStatusTick, 500
+	}
+else
+	SetTimer, NukeStatusTick, Off
+
 ; ---- Aquarium ----
 ShowList(AquariumCtrls, OnAqua)
 if (OnAqua and !AquariumAuto)
@@ -30065,12 +30334,13 @@ GuiControl, 1:, UtilTotemOn, % (TotemAuto ? 1 : 0)
 GuiControl, 1:, UtilAquariumOn, % (AquariumAuto ? 1 : 0)
 GuiControl, 1:, UtilKeeperOn, % (KeeperAuto ? 1 : 0)
 GuiControl, 1:, UtilGuessOn, % (SwGuessOn ? 1 : 0)
+GuiControl, 1:, UtilNukeOn, % (NukeAuto ? 1 : 0)
 
 ; ---- sidebar highlight (the two add-on pages keep Utilities lit) ----
 NavActive := TargetSection
 if (NavActive = "Advanced")
 	NavActive := "General"
-if (NavActive = "Totem" or NavActive = "Aquarium" or NavActive = "Keeper" or NavActive = "Guess")
+if (NavActive = "Totem" or NavActive = "Aquarium" or NavActive = "Keeper" or NavActive = "Guess" or NavActive = "Nuke")
 	NavActive := "Utilities"
 for i, d in NavDefs
 	{
@@ -30467,6 +30737,7 @@ if (SpecialRod = "MiguRod")
 if (SpecialRod = "Verdant Oath")
 	gosub, ApplyVerdantOathPreset
 gosub, RefreshControlModes
+gosub, ColPresetRefresh
 TargetSection := "Minigame"
 gosub, ShowSection
 gosub, QueueAutoSave
@@ -31059,7 +31330,7 @@ gosub, DisarmHotkeys
 if (!DllCall("IsWindowVisible", "Ptr", GuiHwnd))
 	Gui, 1:Show
 TargetSection := "Minigame"
-MiniTab := "Colors"
+MiniTab := "Setup"
 gosub, ShowSection
 return
 
@@ -31284,7 +31555,7 @@ if (hLoupeFont)
 FreezeActive := false
 
 TargetSection := "Minigame"
-MiniTab := "Colors"
+MiniTab := "Setup"
 gosub, ShowSection
 return
 
@@ -31410,6 +31681,135 @@ if (!IconTips.HasKey(HoverCtrlHwnd))
 return
 
 ;====================================================================================================;
+
+; the preset names for the rod in use: Default first
+ColPresetList() {
+	global SpecialRod, SettingsFile
+	IniRead, v, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
+	out := "|Default"
+	for i, p in StrSplit(Trim(v), ";;")
+		{
+		nm := StrSplit(p, "~")[1]
+		if (Trim(nm) != "")
+			out .= "|" . nm
+		}
+	return out
+}
+
+; every colour box a preset holds
+ColPresetFields() {
+	return ["FishColor", "BarLeftColor", "BarRightColor", "ArrowColor", "NoteColor"
+		, "TryhardBarColors", "TryhardFishColors", "TryhardTrackColors"
+		, "CastboundBarColors", "CastboundFishColors", "CastboundTrackColors"
+		, "StellarBarColors", "StellarFishColors", "StellarHeadColors"]
+}
+
+ColPresetKey() {
+	global SpecialRod
+	k := RegExReplace((SpecialRod = "") ? "None" : SpecialRod, "[^A-Za-z0-9]", "")
+	return (k = "") ? "None" : k
+}
+
+ColPresetRefresh:
+if (ColPresetDdl)
+	{
+	GuiControl, 1:, ColPreset, % ColPresetList()
+	GuiControl, 1:ChooseString, ColPreset, Default
+	}
+return
+
+ColPresetChosen:
+GuiControlGet, ColPresetPick, 1:, ColPreset
+if (ColPresetPick = "Default" or ColPresetPick = "")
+	{
+	; the rod's own colours
+	CpKeys := {}
+	for i, k in ColPresetFields()
+		CpKeys[k] := 1
+	for i, f in ProfileFields
+		{
+		if (CpKeys.HasKey(f[2]))
+			{
+			CpK := f[2]
+			%CpK% := f[3]
+			}
+		}
+	if (SpecialRod = "Halibut Harpoon")
+		gosub, ApplyHalibutPreset
+	else if (SpecialRod = "Noiseform")
+		gosub, ApplyNoiseformPreset
+	else if (SpecialRod = "Remembrance")
+		gosub, ApplyRemembrancePreset
+	else if (SpecialRod = "MiguRod")
+		gosub, ApplyMiguRodPreset
+	else if (SpecialRod = "Verdant Oath")
+		gosub, ApplyVerdantOathPreset
+	}
+else
+	{
+	IniRead, CpAll, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
+	for i, p in StrSplit(Trim(CpAll), ";;")
+		{
+		CpP := StrSplit(p, "~")
+		if (CpP[1] != ColPresetPick)
+			continue
+		for j, kv in StrSplit(CpP[2], "|")
+			{
+			CpE := InStr(kv, "=")
+			if (!CpE)
+				continue
+			CpK := SubStr(kv, 1, CpE - 1)
+			if CpK is alnum
+				%CpK% := SubStr(kv, CpE + 1)
+			}
+		break
+		}
+	}
+for i, k in ColPresetFields()
+	GuiControl, 1:, %k%, % %k%
+gosub, RefreshSwatches
+gosub, QueueAutoSave
+return
+
+ColPresetSave:
+GuiControlGet, CpName, 1:, ColPresetName
+CpName := Trim(RegExReplace(CpName, "[~;|=\[\]]", ""))
+if (CpName = "" or CpName = "Default")
+	return
+Gui, Submit, NoHide
+IniRead, CpAll, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
+CpOut := ""
+for i, p in StrSplit(Trim(CpAll), ";;")
+	{
+	if (Trim(p) = "" or StrSplit(p, "~")[1] = CpName)
+		continue
+	CpOut .= ((CpOut = "") ? "" : ";;") . p
+	}
+CpVals := ""
+for i, k in ColPresetFields()
+	CpVals .= ((CpVals = "") ? "" : "|") . k . "=" . %k%
+CpOut .= ((CpOut = "") ? "" : ";;") . CpName . "~" . CpVals
+IniWrite, %CpOut%, %SettingsFile%, ColorPresets, % ColPresetKey()
+GuiControl, 1:, ColPresetName,
+GuiControl, 1:, ColPreset, % ColPresetList()
+GuiControl, 1:ChooseString, ColPreset, %CpName%
+return
+
+ColPresetDelete:
+GuiControlGet, CpName, 1:, ColPreset
+if (CpName = "" or CpName = "Default")
+	return
+IniRead, CpAll, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
+CpOut := ""
+for i, p in StrSplit(Trim(CpAll), ";;")
+	{
+	if (Trim(p) = "" or StrSplit(p, "~")[1] = CpName)
+		continue
+	CpOut .= ((CpOut = "") ? "" : ";;") . p
+	}
+IniWrite, %CpOut%, %SettingsFile%, ColorPresets, % ColPresetKey()
+gosub, ColPresetRefresh
+return
 
 ColorFieldChanged:
 ColFieldName := A_GuiControl
@@ -33041,7 +33441,7 @@ UiStyle(h, v) {
 
 UiNavTitle(sec) {
 	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", ChangelogDetail: "Changelog", Debug: "Debug", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
-		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry"}
+		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry", Nuke: "Auto Nuke"}
 	return t.HasKey(sec) ? t[sec] : sec
 }
 
@@ -33135,7 +33535,7 @@ return
 
 ; pages that are opened from another one light up that one in the sidebar
 UiNavSec(sec) {
-	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess")
+	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess" or sec = "Nuke")
 		return "Utilities"
 	if (sec = "Advanced")
 		return "General"
