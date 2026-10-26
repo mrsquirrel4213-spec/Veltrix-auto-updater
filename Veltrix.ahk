@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 73
+VxBuild := 74
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -6910,6 +6910,8 @@ AdvRegistry() {
 	r.Push(["Shake and failsafes", "V", "NavigationSpamDelay", 0, "ms|Shake: delay between Enter presses"])
 	r.Push(["Shake and failsafes", "V", "NavigationShakeFailsafe", 0, "s|Shake failsafe - recast if no fish after"])
 	r.Push(["Shake and failsafes", "V", "BarCalculationFailsafe", 0, "s|Bar failsafe - recast if the bar never shows after"])
+	r.Push(["Tranquility", "L", "tqbright", 45, "|A note must be this much brighter than its lane's background (or far from its colour)"])
+	r.Push(["Tranquility", "L", "tqdist", 120, "|...or this far from the lane's colour (sum of red, green, blue differences)"])
 	r.Push(["Lullaby", "L", "lullsame", 10, "deg|A pillar within this of a clicked one is the same pillar (not clicked again)"])
 	r.Push(["Lullaby", "L", "lullforget", 1500, "ms|A clicked pillar gone this long is forgotten (one lit there again is clicked)"])
 	r.Push(["Lullaby", "L", "lullgone", 250, "ms|The minigame is over once the dial is gone for"])
@@ -7243,7 +7245,7 @@ TqMedian(arr) {
 }
 
 TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
-	global pNoteBits, NoteW, NoteH, WindowHeight
+	global pNoteBits, NoteW, NoteH, WindowHeight, TqBgR, TqBgG, TqBgB
 	hh := WindowHeight
 	expect := NoteH - (hh * 0.0767)
 	win := (hh * 0.0625) + (hh * 0.08)
@@ -7259,6 +7261,7 @@ TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
 	gmax := (hh * 0.12 > 150) ? hh * 0.12 : 150
 	base := pNoteBits + (cx * 4)
 	rowb := NoteW * 4
+	TqLaneBg(cx)
 	rs := []
 	re := []
 	st := -1
@@ -7269,9 +7272,7 @@ TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
 		cb := v & 0xFF
 		cg := (v >> 8) & 0xFF
 		cr := (v >> 16) & 0xFF
-		mx := (cr > cg) ? ((cr > cb) ? cr : cb) : ((cg > cb) ? cg : cb)
-		mn := (cr < cg) ? ((cr < cb) ? cr : cb) : ((cg < cb) ? cg : cb)
-		if (mx > 90 and (mx - mn) > 35)
+		if (TqNotePx(cr, cg, cb))
 			{
 			if (st < 0)
 				st := y
@@ -7310,7 +7311,8 @@ TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
 				cg := (v >> 8) & 0xFF
 				cr := (v >> 16) & 0xFF
 				mx := (cr > cg) ? ((cr > cb) ? cr : cb) : ((cg > cb) ? cg : cb)
-				if (mx < 70)
+				; the ring's hollow middle shows the lane: dark, or the lane's own colour
+				if (mx < 70 or Abs(cr - TqBgR) + Abs(cg - TqBgG) + Abs(cb - TqBgB) <= 60)
 					nd++
 				y++
 				}
@@ -7394,6 +7396,54 @@ TqRings(ByRef agree) {
 	return n
 }
 
+; a lane's background, from its column: TqBgR/G/B its median colour, TqBgT how bright a note pixel must be
+TqLaneBg(cx) {
+	global pNoteBits, NoteW, NoteH, TqBgR, TqBgG, TqBgB, TqBgT
+	static cache := {}
+	; it changes slowly (a boss's tint fading in): measured again every 150 ms
+	c := cache[cx]
+	if (IsObject(c) and A_TickCount - c.t < 150 and A_TickCount >= c.t)
+		{
+		TqBgR := c.r, TqBgG := c.g, TqBgB := c.b, TqBgT := c.k
+		return
+		}
+	rs := [], gs := [], bs := [], ms := []
+	base := pNoteBits + (cx * 4)
+	rowb := NoteW * 4
+	st := (NoteH > 300) ? 10 : 4
+	y := 0
+	while (y < NoteH)
+		{
+		v := NumGet(base + 0, y * rowb, "UInt")
+		b := v & 0xFF, g := (v >> 8) & 0xFF, r := (v >> 16) & 0xFF
+		rs.Push(r), gs.Push(g), bs.Push(b)
+		ms.Push((r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b))
+		y += st
+		}
+	TqBgR := TqMedian(rs), TqBgG := TqMedian(gs), TqBgB := TqMedian(bs)
+	TqBgT := TqMedian(ms) + TA("tqbright", 45)
+	if (TqBgT < 90)
+		TqBgT := 90
+	cache[cx] := {t: A_TickCount, r: TqBgR, g: TqBgG, b: TqBgB, k: TqBgT}
+}
+
+; a note / ring pixel: bright for this lane, coloured, and well away from the lane's background colour
+TqNotePx(cr, cg, cb) {
+	global TqBgR, TqBgG, TqBgB, TqBgT
+	mx := (cr > cg) ? ((cr > cb) ? cr : cb) : ((cg > cb) ? cg : cb)
+	mn := (cr < cg) ? ((cr < cb) ? cr : cb) : ((cg < cb) ? cg : cb)
+	if (mx <= 90 or (mx - mn) <= 35)
+		return false
+	; far from the lane's colour (on a dark lane: any coloured note), or clearly brighter than it (a note on a lane
+	; tinted near its own colour)
+	return (Abs(cr - TqBgR) + Abs(cg - TqBgG) + Abs(cb - TqBgB) > TA("tqdist", 120) or mx > TqBgT)
+}
+
+; the red notes some fights send down any lane
+TqRed(r, g, b) {
+	return (r >= 110 and r > g + 60 and r > b + 30)
+}
+
 TqPurple(r, g, b) {
 	return (b > g + 50 and r > g + 20 and b >= r * 0.75 and r >= b * 0.45 and b >= 100)
 }
@@ -7465,6 +7515,7 @@ ManiaStep(t) {
 	while (li <= 4)
 		{
 		base := pNoteBits + (Round(NoteW * fr[li]) * 4)
+		TqLaneBg(Round(NoteW * fr[li]))
 		rf := TqRef[li]
 		sr := rf[1] + rf[2] + rf[3]
 		mb := []
@@ -7480,9 +7531,7 @@ ManiaStep(t) {
 				cb := v & 0xFF
 				cg := (v >> 8) & 0xFF
 				cr := (v >> 16) & 0xFF
-				mx := (cr > cg) ? ((cr > cb) ? cr : cb) : ((cg > cb) ? cg : cb)
-				mn := (cr < cg) ? ((cr < cb) ? cr : cb) : ((cg < cb) ? cg : cb)
-				colp := (mx > 90 and (mx - mn) > 35)
+				colp := TqNotePx(cr, cg, cb)
 				}
 			if (colp)
 				{
@@ -7513,7 +7562,7 @@ ManiaStep(t) {
 							dmax := dg
 						if (db > dmax)
 							dmax := db
-						if ((kr >= 0.35 and kr <= 0.90 and dmax <= 0.06) or TqPurple(pr, pg, pb))
+						if ((kr >= 0.35 and kr <= 0.90 and dmax <= 0.06) or TqPurple(pr, pg, pb) or TqRed(pr, pg, pb))
 							{
 							if (rh <= maxOne)
 								{
