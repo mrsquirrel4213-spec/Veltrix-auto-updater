@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 78
+VxBuild := 79
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -27959,7 +27959,7 @@ UtilRowY += 114
 
 UtilNoteY := UtilRowY + 4
 Gui, Font, s8 c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CARDX% y%UtilNoteY% w%CARDW% h64 HwndhC, Extras that run alongside fishing. Turn one on and open it to set it up.`nMore add-ons will appear here as they are added.`nAuto Totem only works in a private server.`nTotem and Aquarium both turn camera mode off - it hides the UI they read.
+Gui, Add, Text, x%CARDX% y%UtilNoteY% w%CARDW% h64 HwndhC, Extras that run alongside fishing. Turn one on and open it to set it up.`nMore add-ons will appear here as they are added.`nAuto totem is only allowed in private servers.`nTotem and Aquarium both turn camera mode off - it hides the UI they read.
 UtilCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushBG, text: ColorMutedBGR}
 Gui, Font, s9 c%ColorMuted%, Segoe UI
@@ -30144,7 +30144,7 @@ TotemCtrls.Push(hC)
 TotemBodyCtrls.Push(hC)
 SpecialBrushes[hC] := {brush: hBrushCard, text: 0xFFFFFF}
 Gui, Font, s8 c%ColorMuted%, Segoe UI
-Gui, Add, Text, x%CX% y630 w%TXW% h28 HwndhTotemNote, Private servers only - totems cannot be used in public ones.`nCamera mode hides the weather icons, so it stays off while Auto Totem is on.
+Gui, Add, Text, x%CX% y630 w%TXW% h28 HwndhTotemNote, Private servers are recemmended when using this because auto totem im public ones can be disallowed.`nCamera mode hides the weather icons, so it stays off while Auto Totem is on.
 TotemCtrls.Push(hTotemNote)
 TotemBodyCtrls.Push(hTotemNote)
 SpecialBrushes[hTotemNote] := {brush: hBrushCard, text: ColorMutedBGR}
