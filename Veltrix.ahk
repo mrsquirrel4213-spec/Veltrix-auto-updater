@@ -3,7 +3,7 @@
 ; every screen grab goes through this: VeltrixNative.dll's vx_blt once it loaded (VxNativeInit), else BitBlt
 global VxBlt := "BitBlt"
 ; the bar detection loops in VeltrixNative.dll (0 = the macro's own AutoHotkey loops)
-global VxNatCF := 0, VxNatCR := 0, VxNatFL := 0, VxNatRB := 0, VxNatGB := 0, VxNatRM := 0
+global VxNatCF := 0, VxNatCR := 0, VxNatFL := 0, VxNatRB := 0, VxNatGB := 0, VxNatRM := 0, VxNatSS := 0
 
 VxBaseVersion := "1.1.7"
 FsExtraCount := 0
@@ -27,7 +27,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 77
+VxBuild := 78
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -144,14 +144,14 @@ ProfileFields.Push( ["Rods","TryhardBarColors","0x33030B, 0x5F020A, 0xBE0C0E","s
 				  , ["Rods","CastboundTrackTol","20","num"]
 				  , ["Rods","HalibutPlayMinigame","true","bool"]
 				  , ["Rods","SwClickSigns","true","bool"]
-				  , ["Rods","SwFastClicks","false","bool"]
-				  , ["Rods","SwTurbo","false","bool"]
-				  , ["Rods","SwRetryFails","false","bool"]
+				  , ["Rods","SwFastClicks","true","bool"]
+				  , ["Rods","SwTurbo","true","bool"]
+				  , ["Rods","SwRetryFails","true","bool"]
 				  , ["Rods","SwPreset","Normal","str"]
-				  , ["Rods","SwMaxSigns","false","bool"]
+				  , ["Rods","SwMaxSigns","true","bool"]
 				  , ["Rods","SwAllSigns","false","bool"]
 				  , ["Rods","SwWaitN","12","num"]
-				  , ["Rods","SwSignsFirst","false","bool"]
+				  , ["Rods","SwSignsFirst","true","bool"]
 				  , ["Rods","SwPassive","false","bool"]
 				  , ["Rods","SwPassiveMs","500","num"]
 				  , ["Rods","SwPassiveHide","false","bool"]
@@ -2034,6 +2034,8 @@ if (!FoundBar and !LineSeen and SpecialRod != "Remembrance" and SpecialRod != "M
 	LineSeen := (FindArrowX() >= 0)
 if (!FoundBar and !LineSeen)
 	{
+	if (SpecialRod = "Stellarwave Melody" and SwPreset != "Ominous Ouija" and SwPhase and SwStarsValid)
+		SwClickStep()
 	NoiseFoundStreak := 0
 	MinigameLost++
 	if (MinigameLost = 1)
@@ -3625,6 +3627,8 @@ TryhardTrackColors := (Trim(TryhardTrackColors) = "") ? "0x3A0608" : TryhardTrac
 AutoUpdate := true
 ; Precision steering is not shown: always its defaults
 Kp := 0.5, Kd := 0.3, VelocitySmoothing := 0.2, StoppingDistanceMultiplier := 3.0
+; Stellarwave: "Click the signs" is one switch - its fastest, surest way every time
+SwFastClicks := true, SwSignsFirst := true, SwRetryFails := true, SwMaxSigns := true, SwTurbo := true
 
 return
 
@@ -6965,6 +6969,8 @@ AdvRegistry() {
 	r.Push(["Stellarwave Melody", "L", "swtnudge", 2, "ms|Turbo clicks: wait after the nudge"])
 	r.Push(["Stellarwave Melody", "L", "swthold", 12, "ms|Turbo clicks: click hold"])
 	r.Push(["Stellarwave Melody", "L", "swtafter", 0, "ms|Turbo clicks: pause after the click"])
+	r.Push(["Stellarwave Melody", "L", "swoutlvl", 3, "|Before the screen is dark: strokes a sign outside the bar needs to count"])
+	r.Push(["Stellarwave Melody", "L", "swbarhold", 600, "ms|Signs go on this long while a glow hides the bar"])
 	r.Push(["Stellarwave Melody", "L", "swresume", 900, "ms|No star lit this long while signs are missing: read the signs again and carry on"])
 	r.Push(["Stellarwave Melody", "L", "swmaxper", 3, "|Clicks on one sign at most, per sign round"])
 	r.Push(["Stellarwave Melody", "L", "swsettle", 60, "ms|Start on the signs once the minigame has been still this long"])
@@ -11780,7 +11786,7 @@ return
 
 NukeTick:
 gosub, NukeTimerRefresh
-if (!NukeAuto or NukeBusy or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+if (!NukeAuto or NukeBusy or MgInPlay or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
 	return
 NukeBusy := true
 NukeA := NukeNeedle()
@@ -17528,10 +17534,12 @@ SwPhaseReset() {
 	global SwOverK, SwOverT, SwOverL, SwOverR, SwOverS, SwTryAt
 	global SwSlotSt, SwSlotFirst, SwSlotHits, SwSlotLvl, SwSlotGone, SwOrder, SwK0, SwClicks, SwClickAt, SwClickLit, SwClickSlot, SwRetry, SwFailN, SwFailAt, SwRetryK, SwGuessTried, SwGuessDone, SwMem
 	global SwStop, SwStopWhy, SwLastClick, SwTie, SwLastOnset, SwGradOk, SwPurpleN, SwClickTook, SwTieWas
-	global SwAllN, SwAllT, SwAllI, SwSlotClicks
+	global SwAllN, SwAllT, SwAllI, SwSlotClicks, SwBigOnsetT, SwRepickAt
 	SwPreEnd("reset")
 	SwAllN := 0
 	SwAllI := 0
+	SwBigOnsetT := 0
+	SwRepickAt := -1
 	SwDwell := false
 	SwWantK := 0
 	SwWantStrk := 0
@@ -18647,7 +18655,7 @@ SwStarsRead(now) {
 		}
 	if (SwStarFound)
 		{
-		if (SwStarRow(SwStarY, cs, tot))
+		if (SwStarRow(SwStarY, cs, tot) and SwStarSane(cs))
 			SwStarSet(cs)
 		else if (!SwPhase)
 			{
@@ -18891,6 +18899,15 @@ SwStarRows(y0, y1, st, yn, half, ByRef by) {
 			}
 		}
 	return best
+}
+
+; during a round the star row stays put: a read that moves it more than a little is a misread, not a move
+SwStarSane(cs) {
+	global SwPhase, SwStarPitch, SwStarX0, NoteOriginX
+	if (!SwPhase or SwStarPitch <= 0)
+		return true
+	np := (cs[12] - cs[1]) / 11
+	return (Abs(np - SwStarPitch) <= 0.02 * SwStarPitch and Abs(NoteOriginX + cs[1] - SwStarX0) <= 0.15 * SwStarPitch)
 }
 
 SwStarSet(cs) {
@@ -19737,9 +19754,12 @@ SwSlotsScan(now, held := false) {
 		st := SwSlotSt[k]
 		if (st >= 2)
 			continue
-		if (!SwDarkSeen and (SwSlotX(k) < SwBarL or SwSlotX(k) > SwBarL + SwBarW))
-			continue
+		; before the screen is dark, outside the bar is still the world behind the track: a sign there counts once it
+		; is clearly drawn - the first sign of a round is often already up out there while the screen still fades
+		outPre := (!SwDarkSeen and (SwSlotX(k) < SwBarL or SwSlotX(k) > SwBarL + SwBarW))
 		c := SwSlotStrokes(k)
+		if (outPre and c < TA("swoutlvl", 3))
+			continue
 		if (c >= 1)
 			{
 			SwSlotGone[k] := 0
@@ -19772,7 +19792,7 @@ SwSlotsScan(now, held := false) {
 }
 
 SwAssign(k, now) {
-	global SwMaxSigns, SwClickAt, SwClickLit, SwBurstN
+	global SwMaxSigns, SwClickAt, SwClickLit, SwBurstN, SwBigOnsetT
 	global SwSlotSt, SwSlotFirst, SwSlotLvl, SwOrder, SwK0, SwLit, SwClicks, SwStop, SwStopWhy, SwTie, SwLastOnset, SwZ, SwPhaseT, SwStarStableT, SwLitRaw, SwLitRawT, SwTieWas, SwSlotBlind
 	SwSlotSt[k] := 2
 	if (SwK0 < 0 and now - SwStarStableT >= SwSec(SwMaxSigns ? 0 : 0.1) and SwLit = SwLitRaw and now - SwLitRawT >= SwSec(SwMaxSigns ? 0.05 : 0.3))
@@ -19850,6 +19870,8 @@ SwAssign(k, now) {
 			SwTieWas[A_Index] := 1
 		}
 	SwLastOnset := now
+	if (SwSlotLvl[k] >= 4)
+		SwBigOnsetT := now
 	SwLog("onset slot " . k . " rank " . pos . " t+" . Round((now - SwPhaseT) * 1000) . " lvl " . SwSlotLvl[k] . (SwTie[k] ? " tie" : ""))
 }
 
@@ -19903,7 +19925,7 @@ SwSoftFail(why, now) {
 ; the sign for zodiac z among the signs on the bar that were not clicked yet - for when the onset
 ; order is wrong (signs that showed up together). Moves it to place i in the click order.
 SwFindSign(i, z, excl := 0, force := false) {
-	global SwSlotSt, SwOrder, SwTie, SwFindT
+	global SwSlotSt, SwOrder, SwTie, SwFindT, SwSlotFirst, SwSlotLvl
 	if (!SwTplSumFn() or i < 1 or i > SwOrder.Length() + 1)
 		return 0
 	now := SwNow()
@@ -19930,6 +19952,8 @@ SwFindSign(i, z, excl := 0, force := false) {
 				}
 			}
 		if (pos and pos < i)
+			continue
+		if (excl and SwSlotFirst[kk] > SwSlotFirst[excl] + 0.05 and SwSlotLvl[kk] < 4)
 			continue
 		if (SwSlotWhite(kk))
 			continue
@@ -20592,7 +20616,7 @@ SwClickStepMax() {
 		SwCursorGuard()
 	if (SwChainMax())
 		return
-	if (!SwClickSigns or SwStop or SwLockFail or !SwPhase or !SwStarsValid or !SwFound or (SwFishX < 0 and !SwSignsFirst))
+	if (!SwClickSigns or SwStop or SwLockFail or !SwPhase or !SwStarsValid or !SwBarRecent() or (SwFishX < 0 and !SwSignsFirst))
 		return
 	now := SwNow()
 	if (SwClickAt)
@@ -20641,11 +20665,15 @@ SwClickStepMax() {
 			SwLog("stop: " . SwStopWhy)
 			return
 			}
-		if (now - SwClickAt < (SwMaxSigns ? TA("swfailmax", 400) : TA("swfail", 1000)) / 1000.0 + SwClickTook)
+		; a sign that was up before the one just clicked (out of the bar while the screen faded, or under the fish)
+		; shows now and reads as the due zodiac, while the clicked one does not: click it at once
+		if (SwRepick(now))
+			return
+		if (now - SwClickAt < (SwMaxSigns ? TA("swfailmax", 300) : TA("swfail", 1000)) / 1000.0 + SwClickTook)
 			return
 		if (SwSlotWhite(SwClickSlot))
 			{
-			if (now - SwClickAt < (SwMaxSigns ? TA("swfailmax", 400) : TA("swfail", 1000)) / 1000.0)
+			if (now - SwClickAt < (SwMaxSigns ? TA("swfailmax", 300) : TA("swfail", 1000)) / 1000.0)
 				return
 			if (SwSoftFail("white", now))
 				return
@@ -20735,7 +20763,7 @@ SwClickStepMax() {
 				return
 			}
 		}
-	if (SwFrMiss or (SwFrMoveT and now - SwFrMoveT < SwSec(SwMaxSigns ? 0.05 : 0.4)))
+	if (SwFrMiss > 6 or (SwFrMoveT and now - SwFrMoveT < SwSec(SwMaxSigns ? 0.05 : 0.4)))
 		return
 	if (!SwSignsFirst and (SwFishX < SwBarL - 10 * SwSB or SwFishX > SwBarL + SwBarW + 10 * SwSB) and !(!PrecisionDown and SwFishX < SwBarL - 10 * SwSB))
 		return
@@ -20862,6 +20890,62 @@ SwClickStepMax() {
 	SwLog("stop: " . SwStopWhy)
 }
 
+; the bar was seen just now (a clicked sign's glow, or the cursor, can hide it and the fish line for a moment - the
+; signs sit where the stars say, so clicking goes on)
+SwBarRecent() {
+	global SwFound, SwFoundT
+	return (SwFound or (SwFoundT and SwNow() - SwFoundT < TA("swbarhold", 600) / 1000.0))
+}
+
+; the sign just clicked is not lighting its star yet, and a grown sign showed up around that click - it was hidden
+; (outside the bar while the screen faded, or under the fish), so it came before. When that one reads as the due
+; zodiac and the clicked one clearly does not, it is clicked now instead of waiting for the click to time out.
+SwRepick(now) {
+	global SwClickAt, SwClickSlot, SwClickLit, SwK0, SwOrder, SwSlotSt, SwTie, SwBurstN, SwFailN, SwBigOnsetT, SwRepickAt, SwLit
+	if (SwRepickAt = SwClickAt or SwBurstN != 1 or SwFailN or SwK0 < 0 or SwLit != SwClickLit)
+		return false
+	if (now - SwClickAt < 0.02 or !SwBigOnsetT or SwBigOnsetT < SwClickAt - 0.1)
+		return false
+	SwRepickAt := SwClickAt
+	z := Mod(SwClickLit, 12)
+	i := SwClickLit - SwK0 + 1
+	k := SwClickSlot
+	sk := SwTplBest(k, z)
+	best := 0, bestS := -9, secondS := -9
+	Loop 12
+		{
+		kk := A_Index
+		st := SwSlotSt[kk]
+		if (kk = k or (st != 1 and st != 2) or SwSlotWhite(kk))
+			continue
+		tdZ := -1, tdS := -9
+		sc := SwTplBest2(kk, z, tdZ, tdS)
+		if (tdZ != z or sc < 0.45)
+			continue
+		if (sc > bestS)
+			secondS := bestS, bestS := sc, best := kk
+		else if (sc > secondS)
+			secondS := sc
+		}
+	if (!best or bestS < sk + 0.15 or bestS - secondS < 0.08)
+		return false
+	Loop % SwOrder.Length()
+		{
+		if (SwOrder[A_Index] = best)
+			{
+			SwOrder.RemoveAt(A_Index)
+			break
+			}
+		}
+	SwOrder.InsertAt(i, best)
+	SwSlotSt[best] := 2
+	SwTie[best] := 0
+	SwLog("repick slot " . best . " for " . SwZodiac(z) . " (" . Round(bestS, 3) . ") - clicked slot " . k . " reads " . Round(sk, 3))
+	SwClickAt := 0
+	SwDoClickMax(best, now)
+	return true
+}
+
 ; Max sign speed: a sign that came up while the last click's star is still lighting is clicked now, not after it.
 ; true = it clicked (nothing else this step)
 SwChainMax() {
@@ -20884,9 +20968,9 @@ SwChainMax() {
 		why := "state " . SwSlotSt[kk]
 	else if (now - SwLastClick < TA("swchain", 30) / 1000.0)
 		return false
-	else if (!SwFound)
+	else if (!SwBarRecent())
 		why := "bar"
-	else if (SwFrMiss or (SwFrMoveT and now - SwFrMoveT < 0.05))
+	else if (SwFrMiss > 6 or (SwFrMoveT and now - SwFrMoveT < 0.05))
 		why := "frame moving"
 	else if (SwTie[kk])
 		why := "tie"
@@ -22161,6 +22245,21 @@ SwTplBest(k, z) {
 }
 
 SwTplMask(k, ByRef m, ByRef kn) {
+	global SwFrameT
+	static cT := "", cM := {}, cK := {}
+	if (cT != SwFrameT)
+		cT := SwFrameT, cM := {}, cK := {}
+	if (cM.HasKey(k))
+		{
+		m := cM[k], kn := cK[k]
+		return
+		}
+	SwTplMaskRead(k, m, kn)
+	cM[k] := m, cK[k] := kn
+}
+
+SwTplMaskRead(k, ByRef m, ByRef kn) {
+	global VxNatSS, SwNoNat, SwTplFBuf
 	global pCaptureBits, CaptureW, CaptureH, SwS, SwSB, SwFrTop, SwBarL, SwBarW, SwFishX, FishBarLeft, SwGrad, SwGradOk, SwGradDef, SwDarkR, SwDarkG, SwDarkB
 	m := ""
 	kn := ""
@@ -22174,6 +22273,21 @@ SwTplMask(k, ByRef m, ByRef kn) {
 	c := L + w / 2.0
 	fx := (SwFishX >= 0) ? SwFishX - Round(FishBarLeft) : -9999
 	pG := SwGradOk ? &SwGrad : &SwGradDef
+	if (VxNatSS and !SwNoNat)
+		{
+		VarSetCapacity(sco, 96, 0)
+		n := DllCall(VxNatSS, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Double", x0, "Double", y0, "Double", cell
+			, "Double", L, "Double", w, "Double", fx, "Double", SwSB, "Ptr", pG, "Int", SwDarkR, "Int", SwDarkG, "Int", SwDarkB
+			, "Ptr", &SwTplFBuf, "Ptr", &sco, "Int")
+		if (n < 96)
+			return
+		sc := []
+		Loop 12
+			sc.Push(NumGet(sco, (A_Index - 1) * 8, "Double"))
+		m := {nat: 1}
+		kn := {Sc: sc, TpCnt: n}
+		return
+		}
 	mm := []
 	kk := []
 	Loop 256
@@ -22247,6 +22361,8 @@ SwTplMask(k, ByRef m, ByRef kn) {
 
 SwTplScore(m, kn, z) {
 	global SwTplF, SwTplFBuf
+	if (kn.HasKey("Sc"))
+		return kn.Sc[z + 1]
 	if (!kn.HasKey("TpCnt"))
 		SwTplPrep(m, kn)
 	n := kn.TpCnt
@@ -27429,7 +27545,7 @@ MgAdd("halicol", hQ)
 IconTips[hQ] := "ON - the bar goes for the exclamation mark`nwhen it appears (the harpoon minigame).`n`nOFF - the bar stays on the fish line the whole`ntime and ignores the exclamation mark."
 
 ; ------------------------------------------------------------------- Stellarwave Melody
-MgBlockOpen("stellar", 204, 284 + RH)
+MgBlockOpen("stellar", 204, 284 - 4 * RH)
 Y := 219
 SwChk := SwClickSigns ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwClickSigns %SwChk% gSwClickChanged HwndhC, Click the signs
@@ -27439,17 +27555,7 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - clicks the zodiac signs on the bar in the`norder shown above it, while it keeps reeling.`n`nOFF - only reels. Turn it off if the clicks make`nyour fights worse."
-Y += RH
-SwFastChk := SwFastClicks ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwFastClicks %SwFastChk% gSwFastChanged HwndhC, Fast sign clicks
-MgAdd("stellar", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - clicks each sign as soon as it appears,`nwith a shorter click, so the signs go faster.`n`nOFF - waits until each sign is fully drawn`nbefore clicking. Slower, the careful way.`n`nTurn it off if signs get missed or the wrong`nsign gets clicked."
+IconTips[hQ] := "ON - clicks the zodiac signs on the bar in the`norder of the stars, as fast as they come in: each`nsign the moment it shows up, before reeling, with`nshort clicks. A click that does not take is tried`nagain, and a sign that reads as the wrong zodiac`nis never clicked blindly.`n`nOFF - only reels."
 Y += RH
 SwAllChk := SwAllSigns ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w150 h20 c%ColorText% vSwAllSigns %SwAllChk% gSwAllSignsChanged HwndhC, Wait for signs:
@@ -27467,47 +27573,7 @@ Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
 Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
 Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
 MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - waits until the number of signs in the box`n(12 = every sign for this round) is on the bar,`nthen clicks them in order with the normal`n(1.1.7) clicks. With Max sign speed on, they go out`nin one burst instead.`n`nOFF - clicks each sign as it comes in."
-Y += RH
-SwFirstChk := SwSignsFirst ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwSignsFirst %SwFirstChk% gSwSignsFirstChanged HwndhC, Signs before bar
-MgAdd("stellar", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - clicking the signs comes first. While a sign`nis waiting to be clicked the macro stops reeling,`nand it clicks even when the fish is off the bar.`nReeling carries on once the signs are done.`n`nOFF - keeping the bar on the fish comes first,`nand signs are only clicked while the fish is on`nthe bar.`n`nThe bar drifts while signs are clicked, so you`ncan lose progress on the fish."
-Y += RH
-SwRetryChk := SwRetryFails ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwRetryFails %SwRetryChk% gSwRetryFailsChanged HwndhC, Retry failed clicks
-MgAdd("stellar", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - if a sign click does not register, the macro`nclicks that sign again (up to 3 times per sign)`ninstead of giving up on the signs for this cast.`nFailed clicks are spotted sooner than with it off,`nand retries are spaced out, never spam clicked.`n`nIt never clicks a sign that looks like a different`nzodiac: it looks for the right sign on the bar and`nclicks that one, and only gives up if it is not there.`n`nOFF - a failed click stops sign clicking for`nthe rest of the cast."
-Y += RH
-SwMaxChk := SwMaxSigns ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwMaxSigns %SwMaxChk% gSwMaxSignsChanged HwndhC, Max sign speed
-MgAdd("stellar", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - pushes sign detection and clicking to the`nlimit: the stars are trusted almost the moment`nthey change, the start of the signs is locked in`nsooner, and each click is held and hovered for`nabout half as long.`n`nExtreme: star changes are read every frame and`ntrusted instantly, every sign already showing is`nclicked in ONE burst without waiting for each star,`nclicks are 10ms hover / 20ms hold, and failed`nclicks are spotted and retried twice as fast.`n`nThe fastest setting, but the most likely to misread`na star or have a click not register. Pair it with`nRetry failed clicks."
-Y += RH
-SwTurboChk := SwTurbo ? "Checked" : ""
-Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwTurbo %SwTurboChk% gSwTurboChanged HwndhC, Turbo clicks
-MgAdd("stellar", hC)
-SpecialBrushes[hC] := {brush: hBrushCard, text: ColorYellowBGR}
-Gui, Font, s9 Bold c%ColorAccent%, Segoe UI
-Gui, Add, Text, x%QX% y%Y% w16 h20 Center +0x100 +0x200 HwndhQ, ?
-Gui, Font, s9 Norm c%ColorMuted%, Segoe UI
-MgAdd("stellar", hQ)
-IconTips[hQ] := "ON - each sign click is about half as long: 4ms hover,`n2ms nudge, 12ms hold, no pause after (was 10 / 5 / 20 / 5).`nA burst of signs goes through much faster.`n`nIf clicks start to miss (a star does not light), turn it`noff - or raise the times in Advanced settings.`nWorks with Max sign speed."
+IconTips[hQ] := "ON - waits until the number of signs in the box`n(12 = every sign for this round) is on the bar,`nthen clicks them in order, all in one burst.`n`nOFF - clicks each sign as it comes in."
 Y += RH
 SwPasChk := SwPassive ? "Checked" : ""
 Gui, Add, CheckBox, x%CX% y%Y% w300 h20 c%ColorText% vSwPassive %SwPasChk% gSwPassiveChanged HwndhC, Passive mode
@@ -32276,10 +32342,12 @@ VxNativeInit() {
 	VxNatRB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_rowbar", "Ptr")
 	VxNatGB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_gradbar", "Ptr")
 	VxNatRM := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_remscan", "Ptr")
+	VxNatSS := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_swshape", "Ptr")
 	if (!p or !VxNatEnable)
 		{
 		DllCall("FreeLibrary", "Ptr", VxNatMod)
 		VxNatMod := 0
+		VxNatCF := 0, VxNatCR := 0, VxNatFL := 0, VxNatRB := 0, VxNatGB := 0, VxNatRM := 0, VxNatSS := 0
 		return false
 		}
 	VxBlt := p
@@ -32328,13 +32396,13 @@ nd1 =
 (Join
 TVp4AAEAAAAEAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 eAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuJAAA
-UEUAAGSGBAA0gt9qAAAAAAAAAADwACIgCwIOAABEAAAAEAAAAAAAAMBDAAAAEAAAAAAAgAEAAAAAEAAA
+UEUAAGSGBAD30eBqAAAAAAAAAADwACIgCwIOAABMAAAAEAAAAAAAACBLAAAAEAAAAAAAgAEAAAAAEAAA
 AAIAAAYAAAAAAAAABgAAAAAAAAAAYA4AAAQAAAAAAAACAGABAAAQAAAAAAAAEAAAAAAAAAAAEAAAAAAA
-ABAAAAAAAAAAAAAAEAAAAKBiAADzAAAAlGMAAIwAAAAAAAAAAAAAAABQDgDYAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChlAAAIAQAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAAC2QwAAABAAAABEAAAABAAAAAAAAAAAAAAAAAAA
-IAAAYC5yZGF0YQAAKAoAAABgAAAADAAAAEgAAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAALDUDQAAcAAA
-AAIAAABUAAAAAAAAAAAAAAAAAABAAADALnBkYXRhAADYAAAAAFAOAAACAAAAVgAAAAAAAAAAAAAAAAAA
+ABAAAAAAAAAAAAAAEAAAADBjAAAIAQAAOGQAAIwAAAAAAAAAAAAAAABQDgDkAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANBlAAAIAQAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAAAWSwAAABAAAABMAAAABAAAAAAAAAAAAAAAAAAA
+IAAAYC5yZGF0YQAAFAsAAABgAAAADAAAAFAAAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAALDUDQAAcAAA
+AAIAAABcAAAAAAAAAAAAAAAAAABAAADALnBkYXRhAADkAAAAAFAOAAACAAAAXgAAAAAAAAAAAAAAAAAA
 QAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -32344,28 +32412,28 @@ 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
-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
+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
-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
+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
-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
+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
@@ -32488,14 +32556,14 @@ PQAEAAAPnMGF/0EPmcBBIMhBgPgBdRkB/onxwekfAfHR+UxjwEOJDIFDiRSCg8ABi11IRIt1WIP4Ag+M
 sgAAAIPA/7r/////McnrDUiDwQFIOcgPhJkAAABFixyJRYtEiQREicZEKd6DxuGD/uVy3ESJ3ineid9E
 Kd8PTP6D/w5yykSJxineid9EKccPTP6D/w5yuESJ3kQp9kSJ90Qp3w9M/oP/DnKkRInGRCn2RIn3RCnH
 D0z+g/8OcpBBizyKQYt0igQ59w9M9znWD456////RQHYRInCweofRAHC0fpMi4WIAQAAQYlQDIny6Vr/
-//9IjQWrcgMAMclMjTWaMAAAZg9XyUyLbVBmkPJBDxAUzvIPWdbyDyzSA1XAQQ+v1Ehj0kyLRTBNjQSQ
+//9IjQWrcgMAMclMjTUqMQAAZg9XyUyLbVBmkPJBDxAUzvIPWdbyDyzSA1XAQQ+v1Ehj0kyLRTBNjQSQ
 )
 nd3 =
 (Join
 SGnRGIABAEyNDUJyAwBKx0QKEAAAAABmQg8RDApJicFFMdJFMdsx9jH/Zg8fRAAAQYscuA+210QPtvvB
 6xAPtttIAd5Ig8cBSYlx8EkB002JWfhNAfpNiRFJg8EYSTn9dc5Ig8EBSAUYgAEASIP5Bw+Fav///7gB
 AAAAQYP8KQ+MQf3//0GNRCTriUUIZg9XyUG/FAAAAEG4FQAAAEG7EQAAAL8EAAAAuyUAAADHRVAYAAAA
-TI0V9S8AAGYPKBXdLgAAZg9X2/IPECXhLgAA6zJmLg8fhAAAAAAADx9EAABBg8ABQYPDAYPHAYPDAYNF
+TI0VhTAAAGYPKBXdLgAAZg9X2/IPECXhLgAA6zJmLg8fhAAAAAAADx9EAABBg8ABQYPDAYPHAYPDAYNF
 UAFEO30IQY1HAUGJxw+EyAMAAESJ+ItNSCnIRCn5D0zIg/kQcspEifiLTVgpyEQp+Q9MyIP5EHK3RTHJ
 RIldMIl9EEiJXRjrEQ8fgAAAAABJg8EBSYP5BHSWQ4sEikSJ+SnBg/kQfOhCjRQ4g8IRRDnif9yNFEUB
 AAAAD1ft8g8q6k2JxkGNFABIY9JIjRRSTI0VyXADAEmNVNIQSI0MSUmNNMpIg8YQRInZKcFIjQxJTY0s
@@ -32508,7 +32576,7 @@ FP9mRQ8UwGZFD1zC80cPfgwEZkEPXPvzRw9+VAUAZkUPbNHzRg9+DABmRQ8o2PNGD34kAWZFD2zhZkUP
 +9RmRA8oz2ZND37TRQ9X5PJNDyrjZkQPV8hmRA9X2GZFD3DS7mZND37TZkUPX9hFD1fA8k0PKsNmRQ8U
 4GZED1/PZkQPXuJmDxT2ZkEPXPRmRA9Yy2YPKP5mD1f4Zg9f/mZFD1jZZkEPWPtmDyj3Zg8V9/IPXf7y
 QQ8ROkmDwghJgcAYgAEASYH4qIAKAA+FUP7///IPEHXQ8g8QbdjyD130Zg8u9XYYZg8o/WYPKO5Mi2U4
-TYnwTI0V5iwAAOscZg8u5UyLZThNifBMjRXSLAAAZg8o/ncEZg8o7PIPEHXgZg8u/nYWZkQPKMZmDyj3
+TYnwTI0Vdi0AAOscZg8u5UyLZThNifBMjRViLQAAZg8o/ncEZg8o7PIPEHXgZg8u/nYWZkQPKMZmDyj3
 RItdMIt9EEiLXRjrGmYPLu5Ei10wi30QSItdGGZEDyjHdwRmDyj18g8QbehmRA8uxXYLZg8o/WZBDyjo
 6w9mQQ8o+GYPLvV3BGYPKO7yDxB18GYPLv52C2ZEDyjGZg8o9+sPZkQPKMdmDy7udwRmDyj18g8Qffhm
 RA8ux3YLZg8o72ZBDyj46w9mQQ8o6GYPLvd3BGYPKP7yDxB1AGYPLu53DmYPLv5mDyjvdgRmDyjuZg8u
@@ -32534,7 +32602,7 @@ EUAQZg8oBd0mAABmDxEAQYP4Bg+cwY2C/+///z0n8P//QQ+SwTHAQQjJD4UUCQAASInQRIutkAAAAIu1
 gAAAAEGJx/JBDyrIQ40MQA9XwPIPKsFmQQ9u0GYPbx2YJgAAZg/02mYP9BWcJgAAZg9i0/MP5tJmDyjZ
 Zg8U2GYPKAWUJgAAZg9e2GYPXtBmD+bCZg/m00GNSP9mDxTQZg9uwWYPcNgAZg9vw2YPZsJmD9vQZg/f
 w2YP68JDjRTAD1fS8g8q0vIPXhVcJgAA8g8s0mYPf0XAOcoPTMqJTdCNSP+JTfyNSAFIiU0Ax0UQ////
-/zHJSIlF4EiYSIlFuMdFFAAAAABMiX3oSIlNsEiNBcUmAABIYwyISGNMjcBID69NuEiLRQhMjTSIRTHJ
+/zHJSIlF4EiYSIlFuMdFFAAAAABMiX3oSIlNsEiNBVUnAABIYwyISGNMjcBID69NuEiLRQhMjTSIRTHJ
 uv////9MiXWo6xmQhdJ5fEGJ0kmDwQFEidJMO00AD4S4AQAATTn5c+NDiwyOQYnKQcHqEEUPttJFidNF
 KeNEieNEKdNBD0zbRDnrf78PtsWJwynzQYnyQSnCRA9M00U56nepD7bJQYnKRIudiAAAAEUp2kEpy0UP
 TNpFOet3jYXSRYnKRA9J0uuJZpBEickp0YP5AkEPnMI7jZgAAABBD5/DRQjTQbr/////D4Vi////0emN
@@ -32569,126 +32637,168 @@ RA+2HAdBAdtMOcdyx0iNHD4PthwYQSnb67q6/////0UxyYO9sAAAAAC4dAAAALkoAAAAD0TIQYlUJBRF
 iUwkGLgBAAAARYXtD47CAAAAZg9wwO5mD37CQQ+v1Uhj0kyLRQhNjQyQQbj/////RTHSuv/////rF2Yu
 Dx+EAAAAAAAPH0AASYPCAU0513RWQ4sckUGJ20HB6xBFD7bbic5EKd5BKctED0LeQYP7DnfWD7b3QYnL
 QSnzKc5BD0Lzg/4Od8JED7bbic5EKd5BKctED0LeQYP7DneshdJBD0jSRYnQ66GF0ngpRInBKdEPV8Dy
-DyrB8kEPKs/yD1kNHB4AAGYPLsFyCkGJVCQcRYlEJCBIgcSYAAAAW19eQVxBXUFeQV9dw1VIg+wgSI1s
-JCCF0g+VwE2FwA+VwQjBdTjoQgAAAEiLDZsADgBIhcl0J0iLFZcADgD/FYkhAABIiw2SAA4A/xVkIQAA
-SIsNdQAOAP8VTyEAALgBAAAASIPEIF3DDx9AAFVWV1NIg+woSI1sJCCDPdArAAAASI09FSwAAA+OsAAA
+DyrB8kEPKs/yD1kNHB4AAGYPLsFyCkGJVCQcRYlEJCBIgcSYAAAAW19eQVxBXUFeQV9dw1VBV0FWQVVB
+VFZXU0iB7OgMAABIjawkgAAAAEQPKb1QDAAARA8ptUAMAABEDymtMAwAAEQPKaUgDAAAZkQPKZ0QDAAA
+RA8plQAMAABEDymN8AsAAEQPKYXgCwAADym90AsAAA8ptcALAABIiY2QCwAA8g8QrfAMAADyDxCl4AwA
 )
 nd4 =
 (Join
-ADH2SIn76yAPH4QAAAAAAEiDxgFIYwWpKwAASIPDcEg5xg+NiQAAAEiLSxhIhcl0DkiLAf9QEEjHQxgA
-AAAASItLIEiFyXQOSIsB/1AQSMdDIAAAAABIi0soSIXJdA5IiwH/UBBIx0MoAAAAAEjHQzAAAAAAx0NI
-AAAAAEiLSxBIhcl0BkiLAf9QEEiLSwhIhcl0BkiLAf9QEEiLC0iFyQ+Eav///0iLAf9QEOlf////uYAD
-AAAxwPOqxwUAKwAA/////0iDxChbX15dww8fAFVBV0FWQVVBVFZXU0iB7OgAAABIjawkgAAAAEjHRTgA
-AAAASMdFWAAAAADo4P7//8cFuioAAAAAAAD/FbggAACJBUL/DQBIjQ3vHAAASI1VOOhKDgAAhcB4IUiL
-TThIiwFMjUVYMdL/UGA9AgB6iHUfSItNOEiLAf9QEJBIgcToAAAAW19eQVxBXUFeQV9dw0yNbUhIjX3Q
-TI01vRwAAEyNZVAx2+stZg8fhAAAAAAASItNWEiLAf9QEIPDAUiLTThIiwGJ2kyNRVj/UGA9AgB6iHSd
-iV00SMdFYAAAAABIx0VAAAAAAEjHRUgAAAAASItNWEiLATHSTYno/1A4PQIAeoh1K0iLTUBIhcl0BkiL
-Af9QEEiLTWBIhcmLXTR0kEiLAf9QEOuIDx+EAAAAAAC7AQAAAOssZg8fhAAAAAAASItNSEiLAf9QEEiL
-TVhIiwGJ2k2J6P9QOIPDAT0CAHqIdKJIx0VQAAAAAIM9gikAAAd/zEiLTUhIiwFIifr/UDiFwHi7g30g
-AHS1SItNSEiLAUyJ8k2J4P8QhcB4okiDfWAAD4SGAAAASGMFRCkAAI1IAYkNOykAAE2J9Exr8HBIjTV5
-KQAATo08NrlwAAAAMcBIifpMif/zqkiJ10iLRVBJiQQ2SMdFUAAAAABIi01gSYlMNghIiwH/UAhIi01A
-SYlMNhBIiwH/UAhIjUUQDxAAQQ8RRDY4TYnmTI1lUIN9JAJycEHHR0z/////62ZIi01YSI1FQEiJRCRI
-SI1FMEiJRCRASI1FYEiJRCQ4x0QkMAcAAADHRCQoAAAAAEjHRCQgAAAAADHSRTHARTHJ6BwMAACFwHgN
-SIN9YAAPhSb////rEEjHRWAAAAAASMdFQAAAAABIi01QSIXJD4Se/v//SIsB/1AQ6ZP+//8PHwBVQVdB
-VkFVQVRWV1NIgezIAAAASI2sJIAAAABmD391MESJTShEiUUsSYnVSIlNAIuFuAAAAIudsAAAAEjHRQgA
-AAAAg/tgQb9gAAAAQQ9N34P4YEQPTPhFifxED6/jTI111LksAAAAMcBMiffzqsdF1CgAAACJXdhEifj3
-2IlF3MdF4AEAIABIidH/FQAdAABIicbHRCQoAAAAAEjHRCQgAAAAAEyNTQhMielMifJFMcD/FeEcAABI
-icf/FYAdAABNY8RJweACSInBMdL/FX4dAABJicZIhfYPhNcAAABIhf8PhM4AAABNhfYPhMUAAABIifFI
-iX0YSIn6/xXAHAAASIlFEIt9KIl8JDhIifGLdSyJdCQwTIlsJChEiXwkIMdEJEAgAMwASIlNIDHSRTHA
-QYnZ/xVPHAAA/xVxHAAATIttAEyJ6ejVAQAAhcAPhKYAAABIY8NIweACTIl0JChEiXwkIEiJRCQwTInp
-ifJBifhBidno9wUAAIXASItVELsAAAAASIt9GEiLdSAPhFkBAACLhcAAAABIi00IRYXkfmtFieNBg/wI
-c2pFMcBFMcnp+wAAAE2F9rsAAAAAD4UxAQAASIX/dAlIifn/FdcbAABIhfZ0CUiJ8f8VwRsAAInYDyh1
-MEiBxMgAAABbX15BXEFdQV5BX13DSItVEDHbSIt9GEiLdSDp3wAAAEUxwOnAAAAARYnYQYHg+P//f2YP
-78BFMclmD28d0xcAAGYP79JmD+/JZi4PH4QAAAAAAJDzQg9vJInzQg9vbIkQ80MPbzSOZg/v9PNDD29k
-jhBmD+/lZg/b82YP2+NmD2bwZg/61mYPZuBmD/rMSYPBCE05yHW9Zg/+ymYPcMHuZg/+wWYPcMhVZg/+
-yGZBD37JRTnYdC1mLg8fhAAAAAAADx8AR4sUhkYzFIFBgeL///8AQYP6AUGD2f9Jg8ABTTnDdeBFa8Fk
-D7ZJA8HhGEGJTVhED6/gMdtFOeAPnsNIifH/FcwaAAD/FUYbAABIicEx0k2J8P8VUBsAAEiF/w+Ft/7/
-/+m7/v//Zi4PH4QAAAAAAFVWV1NIgeyYAAAASI2sJIAAAABIic5Ix0UIAAAAAEiNeRhIi0kYSIXJD4Sb
-AAAAMcCDfkgAupYAAAAPRdBIiwFMjUXYTI1NCP9QQD0nAHqID4RiAQAAhcAPiNAAAABIg33YAA+EMQEA
-AEjHRRAAAAAASItNCEiLAUiNFf0WAABMjUUQ/xCFwA+IFwEAAEiLViBIhdIPhJ0BAABIi04QSIsBTItF
-EP+QeAEAAMdGSAEAAAD/FXAaAACJRmBIi00QSIsB/1AQ6doAAAD/FVgaAACLTlyFyQ+VwjnID5jBhMoP
-hUQBAACJw0iLDkiLVghIiwFJifj/kLAAAACFwA+IuwAAAEiLD0iLAUiNVdj/UDiDfehXD4W3AAAAx0ZI
-AAAAAEiLThi6lgAAAOkP////SIsPSIXJdA1IiwH/UBBIxwcAAAAASItOIEiFyXQOSIsB/1AQSMdGIAAA
-AABIi04oSIXJdA5IiwH/UBBIx0YoAAAAAEjHRjAAAAAAx0ZIAAAAADHAg35M/w+UwPfYiUZMx0ZQAAAA
-AOmPAAAAg35IAA+Exf7//0iLTQhIiwH/UBBIi04YSIsB/1Bwi0ZI625Ix0YYAAAAAIHD6AMAAIleXOtZ
-SIsPSIXJdA1IiwH/UBBIxwcAAAAASItOIEiFyXQOSIsB/1AQSMdGIAAAAABIi04oSIXJdA5IiwH/UBBI
-x0YoAAAAAEjHRjAAAAAASLgAAAAA/////0iJRkgxwEiBxJgAAABbX15dw0iNfiBIi00QSIsBSI1drEiJ
-2v9QUA9XwA8RRchIuAEAAAABAAAASIlFtEiLTghIiwFIidpFMcBJifn/UCiFwHgRSIsXSIXSD4UW/v//
-6TL+//9IxwcAAAAA6Sb+//9mLg8fhAAAAAAAkFVBVlZXU0iD7GBIjWwkYEiLBer2DQBIhcBBD5TAix0F
-9w0AOctBD5zBRIs1/PYNAEE51kEPnMJFCMpFCMK+AQAAAEGA+gEPhVQBAABIhcB0TUyLBbD2DQCJzkiJ
-wYnXTInC/xWYFwAASIsNofYNAP8VcxcAAEiLDYT2DQD/FV4XAACJ8Yn6SMcFb/YNAAAAAACLHZH2DQBE
-izWO9g0AOdkPT9lEOfJED0/yMfZIjX3UuSwAAAAxwPOqx0XUKAAAAIld2ESJ8PfYiUXcx0XgAQAgADHJ
-/xX2FgAASIkFH/YNAEiFwA+EjAAAAMdEJCgAAAAASMdEJCAAAAAATI0NHvYNAEiNVdRIicFFMcD/FcYW
-AABIiQX39Q0ASIsN4PUNAEiFyQ+VwkiFwEEPlcBEhMJ0JEiJwv8VxRYAAEiJBcb1DQCJHeD1DQBEiTXd
-9Q0AvgEAAADrSkiFwHQQSInB/xWEFgAASIsNlfUNAEiFyXQG/xVqFgAASMcFf/UNAAAAAABIxwWE9Q0A
-AAAAAMcFlvUNAAAAAADHBYj1DQAAAAAAifBIg8RgW19eQV5dww8fAFVBV0FWQVVBVFZXU0iB7LgAAABI
-jawkgAAAAESJzkWJxkGJ10iJy0SLpaAAAABMjWkoSItRKEiF0nQcOXMwfAZEOWM0fXhIiwJIidH/UBBJ
-x0UAAAAAAEiNVfi5LAAAADHASInX86qLQzA5xg9PxolF+ItDNEE5xEEPT8SJRfxmD28FGRIAAPMPf0UA
-x0UUAwAAAMdFHAAAAgBIi0sISIsBRTHATYnp/1AohcAPiKMCAABIi0X4SIlDMEiLUyhEK3s4RIl9+EQr
-czxEiXX8x0UAAAAAAEEB90SJfQRFAeZEiXUIx0UMAQAAAEiLSxBIi0MgTIsRTI1F+EyJRCRASIlEJDDH
-RCQ4AAAAAMdEJCgAAAAAx0QkIAAAAABFMfZFMcBFMclB/5JwAQAASItLEEiLUyhIiwFMjUXITIlEJCjH
-RCQgAAAAAEUxwEG5AQAAAP9QcIXAD4gFAgAASIldKEWF5A+O0AEAAEyLvbAAAABMi7WoAAAASIt9yESL
-RdBIi0UoTI1IWESJ4UGJ80iJTdhIg8H/TIn6SA+v0UwB8kqNFJpJD6/ISAH5So0MmUyNUFxJOc4PksFI
-OdcPksMgy0051g+SwUk50Q+SwiDKTYX/D5jACNAI2IhFN0SJ2CX4//9/SIlF6EmNQ/9IiUXgQYn0QcHs
-A0GB5P///w9JweQFTY1uEEiNTxBmD28FoBAAAEmNVgRFMf9Bvv///wBIiX3w6y5mLg8fhAAAAAAADx8A
-SYPHAUiLhbAAAABJAcVMAcFIAcJMAcdMO33YD4TnAAAAhfZ+24P+CEEPksJEClU3QfbCAXQKRTHS61kP
-H0QAAGZBD24JZg9wyQBFMdIPHwDzQg9vVBHw80IPbxwRZg/b0GYP29hmD+vRZg/r2fNDD39UFfDzQw9/
-XBUASYPCIE051HXMSItF6EmJwkQ52A+EbP///0yJ00H2wwF0MkyJ+0kPr9hIA13wSIuFsAAAAEkPr8dC
-ixyTRCHzQQsZSAOFqAAAAEKJHJBMidNIg8sBTDtV4A+EJ////w8fgAAAAACLBJ9EIfBBCwGJRJr8i0Sf
-BEQh8EELAYkEmkiDwwJJOdt13en4/v//SItFKEiLSBBIi1AoSIsBRTHA/1B4Qb4BAAAA6wtJx0UAAAAA
-AEUx9kSJ8EiBxLgAAABbX15BXEFdQV5BX13DZg8fhAAAAAAAVVZXU0iD7FhIjWwkUEg7ShAPhMYAAABI
-ic9Iidb/Ff0SAAC7AQAAAIXAD4SvAAAASIn5/xXfEgAAhcAPhZ4AAABIifm67P////8VsRIAAKkAAAgA
-D4SFAAAASI1V7EiJ+f8VoRIAAIXAdHRIjU3cSI1V7EmJ8P8VlBIAAIXAdF/GRQf/x0X8AAAAAMdFAAAA
-AABMjUUHTI1N/EiJ+THS/xVTEgAAhcB0DPZF/AJ0BoB9BwB0KkmJ6EiJ+boOAAAAQbkEAAAA/xV0EgAA
-hcB4BoN9AAB1CcdGGAEAAAAx24nYSIPEWFtfXl3DzMzMzMzM/yWCEQAAzMzMzMzMzMzMzP8lghEAAMzM
-zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
-zMzMzMzMzMzMzMzM/wAAAP8AAAD/AAAA/wAAAKuqq6qrqquqq6qrqquqq6oAAACAAAAAgAAAAIAAAACA
-mpmZmZmZ4T8AAAAAAAAAAP//////////AAAAAP////+4HoXrUbi+PwrXo3A9Csc/uB6F61G4zj9SuB6F
-61HoPz0K16NwPeo/KVyPwvUo7D8AAAAAAADgPwAAAAAAAAAAAAAAAAAAGEAAAAAAAAAYQAAAAAAAAACA
-AAAAAAAAAIAAAAAAAIBGQHsUrkfherQ/16NwPQrX4z8AAAAAZc3NwQAAAAAAOI9AAAAAAAAARECV1ibo
-Cy4RPgAAAAAAAAAA/////////3//////////f/8AAAD/AAAA/wAAAP8AAAA2AAAANgAAADYAAAA2AAAA
-AAAAAAAAKkAAAAAAAAAqQADITmdtwatDAAAAAAAA4D8AAAAA/////wAAAAD//////////wAAAAD/////
-/////wcAAAAHAAAABwAAAAcAAAAFAAAABQAAAAUAAAAFAAAAAAAAAAAAJEAAAAAAAAAkQAAAAAAAACRA
-AAAAAAAAAACamZmZmZnJPwAAAAAAAOA/mpmZmZmZ6T8zMzMzMzPTP////wD///8A////AP///wABAAAA
-AQAAAFcAAAABAAAA////AP///wD///8A////ADMzMzMzM8M/AAAAAAAA0D9mZmZmZmbWP83MzMzMzNw/
-mpmZmZmZ4T/NzMzMzMzkPwAAAAAAAOg/AAAAAAAAAAADAAAABgAAAAoAAAAQAAAAAgAAAAEAAAADAAAA
-eK4Kd2/yuk2oKSU8g9Gzh/KqFW8I0olOmrRIlTXTT5yo3s0Am5ODS6NApoUiZmbMAAAAAP//////////
-AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAAAAAAAAAyGIAAAEAAAAJAAAACQAAAN5iAAACYwAA
-JmMAAFZlbHRyaXhOYXRpdmVfbmV3LmRsbAAAEAAAUBUAAEAXAAAwIAAAoBgAAPAiAAAwOgAAwBsAAFAg
+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
 )
 nd5 =
 (Join
-AAA4YwAAP2MAAEpjAABUYwAAXmMAAGpjAAB1YwAAgGMAAIpjAAAAAAEAAgADAAQABQAGAAcACAB2eF9i
-bHQAdnhfY2xfZmluZAB2eF9jbF9ydW4AdnhfZW5hYmxlAHZ4X2Zpc2hsaW5lAHZ4X2dyYWRiYXIAdnhf
-cmVtc2NhbgB2eF9yb3diYXIAdnhfc3RhdHMAACBkAAAAAAAAAAAAAAJoAAAoZQAAMGQAAAAAAAAAAAAA
-DGgAADhlAABAZAAAAAAAAAAAAAAVaAAASGUAAIhkAAAAAAAAAAAAAB9oAACQZQAA6GQAAAAAAAAAAAAA
-KmgAAPBlAAD4ZAAAAAAAAAAAAAA1aAAAAGYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMGYAAAAAAAAAAAAA
-AAAAAERmAAAAAAAAAAAAAAAAAABaZgAAAAAAAGRmAAAAAAAAemYAAAAAAACOZgAAAAAAAJpmAAAAAAAA
-qmYAAAAAAAC2ZgAAAAAAAMZmAAAAAAAAAAAAAAAAAADWZgAAAAAAAORmAAAAAAAA8mYAAAAAAAAGZwAA
-AAAAACRnAAAAAAAANmcAAAAAAABGZwAAAAAAAFZnAAAAAAAAYmcAAAAAAAB0ZwAAAAAAAIRnAAAAAAAA
-AAAAAAAAAACWZwAAAAAAAAAAAAAAAAAArmcAAAAAAADAZwAAAAAAANBnAAAAAAAA3GcAAAAAAADoZwAA
-AAAAAAAAAAAAAAAAMGYAAAAAAAAAAAAAAAAAAERmAAAAAAAAAAAAAAAAAABaZgAAAAAAAGRmAAAAAAAA
-emYAAAAAAACOZgAAAAAAAJpmAAAAAAAAqmYAAAAAAAC2ZgAAAAAAAMZmAAAAAAAAAAAAAAAAAADWZgAA
-AAAAAORmAAAAAAAA8mYAAAAAAAAGZwAAAAAAACRnAAAAAAAANmcAAAAAAABGZwAAAAAAAFZnAAAAAAAA
-YmcAAAAAAAB0ZwAAAAAAAIRnAAAAAAAAAAAAAAAAAACWZwAAAAAAAAAAAAAAAAAArmcAAAAAAADAZwAA
-AAAAANBnAAAAAAAA3GcAAAAAAADoZwAAAAAAAAAAAAAAAAAAAABEM0QxMUNyZWF0ZURldmljZQAAAENy
-ZWF0ZURYR0lGYWN0b3J5MQAAAABCaXRCbHQAAAAAQ3JlYXRlQ29tcGF0aWJsZURDAAAAAENyZWF0ZURJ
-QlNlY3Rpb24AAAAARGVsZXRlREMAAAAARGVsZXRlT2JqZWN0AAAAAEdkaUZsdXNoAAAAAEdldE9iamVj
-dFR5cGUAAABTZWxlY3RPYmplY3QAAAAARW51bVdpbmRvd3MAAABHZXRBbmNlc3RvcgAAAEdldERlc2t0
-b3BXaW5kb3cAAAAAR2V0TGF5ZXJlZFdpbmRvd0F0dHJpYnV0ZXMAAAAAR2V0V2luZG93TG9uZ1cAAAAA
-R2V0V2luZG93UmVjdAAAAEludGVyc2VjdFJlY3QAAABJc0ljb25pYwAAAABJc1dpbmRvd1Zpc2libGUA
-AABXaW5kb3dGcm9tREMAAAAAV2luZG93RnJvbVBvaW50AAAARHdtR2V0V2luZG93QXR0cmlidXRlAAAA
-R2V0UHJvY2Vzc0hlYXAAAAAAR2V0VGlja0NvdW50AAAAAEhlYXBBbGxvYwAAAEhlYXBGcmVlAAAAAFF1
-ZXJ5UGVyZm9ybWFuY2VDb3VudGVyAGQzZDExLmRsbABkeGdpLmRsbABHREkzMi5kbGwAVVNFUjMyLmRs
-bABkd21hcGkuZGxsAEtFUk5FTDMyLmRsbAAAAAEbC4UbAxMBEwAMMAtwCmAJwAfQBeAD8AFQAAABEAoF
-EAMNAgwwC3AKYAnAB9AF4APwAVABFQoVFQMQEgwwC3AKYAnAB9AF4APwAVABFQo1FQMQUgwwC3AKYAnA
-B9AF4APwAVABTRyFTWgAAEh4AQBDiAIAPZgDADeoBAAxuAUAK8gGACXYBwAf6AgAGQMRARIACjAJcAhg
-B8AF4APwAVABBAIFBAMBUAEdDDUdaAAAGHgBABOIAgANAwhiBDADcAJgAVABcB+FcGgPAGt4EABjiBEA
-WpgSAFGoEwBIuBQAP8gVADbYFgAt6BcAJPgYABsDEwEzAAwwC3AKYAnAB9AF4APwAVAAAAETB4UTAwsB
-gQAEMANwAmABUAAAARsLhRsDEwETAAwwC3AKYAnAB9AF4APwAVAAAAEKAyUKAwUyAVAAAAENBiUNAwhC
-BDADcAJgAVABGwuFGwMTAR0ADDALcApgCcAH0AXgA/ABUAAAASANhSBoCwAbAxMBGQAMMAtwCmAJwAfQ
-BeAD8AFQAAABEweFEwMLARMABDADcAJgAVAAAAEPB2UPAwqyBjAFcARgA+ABUAAAARsLhRsDEwEXAAww
-C3AKYAnAB9AF4APwAVAAAAENBlUNAwiiBDADcAJgAVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+RfiLQzRBOcRBD0/EiUX8Zg9vBUkLAADzD39FAMdFFAMAAADHRRwAAAIASItLCEiLAUUxwE2J6f9QKIXA
+D4ijAgAASItF+EiJQzBIi1MoRCt7OESJffhEK3M8RIl1/MdFAAAAAABBAfdEiX0ERQHmRIl1CMdFDAEA
+AABIi0sQSItDIEyLEUyNRfhMiUQkQEiJRCQwx0QkOAAAAADHRCQoAAAAAMdEJCAAAAAARTH2RTHARTHJ
+Qf+ScAEAAEiLSxBIi1MoSIsBTI1FyEyJRCQox0QkIAAAAABFMcBBuQEAAAD/UHCFwA+IBQIAAEiJXShF
+heQPjtABAABMi72wAAAATIu1qAAAAEiLfchEi0XQSItFKEyNSFhEieFBifNIiU3YSIPB/0yJ+kgPr9FM
+AfJKjRSaSQ+vyEgB+UqNDJlMjVBcSTnOD5LBSDnXD5LDIMtNOdYPksFJOdEPksIgyk2F/w+YwAjQCNiI
+RTdEidgl+P//f0iJRehJjUP/SIlF4EGJ9EHB7ANBgeT///8PScHkBU2NbhBIjU8QZg9vBdAJAABJjVYE
+RTH/Qb7///8ASIl98OsuZi4PH4QAAAAAAA8fAEmDxwFIi4WwAAAASQHFTAHBSAHCTAHHTDt92A+E5wAA
+AIX2ftuD/ghBD5LCRApVN0H2wgF0CkUx0utZDx9EAABmQQ9uCWYPcMkARTHSDx8A80IPb1QR8PNCD28c
+EWYP29BmD9vYZg/r0WYP69nzQw9/VBXw80MPf1wVAEmDwiBNOdR1zEiLRehJicJEOdgPhGz///9MidNB
+9sMBdDJMiftJD6/YSANd8EiLhbAAAABJD6/HQosck0Qh80ELGUgDhagAAABCiRyQTInTSIPLAUw7VeAP
+hCf///8PH4AAAAAAiwSfRCHwQQsBiUSa/ItEnwREIfBBCwGJBJpIg8MCSTnbdd3p+P7//0iLRShIi0gQ
+SItQKEiLAUUxwP9QeEG+AQAAAOsLScdFAAAAAABFMfZEifBIgcS4AAAAW19eQVxBXUFeQV9dw2YPH4QA
+AAAAAFVWV1NIg+xYSI1sJFBIO0oQD4TGAAAASInPSInW/xVFDAAAuwEAAACFwA+ErwAAAEiJ+f8VJwwA
+AIXAD4WeAAAASIn5uuz/////FfkLAACpAAAIAA+EhQAAAEiNVexIifn/FekLAACFwHR0SI1N3EiNVexJ
+ifD/FdwLAACFwHRfxkUH/8dF/AAAAADHRQAAAAAATI1FB0yNTfxIifkx0v8VmwsAAIXAdAz2RfwCdAaA
+fQcAdCpJiehIifm6DgAAAEG5BAAAAP8VvAsAAIXAeAaDfQAAdQnHRhgBAAAAMduJ2EiDxFhbX15dw8zM
+zMzMzP8lygoAAMzMzMzMzMzMzMz/JcoKAADMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMz/AAAA/wAAAP8AAAD/AAAAq6qrqquqq6qrqquqq6qrqgAAAIAAAACA
+AAAAgAAAAICamZmZmZnhPwAAAAAAAAAA//////////8AAAAA/////7gehetRuL4/CtejcD0Kxz+4HoXr
+UbjOP1K4HoXrUeg/PQrXo3A96j8pXI/C9SjsPwAAAAAAAOA/AAAAAAAAAAAAAAAAAAAYQAAAAAAAABhA
+AAAAAAAAAIAAAAAAAAAAgAAAAAAAgEZAexSuR+F6tD/Xo3A9CtfjPwAAAABlzc3BAAAAAAA4j0AAAAAA
+AABEQJXWJugLLhE+AAAAAAAAAAD/////////f/////////9//wAAAP8AAAD/AAAA/wAAADYAAAA2AAAA
+NgAAADYAAAAAAAAAAAAqQAAAAAAAACpAAMhOZ23Bq0MAAAAAAADgPwAAAAD/////AAAAAP//////////
+AAAAAP//////////BwAAAAcAAAAHAAAABwAAAAUAAAAFAAAABQAAAAUAAAAAAAAAAAAkQAAAAAAAACRA
+AAAAAAAAJEAAAAAAAAAAAJqZmZmZmck/AAAAAAAA4D+amZmZmZnpPzMzMzMzM9M/AAAAAAAA4D8AAAAA
+AADwvwAAAAAAAD5AAAAAAAAAJEAAAAAAAAAgwAAAAAAAACBAAAAAAAAA0D8AAAAAAADoP/////////9/
+/////////3+4HoXrUbiePwrXo3A9Cu8/AAAAAAAAUEAAAAAAAADwPwAAAAAAACLAAAAAAAAAIsAAAAAA
+AAAiwI3ttaD3xrA+////AP///wD///8A////AAEAAAABAAAAVwAAAAEAAAD///8A////AP///wD///8A
+MzMzMzMzwz8AAAAAAADQP2ZmZmZmZtY/zczMzMzM3D+amZmZmZnhP83MzMzMzOQ/AAAAAAAA6D8AAAAA
+AAAAAAMAAAAGAAAACgAAABAAAAACAAAAAQAAAAMAAAB4rgp3b/K6TagpJTyD0bOH8qoVbwjSiU6atEiV
+NdNPnKjezQCbk4NLo0CmhSJmZswAAAAA//////////8AAAAAAAAAAP//////////AAAAAAAAAAAAAAAA
+AAAAAAAAAABYYwAAAQAAAAoAAAAKAAAAbmMAAJZjAAC+YwAAVmVsdHJpeE5hdGl2ZV9uZXcuZGxsAAAQ
+AABQFQAAQBcAADAgAACgGAAA8CIAADA6AADAGwAAUCAAAMBDAADSYwAA2WMAAORjAADuYwAA+GMAAARk
+AAAPZAAAGmQAACRkAAAtZAAAAAABAAIAAwAEAAUABgAHAAgACQB2eF9ibHQAdnhfY2xfZmluZAB2eF9j
+bF9ydW4AdnhfZW5hYmxlAHZ4X2Zpc2hsaW5lAHZ4X2dyYWRiYXIAdnhfcmVtc2NhbgB2eF9yb3diYXIA
+dnhfc3RhdHMAdnhfc3dzaGFwZQDIZAAAAAAAAAAAAACqaAAA0GUAANhkAAAAAAAAAAAAALRoAADgZQAA
+6GQAAAAAAAAAAAAAvWgAAPBlAAAwZQAAAAAAAAAAAADHaAAAOGYAAJBlAAAAAAAAAAAAANJoAACYZgAA
+oGUAAAAAAAAAAAAA3WgAAKhmAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADYZgAAAAAAAAAAAAAAAAAA
+7GYAAAAAAAAAAAAAAAAAAAJnAAAAAAAADGcAAAAAAAAiZwAAAAAAADZnAAAAAAAAQmcAAAAAAABSZwAA
+AAAAAF5nAAAAAAAAbmcAAAAAAAAAAAAAAAAAAH5nAAAAAAAAjGcAAAAAAACaZwAAAAAAAK5nAAAAAAAA
+zGcAAAAAAADeZwAAAAAAAO5nAAAAAAAA/mcAAAAAAAAKaAAAAAAAABxoAAAAAAAALGgAAAAAAAAAAAAA
+AAAAAD5oAAAAAAAAAAAAAAAAAABWaAAAAAAAAGhoAAAAAAAAeGgAAAAAAACEaAAAAAAAAJBoAAAAAAAA
+AAAAAAAAAADYZgAAAAAAAAAAAAAAAAAA7GYAAAAAAAAAAAAAAAAAAAJnAAAAAAAADGcAAAAAAAAiZwAA
+AAAAADZnAAAAAAAAQmcAAAAAAABSZwAAAAAAAF5nAAAAAAAAbmcAAAAAAAAAAAAAAAAAAH5nAAAAAAAA
+jGcAAAAAAACaZwAAAAAAAK5nAAAAAAAAzGcAAAAAAADeZwAAAAAAAO5nAAAAAAAA/mcAAAAAAAAKaAAA
+AAAAABxoAAAAAAAALGgAAAAAAAAAAAAAAAAAAD5oAAAAAAAAAAAAAAAAAABWaAAAAAAAAGhoAAAAAAAA
+eGgAAAAAAACEaAAAAAAAAJBoAAAAAAAAAAAAAAAAAAAAAEQzRDExQ3JlYXRlRGV2aWNlAAAAQ3JlYXRl
+RFhHSUZhY3RvcnkxAAAAAEJpdEJsdAAAAABDcmVhdGVDb21wYXRpYmxlREMAAAAAQ3JlYXRlRElCU2Vj
+dGlvbgAAAABEZWxldGVEQwAAAABEZWxldGVPYmplY3QAAAAAR2RpRmx1c2gAAAAAR2V0T2JqZWN0VHlw
+ZQAAAFNlbGVjdE9iamVjdAAAAABFbnVtV2luZG93cwAAAEdldEFuY2VzdG9yAAAAR2V0RGVza3RvcFdp
+bmRvdwAAAABHZXRMYXllcmVkV2luZG93QXR0cmlidXRlcwAAAABHZXRXaW5kb3dMb25nVwAAAABHZXRX
+aW5kb3dSZWN0AAAASW50ZXJzZWN0UmVjdAAAAElzSWNvbmljAAAAAElzV2luZG93VmlzaWJsZQAAAFdp
+bmRvd0Zyb21EQwAAAABXaW5kb3dGcm9tUG9pbnQAAABEd21HZXRXaW5kb3dBdHRyaWJ1dGUAAABHZXRQ
+cm9jZXNzSGVhcAAAAABHZXRUaWNrQ291bnQAAAAASGVhcEFsbG9jAAAASGVhcEZyZWUAAAAAUXVlcnlQ
+ZXJmb3JtYW5jZUNvdW50ZXIAZDNkMTEuZGxsAGR4Z2kuZGxsAEdESTMyLmRsbABVU0VSMzIuZGxsAGR3
+bWFwaS5kbGwAS0VSTkVMMzIuZGxsAAAAARsLhRsDEwETAAwwC3AKYAnAB9AF4APwAVAAAAEQCgUQAw0C
+DDALcApgCcAH0AXgA/ABUAEVChUVAxASDDALcApgCcAH0AXgA/ABUAEVCjUVAxBSDDALcApgCcAH0AXg
+A/ABUAFNHIVNaAAASHgBAEOIAgA9mAMAN6gEADG4BQAryAYAJdgHAB/oCAAZAxEBEgAKMAlwCGAHwAXg
+A/ABUAEEAgUEAwFQAR0MNR1oAAAYeAEAE4gCAA0DCGIEMANwAmABUAFwH4VwaA8Aa3gQAGOIEQBamBIA
+UagTAEi4FAA/yBUANtgWAC3oFwAk+BgAGwMTATMADDALcApgCcAH0AXgA/ABUAAAARMHhRMDCwGBAAQw
+A3ACYAFQAAABGwuFGwMTARMADDALcApgCcAH0AXgA/ABUAAAAWofhWpoxABjeMUAXIjGAFSYxwBMqMgA
+RLjJADvIygAz2MsAK+jMACP4zQAbAxMBnQEMMAtwCmAJwAfQBeAD8AFQAAABCgMlCgMFMgFQAAABDQYl
+DQMIQgQwA3ACYAFQARsLhRsDEwEdAAwwC3AKYAnAB9AF4APwAVAAAAEgDYUgaAsAGwMTARkADDALcApg
+CcAH0AXgA/ABUAAAARMHhRMDCwETAAQwA3ACYAFQAAABDwdlDwMKsgYwBXAEYAPgAVAAAAEbC4UbAxMB
+FwAMMAtwCmAJwAfQBeAD8AFQAAABDQZVDQMIogQwA3ACYAFQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAA/////wAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -32696,26 +32806,21 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAP////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAA
-TRUAAERoAABQFQAAQBcAAGBoAABAFwAAoBgAAHhoAACgGAAAsxsAAJBoAADAGwAAKyAAAKhoAAAwIAAA
-QyAAAORoAABQIAAA4SIAAOxoAADwIgAAVTYAAAhpAABgNgAAMDoAAExpAAAwOgAAwEMAAGBpAADAQwAA
-HEQAAHxpAAAgRAAADUUAAIhpAAAQRQAAvUcAAJhpAADARwAA1koAALRpAADgSgAAdU0AANRpAACATQAA
-LU8AAOhpAAAwTwAAp1IAAPxpAACwUgAAmlMAABhqAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
 )
-	return nd1 . nd2 . nd3 . nd4 . nd5
+nd6 =
+(Join
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAQAABNFQAA7GgAAFAVAABAFwAACGkAAEAXAACgGAAAIGkAAKAYAACzGwAAOGkAAMAbAAArIAAA
+UGkAADAgAABDIAAAjGkAAFAgAADhIgAAlGkAAPAiAABVNgAAsGkAAGA2AAAwOgAA9GkAADA6AADAQwAA
+CGoAAMBDAAAXSwAAJGoAACBLAAB8SwAAaGoAAIBLAABtTAAAdGoAAHBMAAAdTwAAhGoAACBPAAA2UgAA
+oGoAAEBSAADVVAAAwGoAAOBUAACNVgAA1GoAAJBWAAAHWgAA6GoAABBaAAD6WgAABGsAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+)
+	return nd1 . nd2 . nd3 . nd4 . nd5 . nd6
 }
 
 ;---- Debug (Extra > Debug): scanning FPS and the bar's LEFT / RIGHT / LINE markers ---------------------------
