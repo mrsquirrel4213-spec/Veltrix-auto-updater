@@ -4,6 +4,7 @@
 global VxBlt := "BitBlt"
 ; the bar detection loops in VeltrixNative.dll (0 = the macro's own AutoHotkey loops)
 global VxNatCF := 0, VxNatCR := 0, VxNatFL := 0, VxNatRB := 0, VxNatGB := 0, VxNatRM := 0, VxNatSS := 0, VxNatIO := 0
+global VxNatFD := 0, VxNatCP := 0, VxNatCB := 0, VxNatBL := 0, VxNatPS := 0, VxNatRL := 0, VxNatRF := 0, VxNatHB := 0, VxNatMB := 0, VxNatMF := 0, VxNatNE := 0, VxNatNA := 0, VxNatNB := 0, VxNatNF := 0, VxNatNFB := 0, VxNatTQ := 0, NatOff := 0
 
 VxBaseVersion := "1.1.7"
 FsExtraCount := 0
@@ -27,7 +28,7 @@ FsSeen := {}
 FsPending := false
 FsReqT := 0
 FsWorkerPid := 0
-VxBuild := 81
+VxBuild := 82
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -1093,6 +1094,13 @@ if (AquariumAuto and !AqBusy and (AqNextTick = 0 or A_TickCount >= AqNextTick))
 if (!MacroRunning)
 	goto Idle
 
+; Auto Totem with the other between-catch checks (passive mode goes its own way right below): only when its check
+; is due, so the restart does not wait on it otherwise
+if (RobloxHwnd and WinActive("ahk_id " . RobloxHwnd))
+	gosub, TotemMaybeRun
+if (!MacroRunning)
+	goto Idle
+
 VxTip(9, "")
 if (!MacroRunning)
 	goto Idle
@@ -1125,9 +1133,6 @@ if (RodSlotKey != "" and (ForceReEquip or (UnstickAfter > 0 and CastFailCount >=
 		goto Idle
 	}
 
-gosub, TotemMaybeRun
-if (!MacroRunning)
-	goto Idle
 VxTip(7, "Current Task: Casting Rod")
 CastHolding := true
 if (CastMode = "Perfect")
@@ -2721,7 +2726,7 @@ VxTip(12, "")
 VxTip(13, "")
 VxTip(15, "")
 gosub, HideHud
-if (AdaptiveCast)
+if (AdaptiveCast and !(PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody")))
 	{
 	AcMs := AdaptiveCastMs
 	if AcMs is not number
@@ -2748,8 +2753,8 @@ if (AdaptiveCast)
 			break
 		Sleep, 15
 		}
-	if (AcMs < 0)
-		VxTip(8, "Action: Casting right away (" . AcMs . "ms - early)")
+	if (AcMs <= 0)
+		VxTip(8, "Action: Casting right away")
 	else
 		{
 		VxTip(8, "Action: Casting " . AcMs . "ms after the minigame closed")
@@ -7164,6 +7169,12 @@ ColSpread(x0, x1, fishX) {
 		x0 := 0
 	if (x1 > CaptureW)
 		x1 := CaptureW
+	if (VxNatCP and !NatOff and x0 = Round(x0) and x1 = Round(x1))
+		{
+		VarSetCapacity(csOut, 8, 0)
+		DllCall(VxNatCP, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", x0, "Int", x1, "Double", fishX, "Ptr", &csOut, "Int")
+		return NumGet(csOut, 0, "Double")
+		}
 	loR := 999999, hiR := -1, loG := 999999, hiG := -1, loB := 999999, hiB := -1
 	n := 0
 	x := x0
@@ -7204,6 +7215,8 @@ ColSpread(x0, x1, fishX) {
 
 FrameIsDark() {
 	global pCaptureBits, CaptureW, CaptureH
+	if (VxNatFD and !NatOff)
+		return DllCall(VxNatFD, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int") ? true : false
 	dark := 0
 	n := 0
 	y := 0
@@ -7274,7 +7287,7 @@ TqMedian(arr) {
 }
 
 TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
-	global pNoteBits, NoteW, NoteH, WindowHeight, TqBgR, TqBgG, TqBgB
+	global pNoteBits, NoteW, NoteH, WindowHeight, TqBgR, TqBgG, TqBgB, TqBgT
 	hh := WindowHeight
 	expect := NoteH - (hh * 0.0767)
 	win := (hh * 0.0625) + (hh * 0.08)
@@ -7293,31 +7306,45 @@ TqRing(cx, ByRef cc, ByRef rtop, ByRef pr, ByRef pg, ByRef pb) {
 	TqLaneBg(cx)
 	rs := []
 	re := []
-	st := -1
-	y := ya
-	while (y <= yb)
+	if (VxNatTQ and !NatOff)
 		{
-		v := NumGet(base + 0, y * rowb, "UInt")
-		cb := v & 0xFF
-		cg := (v >> 8) & 0xFF
-		cr := (v >> 16) & 0xFF
-		if (TqNotePx(cr, cg, cb))
+		VarSetCapacity(tqRun, 2048 * 8, 0)
+		tqN := DllCall(VxNatTQ, "Ptr", pNoteBits, "Int", NoteW, "Int", cx, "Int", ya, "Int", yb, "Double", TqBgR, "Double", TqBgG, "Double", TqBgB
+				, "Double", TqBgT, "Double", TA("tqhaze", 70), "Double", TA("tqlift", 30), "Double", TA("tqdist", 120), "Ptr", &tqRun, "Int", 2048, "Int")
+		Loop % tqN
 			{
-			if (st < 0)
-				st := y
+			rs.Push(NumGet(tqRun, (A_Index - 1) * 8, "Int"))
+			re.Push(NumGet(tqRun, (A_Index - 1) * 8 + 4, "Int"))
 			}
-		else if (st >= 0)
+		}
+	else
+		{
+		st := -1
+		y := ya
+		while (y <= yb)
+			{
+			v := NumGet(base + 0, y * rowb, "UInt")
+			cb := v & 0xFF
+			cg := (v >> 8) & 0xFF
+			cr := (v >> 16) & 0xFF
+			if (TqNotePx(cr, cg, cb))
+				{
+				if (st < 0)
+					st := y
+				}
+			else if (st >= 0)
+				{
+				rs.Push(st)
+				re.Push(y - 1)
+				st := -1
+				}
+			y++
+			}
+		if (st >= 0)
 			{
 			rs.Push(st)
-			re.Push(y - 1)
-			st := -1
+			re.Push(yb)
 			}
-		y++
-		}
-	if (st >= 0)
-		{
-		rs.Push(st)
-		re.Push(yb)
 		}
 	i := 1
 	while (i < rs.Length())
@@ -7508,6 +7535,7 @@ ManiaVisible() {
 }
 
 ManiaStep(t) {
+	global TqBgR, TqBgG, TqBgB, TqBgT
 	global pNoteBits, NoteW, NoteH, WindowHeight, ManiaLead, BarCalculationFailsafe
 	global TqHitY, TqRingTop, TqV, TqVs, TqNoteD, TqDs, TqNotes, TqRef, TqLastRing, TqLastLive, TqStarted, TqT0
 	global TqExpired, TqPrevT, TqDl
@@ -7571,27 +7599,54 @@ ManiaStep(t) {
 		sr := rf[1] + rf[2] + rf[3]
 		mb := []
 		mh := []
-		st := -1
-		y := 0
-		while (y <= NoteH)
+		; the lane's note runs - in VeltrixNative when it is there - then each run as it closes
+		tqRs := []
+		tqRe := []
+		if (VxNatTQ and !NatOff)
 			{
-			colp := false
-			if (y < NoteH)
+			VarSetCapacity(tqRun, 2048 * 8, 0)
+			tqN := DllCall(VxNatTQ, "Ptr", pNoteBits, "Int", NoteW, "Int", Round(NoteW * fr[li]), "Int", 0, "Int", NoteH - 1, "Double", TqBgR, "Double", TqBgG, "Double", TqBgB
+				, "Double", TqBgT, "Double", TA("tqhaze", 70), "Double", TA("tqlift", 30), "Double", TA("tqdist", 120), "Ptr", &tqRun, "Int", 2048, "Int")
+			Loop % tqN
 				{
-				v := NumGet(base + 0, y * rowb, "UInt")
-				cb := v & 0xFF
-				cg := (v >> 8) & 0xFF
-				cr := (v >> 16) & 0xFF
-				colp := TqNotePx(cr, cg, cb)
+				tqRs.Push(NumGet(tqRun, (A_Index - 1) * 8, "Int"))
+				tqRe.Push(NumGet(tqRun, (A_Index - 1) * 8 + 4, "Int"))
 				}
-			if (colp)
+			}
+		else
+			{
+			st := -1
+			y := 0
+			while (y <= NoteH)
 				{
-				if (st < 0)
-					st := y
+				colp := false
+				if (y < NoteH)
+					{
+					v := NumGet(base + 0, y * rowb, "UInt")
+					cb := v & 0xFF
+					cg := (v >> 8) & 0xFF
+					cr := (v >> 16) & 0xFF
+					colp := TqNotePx(cr, cg, cb)
+					}
+				if (colp)
+					{
+					if (st < 0)
+						st := y
+					}
+				else if (st >= 0)
+					{
+					tqRs.Push(st)
+					tqRe.Push(y - 1)
+					st := -1
+					}
+				y++
 				}
-			else if (st >= 0)
-				{
-				ye := y - 1
+			}
+		tqI := 1
+		while (tqI <= tqRs.Length())
+			{
+			st := tqRs[tqI]
+			ye := tqRe[tqI]
 				rh := ye - st + 1
 				if (ye < top and rh >= minH)
 					{
@@ -7636,9 +7691,7 @@ ManiaStep(t) {
 							}
 						}
 					}
-				st := -1
-				}
-			y++
+			tqI++
 			}
 		i := 2
 		while (i <= mb.Length())
@@ -7865,7 +7918,15 @@ NoiseScan() {
 		bvNeed := 3
 	bmN := 0
 	bmX := []
-	if (NoiseBandT > -99)
+	VarSetCapacity(nzBuf, 4096, 0)
+	if (NoiseBandT > -99 and VxNatNE and !NatOff)
+		{
+		bmN := DllCall(VxNatNE, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", 1, "Int", NoiseBandT, "Int", NoiseBandB
+			, "Int", bvStep, "Int", bvTot, "Int", bvNeed, "Int", bmWmax, "Ptr", &nzBuf, "Int", 1024, "Int")
+		Loop % bmN
+			bmX[A_Index] := NumGet(nzBuf, (A_Index - 1) * 4, "Int")
+		}
+	else if (NoiseBandT > -99)
 		{
 		bT0 := pCaptureBits + (NoiseBandT * CaptureW * 4)
 		bT2 := bT0 + (2 * CaptureW * 4)
@@ -7922,44 +7983,54 @@ NoiseScan() {
 		}
 	if (bmN = 0)
 		{
-		brun := -1
-		bx := 0
-		while (bx <= CaptureW)
+		if (VxNatNE and !NatOff)
 			{
-			bIsEdge := false
-			if (bx < CaptureW)
+			bmN := DllCall(VxNatNE, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", 0, "Int", 0, "Int", 0
+				, "Int", bvStep, "Int", bvTot, "Int", bvNeed, "Int", bmWmax, "Ptr", &nzBuf, "Int", 1024, "Int")
+			Loop % bmN
+				bmX[A_Index] := NumGet(nzBuf, (A_Index - 1) * 4, "Int")
+			}
+		else
+			{
+			brun := -1
+			bx := 0
+			while (bx <= CaptureW)
 				{
-				bHit := 0
-				bSeen := 0
-				by2 := 0
-				while (by2 < CaptureH)
+				bIsEdge := false
+				if (bx < CaptureW)
 					{
-					v := NumGet(pCaptureBits + 0, (by2*CaptureW + bx)*4, "UInt")
-					bSeen++
-					if (!(v & 0xF0F0F0) and (v & 0xFF) <= 6 and ((v >> 8) & 0xFF) <= 10 and ((v >> 16) & 0xFF) <= 6)
-						bHit++
-					if ((bHit + (bvTot - bSeen)) < bvNeed)
-						break
-					by2 += bvStep
+					bHit := 0
+					bSeen := 0
+					by2 := 0
+					while (by2 < CaptureH)
+						{
+						v := NumGet(pCaptureBits + 0, (by2*CaptureW + bx)*4, "UInt")
+						bSeen++
+						if (!(v & 0xF0F0F0) and (v & 0xFF) <= 6 and ((v >> 8) & 0xFF) <= 10 and ((v >> 16) & 0xFF) <= 6)
+							bHit++
+						if ((bHit + (bvTot - bSeen)) < bvNeed)
+							break
+						by2 += bvStep
+						}
+					if (bHit >= bvNeed)
+						bIsEdge := true
 					}
-				if (bHit >= bvNeed)
-					bIsEdge := true
-				}
-			if (bIsEdge)
-				{
-				if (brun < 0)
-					brun := bx
-				}
-			else if (brun >= 0)
-				{
-				if (bx - brun <= bmWmax)
+				if (bIsEdge)
 					{
-					bmN++
-					bmX[bmN] := (brun + bx - 1) // 2
+					if (brun < 0)
+						brun := bx
 					}
-				brun := -1
+				else if (brun >= 0)
+					{
+					if (bx - brun <= bmWmax)
+						{
+						bmN++
+						bmX[bmN] := (brun + bx - 1) // 2
+						}
+					brun := -1
+					}
+				bx++
 				}
-			bx++
 			}
 		if (bmN >= 2)
 			{
@@ -8101,88 +8172,102 @@ NoiseScan() {
 			ay0 := CaptureH // 2
 			ay1 := ay0 + 2
 			}
-		acnt := []
-		astep := 2
-		ax := 0
-		while (ax < CaptureW)
+		if (VxNatNA and !NatOff)
 			{
-			cc := 0
-			ay := ay0
-			while (ay < ay1)
+			VarSetCapacity(nzA, 8, 0)
+			if (DllCall(VxNatNA, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", ay0, "Int", ay1
+				, "Int", (NoiseWCal >= 40) ? NoiseWCal : 0, "Ptr", &nzA, "Int"))
 				{
-				v := NumGet(pCaptureBits + 0, (ay*CaptureW + ax)*4, "UInt")
-				if (((((v & 0xFF) + ((v >> 8) & 0xFF) + ((v >> 16) & 0xFF)) // 3)) <= 12)
-					cc++
-				ay += 4
-				}
-			acnt[ax] := cc
-			ax += astep
-			}
-		awmin := Round(CaptureW * 0.019)
-		awmax := Round(CaptureW * 0.09)
-		bestAw := 0
-		bestAa := -1
-		bestAb := -1
-		ra := -1
-		ax := 0
-		while (ax <= CaptureW)
-			{
-			isa := (ax < CaptureW and acnt[ax] >= 1)
-			if (isa)
-				{
-				if (ra < 0)
-					ra := ax
-				}
-			else if (ra >= 0)
-				{
-			rb := ax - astep
-				aw := rb - ra + 1
-				if (aw >= awmin and aw <= awmax and aw > bestAw)
-					{
-					bestAw := aw
-					bestAa := ra
-					bestAb := rb
-					}
-				ra := -1
-				}
-		ax += astep
-			}
-		if (bestAw > 0)
-			{
-			th := bestAw // 3
-			if (th < 1)
-				th := 1
-			lsum := 0
-			rsum := 0
-			kk := 0
-			while (kk < th)
-				{
-				lsum += acnt[bestAa + kk]
-				rsum += acnt[bestAb - kk]
-				kk++
-				}
-		useW := (NoiseWCal >= 40) ? NoiseWCal : (CaptureW * 0.30)
-			ains := Round(useW * 0.125)
-			acx := (bestAa + bestAb) // 2
-			if (rsum > lsum)
-				{
-				barRp := acx + ains
-			barLp := barRp - Round(useW)
-				}
-			else
-				{
-				barLp := acx - ains
-			barRp := barLp + Round(useW)
-				}
-			if (barLp < 0)
-			barLp := barLp
-			if (barRp > CaptureW - 1)
-			barRp := barRp
-			if (barRp - barLp >= 40)
-				{
-				arwL := barLp
-				arwR := barRp
+				arwL := NumGet(nzA, 0, "Int")
+				arwR := NumGet(nzA, 4, "Int")
 				arwOK := true
+				}
+			}
+		else
+			{
+			acnt := []
+			astep := 2
+			ax := 0
+			while (ax < CaptureW)
+				{
+				cc := 0
+				ay := ay0
+				while (ay < ay1)
+					{
+					v := NumGet(pCaptureBits + 0, (ay*CaptureW + ax)*4, "UInt")
+					if (((((v & 0xFF) + ((v >> 8) & 0xFF) + ((v >> 16) & 0xFF)) // 3)) <= 12)
+						cc++
+					ay += 4
+					}
+				acnt[ax] := cc
+				ax += astep
+				}
+			awmin := Round(CaptureW * 0.019)
+			awmax := Round(CaptureW * 0.09)
+			bestAw := 0
+			bestAa := -1
+			bestAb := -1
+			ra := -1
+			ax := 0
+			while (ax <= CaptureW)
+				{
+				isa := (ax < CaptureW and acnt[ax] >= 1)
+				if (isa)
+					{
+					if (ra < 0)
+						ra := ax
+					}
+				else if (ra >= 0)
+					{
+				rb := ax - astep
+					aw := rb - ra + 1
+					if (aw >= awmin and aw <= awmax and aw > bestAw)
+						{
+						bestAw := aw
+						bestAa := ra
+						bestAb := rb
+						}
+					ra := -1
+					}
+			ax += astep
+				}
+			if (bestAw > 0)
+				{
+				th := bestAw // 3
+				if (th < 1)
+					th := 1
+				lsum := 0
+				rsum := 0
+				kk := 0
+				while (kk < th)
+					{
+					lsum += acnt[bestAa + kk]
+					rsum += acnt[bestAb - kk]
+					kk++
+					}
+			useW := (NoiseWCal >= 40) ? NoiseWCal : (CaptureW * 0.30)
+				ains := Round(useW * 0.125)
+				acx := (bestAa + bestAb) // 2
+				if (rsum > lsum)
+					{
+					barRp := acx + ains
+				barLp := barRp - Round(useW)
+					}
+				else
+					{
+					barLp := acx - ains
+				barRp := barLp + Round(useW)
+					}
+				if (barLp < 0)
+				barLp := barLp
+				if (barRp > CaptureW - 1)
+				barRp := barRp
+				if (barRp - barLp >= 40)
+					{
+					arwL := barLp
+					arwR := barRp
+					arwOK := true
+					}
 				}
 			}
 		}
@@ -8193,130 +8278,148 @@ NoiseScan() {
 	nrun := 0
 	if (!pairOK and !arwOK)
 		{
-		lum := []
-		gex := []
-		hist := []
-		bi := 0
-		while (bi < 64)
+		if (VxNatNB and !NatOff)
 			{
-			hist[bi] := 0
-			bi++
-			}
-		i := 0
-		while (i < ncol)
-			{
-			x := i * step
-			s := 0
-			sg := 0
-			smx := 0
-			c := 0
-			y := y0
-			while (y < y1)
+			VarSetCapacity(nzRa, 256, 0)
+			VarSetCapacity(nzRb, 256, 0)
+			nrun := DllCall(VxNatNB, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", y0, "Int", y1, "Ptr", &nzRa, "Ptr", &nzRb, "Int", 64, "Int")
+			if (nrun < 0)
+				return false
+			rA := []
+			rB := []
+			Loop % nrun
 				{
-				v := NumGet(pCaptureBits + 0, (y*CaptureW + x)*4, "UInt")
-				pb := (v & 0xFF)
-				pg := ((v >> 8) & 0xFF)
-				pr := ((v >> 16) & 0xFF)
-				s += (pr + pg + pb) // 3
-				sg += pg
-				smx += (pr > pb) ? pr : pb
-				c++
-				y += 2
+				rA[A_Index] := NumGet(nzRa, (A_Index - 1) * 4, "Int")
+				rB[A_Index] := NumGet(nzRb, (A_Index - 1) * 4, "Int")
 				}
-			if (c < 1)
-				c := 1
-			lv := s // c
-			lum[i] := lv
-			gex[i] := (sg - smx) // c
-			bi := lv // 4
-			if (bi > 63)
-				bi := 63
-			if (bi < 0)
-				bi := 0
-			hist[bi] := hist[bi] + 1
-			i++
 			}
-		need := Round(ncol * 0.20)
-		acc := 0
-		bg := 0
-		bi := 0
-		while (bi < 64)
+		else
 			{
-			acc += hist[bi]
-			if (acc >= need)
+			lum := []
+			gex := []
+			hist := []
+			bi := 0
+			while (bi < 64)
 				{
-				bg := bi * 4
-				break
+				hist[bi] := 0
+				bi++
 				}
-			bi++
-			}
-		need := Round(ncol * 0.98)
-		acc := 0
-		pk := 255
-		bi := 0
-		while (bi < 64)
-			{
-			acc += hist[bi]
-			if (acc >= need)
+			i := 0
+			while (i < ncol)
 				{
-				pk := bi * 4
-				break
-				}
-			bi++
-			}
-		if (pk - bg < 40)
-			return false
-		thr := bg + ((pk - bg) * 0.45)
-		gapmax := Round(ncol * 0.025)
-		if (gapmax < 5)
-			gapmax := 5
-		minw := Round(ncol * 0.22)
-		if (minw < 20)
-			minw := 20
-		rs := -1
-		re := -1
-		gap := 0
-		nrun := 0
-		rA := []
-		rB := []
-		i := 0
-		while (i <= ncol)
-			{
-			isb := (i < ncol and lum[i] >= thr)
-			if (isb)
-				{
-				if (rs < 0)
-					rs := i
-				re := i
-				gap := 0
-				}
-			else if (rs >= 0)
-				{
-				gap++
-				if (gap > gapmax or i = ncol)
+				x := i * step
+				s := 0
+				sg := 0
+				smx := 0
+				c := 0
+				y := y0
+				while (y < y1)
 					{
-					gsum := 0
-					gn := 0
-					gi := rs
-					while (gi <= re)
-						{
-						gsum += gex[gi]
-						gn++
-						gi++
-						}
-					if (gn < 1)
-						gn := 1
-					if (re - rs + 1 >= minw and (gsum // gn) >= 25)
-						{
-						nrun++
-						rA[nrun] := rs
-						rB[nrun] := re
-						}
-					rs := -1
+					v := NumGet(pCaptureBits + 0, (y*CaptureW + x)*4, "UInt")
+					pb := (v & 0xFF)
+					pg := ((v >> 8) & 0xFF)
+					pr := ((v >> 16) & 0xFF)
+					s += (pr + pg + pb) // 3
+					sg += pg
+					smx += (pr > pb) ? pr : pb
+					c++
+					y += 2
+					}
+				if (c < 1)
+					c := 1
+				lv := s // c
+				lum[i] := lv
+				gex[i] := (sg - smx) // c
+				bi := lv // 4
+				if (bi > 63)
+					bi := 63
+				if (bi < 0)
+					bi := 0
+				hist[bi] := hist[bi] + 1
+				i++
+				}
+			need := Round(ncol * 0.20)
+			acc := 0
+			bg := 0
+			bi := 0
+			while (bi < 64)
+				{
+				acc += hist[bi]
+				if (acc >= need)
+					{
+					bg := bi * 4
+					break
+					}
+				bi++
+				}
+			need := Round(ncol * 0.98)
+			acc := 0
+			pk := 255
+			bi := 0
+			while (bi < 64)
+				{
+				acc += hist[bi]
+				if (acc >= need)
+					{
+					pk := bi * 4
+					break
+					}
+				bi++
+				}
+			if (pk - bg < 40)
+				return false
+			thr := bg + ((pk - bg) * 0.45)
+			gapmax := Round(ncol * 0.025)
+			if (gapmax < 5)
+				gapmax := 5
+			minw := Round(ncol * 0.22)
+			if (minw < 20)
+				minw := 20
+			rs := -1
+			re := -1
+			gap := 0
+			nrun := 0
+			rA := []
+			rB := []
+			i := 0
+			while (i <= ncol)
+				{
+				isb := (i < ncol and lum[i] >= thr)
+				if (isb)
+					{
+					if (rs < 0)
+						rs := i
+					re := i
 					gap := 0
 					}
+				else if (rs >= 0)
+					{
+					gap++
+					if (gap > gapmax or i = ncol)
+						{
+						gsum := 0
+						gn := 0
+						gi := rs
+						while (gi <= re)
+							{
+							gsum += gex[gi]
+							gn++
+							gi++
+							}
+						if (gn < 1)
+							gn := 1
+						if (re - rs + 1 >= minw and (gsum // gn) >= 25)
+							{
+							nrun++
+							rA[nrun] := rs
+							rB[nrun] := re
+							}
+						rs := -1
+						gap := 0
+						}
+					}
+				i++
 				}
-			i++
 			}
 		}
 	gotBar := (nrun >= 1)
@@ -8683,84 +8786,104 @@ NoiseScan() {
 	barB := be * step
 	nf := 0
 	fX := []
-	fx2 := 0
-	while (fx2 < CaptureW)
+	if (VxNatNF and !NatOff and ftol = Round(ftol))
 		{
-		pv := NumGet(pCaptureBits + 0, (frow*CaptureW + fx2)*4, "UInt")
-		if ((Abs((pv & 0xFF) - ftB) <= ftol and Abs(((pv >> 8) & 0xFF) - ftG) <= ftol and Abs(((pv >> 16) & 0xFF) - ftR) <= ftol) or (((pv >> 8) & 0xFF) >= 34 and ((pv >> 8) & 0xFF) <= 104 and ((pv >> 16) & 0xFF) <= 52 and (pv & 0xFF) <= 76 and ((pv >> 8) & 0xFF) >= ((pv >> 16) & 0xFF) + 10 and ((pv >> 8) & 0xFF) >= (pv & 0xFF) + 4 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) >= 14 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) <= 74))
-			{
-			fst := fx2
-			while (fx2 < CaptureW)
-				{
-				pv := NumGet(pCaptureBits + 0, (frow*CaptureW + fx2)*4, "UInt")
-				if !((Abs((pv & 0xFF) - ftB) <= ftol and Abs(((pv >> 8) & 0xFF) - ftG) <= ftol and Abs(((pv >> 16) & 0xFF) - ftR) <= ftol) or (((pv >> 8) & 0xFF) >= 34 and ((pv >> 8) & 0xFF) <= 104 and ((pv >> 16) & 0xFF) <= 52 and (pv & 0xFF) <= 76 and ((pv >> 8) & 0xFF) >= ((pv >> 16) & 0xFF) + 10 and ((pv >> 8) & 0xFF) >= (pv & 0xFF) + 4 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) >= 14 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) <= 74))
-					break
-				fx2++
-				}
-			fw := fx2 - fst
-			if (fw >= 3 and fw <= fwmax)
-				{
-				fcx := fst + (fw // 2)
-				fhits := 0
-				fk := 1
-				while (fk <= 5)
-					{
-					fy := Floor(CaptureH * (fk*2 - 1) / 10)
-					if (fy >= CaptureH)
-						fy := CaptureH - 1
-					pv := NumGet(pCaptureBits + 0, (fy*CaptureW + fcx)*4, "UInt")
-					if (NoiseIsCore(pv, ftB, ftG, ftR, ftol))
-						fhits++
-					fk++
-					}
-				if (fhits >= fneed and Abs(fcx - barA) > edgeM and Abs(fcx - barB) > edgeM)
-					{
-					gSum := 0
-					gN := 0
-					fy := 2
-					while (fy < CaptureH - 2)
-						{
-						v := NumGet(pCaptureBits + 0, (fy*CaptureW + fcx)*4, "UInt")
-						gSum += ((v >> 8) & 0xFF)
-						gN++
-						fy++
-						}
-					if (gN < 1)
-						gN := 1
-					ownG := gSum // gN
-					maxL := 0
-					maxR := 0
-					kk := 1
-					while (kk <= 4)
-						{
-						xx := fst - kk
-						if (xx < 0)
-							xx := 0
-						v := NumGet(pCaptureBits + 0, (frow*CaptureW + xx)*4, "UInt")
-						gv := (v >> 8) & 0xFF
-						if (gv > maxL)
-							maxL := gv
-						xx := fx2 - 1 + kk
-						if (xx > CaptureW - 1)
-							xx := CaptureW - 1
-						v := NumGet(pCaptureBits + 0, (frow*CaptureW + xx)*4, "UInt")
-						gv := (v >> 8) & 0xFF
-						if (gv > maxR)
-							maxR := gv
-						kk++
-						}
-					if (maxL >= ownG + 80 and maxR >= ownG + 80)
-						{
-						nf++
-						fX[nf] := fcx
-						}
-					}
-				}
-			}
-		else
-			fx2++
+		nf := DllCall(VxNatNF, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", ftB, "Int", ftG, "Int", ftR, "Int", ftol
+			, "Int", fneed, "Int", fwmax, "Int", edgeM, "Int", barA, "Int", barB, "Ptr", &nzBuf, "Int", 1024, "Int")
+		Loop % nf
+			fX[A_Index] := NumGet(nzBuf, (A_Index - 1) * 4, "Int")
 		}
-	if (NoiseBandT > -99)
+	else
+		{
+		fx2 := 0
+		while (fx2 < CaptureW)
+			{
+			pv := NumGet(pCaptureBits + 0, (frow*CaptureW + fx2)*4, "UInt")
+			if ((Abs((pv & 0xFF) - ftB) <= ftol and Abs(((pv >> 8) & 0xFF) - ftG) <= ftol and Abs(((pv >> 16) & 0xFF) - ftR) <= ftol) or (((pv >> 8) & 0xFF) >= 34 and ((pv >> 8) & 0xFF) <= 104 and ((pv >> 16) & 0xFF) <= 52 and (pv & 0xFF) <= 76 and ((pv >> 8) & 0xFF) >= ((pv >> 16) & 0xFF) + 10 and ((pv >> 8) & 0xFF) >= (pv & 0xFF) + 4 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) >= 14 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) <= 74))
+				{
+				fst := fx2
+				while (fx2 < CaptureW)
+					{
+					pv := NumGet(pCaptureBits + 0, (frow*CaptureW + fx2)*4, "UInt")
+					if !((Abs((pv & 0xFF) - ftB) <= ftol and Abs(((pv >> 8) & 0xFF) - ftG) <= ftol and Abs(((pv >> 16) & 0xFF) - ftR) <= ftol) or (((pv >> 8) & 0xFF) >= 34 and ((pv >> 8) & 0xFF) <= 104 and ((pv >> 16) & 0xFF) <= 52 and (pv & 0xFF) <= 76 and ((pv >> 8) & 0xFF) >= ((pv >> 16) & 0xFF) + 10 and ((pv >> 8) & 0xFF) >= (pv & 0xFF) + 4 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) >= 14 and ((((pv >> 16) & 0xFF) + ((pv >> 8) & 0xFF) + (pv & 0xFF)) // 3) <= 74))
+						break
+					fx2++
+					}
+				fw := fx2 - fst
+				if (fw >= 3 and fw <= fwmax)
+					{
+					fcx := fst + (fw // 2)
+					fhits := 0
+					fk := 1
+					while (fk <= 5)
+						{
+						fy := Floor(CaptureH * (fk*2 - 1) / 10)
+						if (fy >= CaptureH)
+							fy := CaptureH - 1
+						pv := NumGet(pCaptureBits + 0, (fy*CaptureW + fcx)*4, "UInt")
+						if (NoiseIsCore(pv, ftB, ftG, ftR, ftol))
+							fhits++
+						fk++
+						}
+					if (fhits >= fneed and Abs(fcx - barA) > edgeM and Abs(fcx - barB) > edgeM)
+						{
+						gSum := 0
+						gN := 0
+						fy := 2
+						while (fy < CaptureH - 2)
+							{
+							v := NumGet(pCaptureBits + 0, (fy*CaptureW + fcx)*4, "UInt")
+							gSum += ((v >> 8) & 0xFF)
+							gN++
+							fy++
+							}
+						if (gN < 1)
+							gN := 1
+						ownG := gSum // gN
+						maxL := 0
+						maxR := 0
+						kk := 1
+						while (kk <= 4)
+							{
+							xx := fst - kk
+							if (xx < 0)
+								xx := 0
+							v := NumGet(pCaptureBits + 0, (frow*CaptureW + xx)*4, "UInt")
+							gv := (v >> 8) & 0xFF
+							if (gv > maxL)
+								maxL := gv
+							xx := fx2 - 1 + kk
+							if (xx > CaptureW - 1)
+								xx := CaptureW - 1
+							v := NumGet(pCaptureBits + 0, (frow*CaptureW + xx)*4, "UInt")
+							gv := (v >> 8) & 0xFF
+							if (gv > maxR)
+								maxR := gv
+							kk++
+							}
+						if (maxL >= ownG + 80 and maxR >= ownG + 80)
+							{
+							nf++
+							fX[nf] := fcx
+							}
+						}
+					}
+				}
+			else
+				fx2++
+			}
+		}
+	if (NoiseBandT > -99 and VxNatNFB and !NatOff)
+		{
+		VarSetCapacity(nzI, nf * 4 + 4, 0)
+		Loop % nf
+			NumPut(fX[A_Index], nzI, (A_Index - 1) * 4, "Int")
+		nf := DllCall(VxNatNFB, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Int", NoiseBandT, "Ptr", &nzI, "Int", nf, "Ptr", &nzBuf, "Int", 1024, "Int")
+		fX := []
+		Loop % nf
+			fX[A_Index] := NumGet(nzBuf, (A_Index - 1) * 4, "Int")
+		}
+	else if (NoiseBandT > -99)
 		{
 		pTop := Max(-17, NoiseBandT - Round(CaptureH * 0.41) + 1)
 		pBot := NoiseBandT - 2
@@ -8917,6 +9040,17 @@ BellonaScan() {
 	BelB := [0, 0]
 	BelF := [-1, -1]
 	BelOK := [false, false]
+	if (VxNatBL and !NatOff)
+		{
+		VarSetCapacity(blOut, 36, 0)
+		blR := DllCall(VxNatBL, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Ptr", &blOut, "Int")
+		BelA := [NumGet(blOut, 0, "Int"), NumGet(blOut, 16, "Int")]
+		BelB := [NumGet(blOut, 4, "Int"), NumGet(blOut, 20, "Int")]
+		BelF := [NumGet(blOut, 8, "Int"), NumGet(blOut, 24, "Int")]
+		BelOK := [NumGet(blOut, 12, "Int") ? true : false, NumGet(blOut, 28, "Int") ? true : false]
+		BelSeen := NumGet(blOut, 32, "Int") ? true : false
+		return blR
+		}
 	step := 4
 	ncol := CaptureW // step
 	col := []
@@ -9775,6 +9909,18 @@ PinionScan() {
 	ntol := NoteColorTolerance
 	if (ntol < 4)
 		ntol := 4
+	if (VxNatPS and !NatOff and ftol = Round(ftol) and ntol = Round(ntol))
+		{
+		VarSetCapacity(psOut, 8, 0)
+		DllCall(VxNatPS, "Ptr", pCaptureBits, "Int", CaptureW, "Int", row, "Int", fR, "Int", fG, "Int", fB, "Int", ftol
+			, "Int", nR, "Int", nG, "Int", nB, "Int", ntol, "Ptr", &psOut, "Int")
+		if (NumGet(psOut, 0, "Int") >= 0)
+			PinFishX := FishBarLeft + (NumGet(psOut, 0, "Int") / 2)
+		if (NumGet(psOut, 4, "Int") >= 0)
+			PinNoteX := FishBarLeft + (NumGet(psOut, 4, "Int") / 2)
+		PinFound := (PinFishX >= 0)
+		return PinFound
+		}
 
 	bestW := 0
 	fRunS := -1
@@ -14796,6 +14942,18 @@ FindBarRelative() {
 	if (row < 0 or row >= CaptureH)
 		row := CaptureH // 2
 	rowOff := row * CaptureW * 4
+	if (VxNatRL and !NatOff)
+		{
+		VarSetCapacity(rlOut, 8, 0)
+		if (!DllCall(VxNatRL, "Ptr", pCaptureBits, "Int", CaptureW, "Int", row, "Ptr", &rlOut, "Int"))
+			return false
+		RelBarL := NumGet(rlOut, 0, "Int")
+		RelBarR := NumGet(rlOut, 4, "Int")
+		RunLeft := FishBarLeft + RelBarL
+		RunWidth := RelBarR - RelBarL + 1
+		RelBarRow := row
+		return true
+		}
 	sum := 0
 	mx := 0
 	x := 0
@@ -14870,6 +15028,15 @@ FindFishRelative() {
 	global pCaptureBits, CaptureW, FishBarLeft, RelBarL, RelBarR, RelBarRow, LastFishX
 	if (RelBarR - RelBarL < 20)
 		return -1
+	if (VxNatRF and !NatOff)
+		{
+		VarSetCapacity(rfOut, 8, 0)
+		if (!DllCall(VxNatRF, "Ptr", pCaptureBits, "Int", CaptureW, "Int", RelBarRow, "Int", RelBarL, "Int", RelBarR, "Ptr", &rfOut, "Int"))
+			return -1
+		fx := FishBarLeft + ((NumGet(rfOut, 0, "Int") + NumGet(rfOut, 4, "Int")) / 2)
+		LastFishX := fx
+		return fx
+		}
 	rowOff := RelBarRow * CaptureW * 4
 	sumB := 0
 	sumG := 0
@@ -15031,6 +15198,7 @@ GetFishPos() {
 }
 
 BarPresentBase() {
+	global LineBarSeenT, MgInPlay
 	global BarLeftColor, BarRightColor, BarScanRow, RelLock, SpecialRod, PinFishX
 	global ControlMode, LineBarL, LineBarW, RunLeft, RunWidth, LineFishSeen, NoiseBarL, NoiseBarW
 	global BarWidthTrusted, CastBarL, CastBarW, RemBarL, RemBarW, MiguBarL, MiguBarW, HaliBarL, HaliBarW
@@ -15112,6 +15280,7 @@ BarPresentBase() {
 			{
 			RunLeft := LineBarL
 			RunWidth := LineBarW
+			LineBarSeenT := A_TickCount
 			return true
 			}
 		if (LineFishSeen and LineBarW >= 1)
@@ -15120,6 +15289,8 @@ BarPresentBase() {
 			RunWidth := LineBarW
 			return true
 			}
+		if (MgInPlay and LineBarSeenT and A_TickCount - LineBarSeenT < 600 and FindBarByColor())
+			return true
 		return false
 		}
 	if (SpecialRod = "Verdant Oath")
@@ -16200,6 +16371,19 @@ HalibutBarScan() {
 	HaliFishX := -1
 	if (CaptureW < 40 or CaptureH < 8)
 		return false
+	if (VxNatHB and !NatOff)
+		{
+		VarSetCapacity(hbOut, 12, 0)
+		hbR := DllCall(VxNatHB, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Ptr", &hbOut, "Int")
+		if (NumGet(hbOut, 8, "Int") >= 0)
+			HaliFishX := FishBarLeft + (NumGet(hbOut, 8, "Int") / 2)
+		if (hbR < 2)
+			return false
+		HaliBarL := FishBarLeft + NumGet(hbOut, 0, "Int")
+		HaliBarW := NumGet(hbOut, 4, "Int")
+		HaliBarFound := true
+		return true
+		}
 	hRows := [Floor(CaptureH * 0.28), Floor(CaptureH * 0.38), Floor(CaptureH * 0.78), Floor(CaptureH * 0.88)]
 	VarSetCapacity(hBar, CaptureW, 0)
 	VarSetCapacity(hDark, CaptureW, 0)
@@ -22780,6 +22964,16 @@ MiguBarScan() {
 	MiguBarFound := false
 	if (CaptureW < 40 or CaptureH < 6)
 		return false
+	if (VxNatMB and !NatOff)
+		{
+		VarSetCapacity(mbOut, 8, 0)
+		if (!DllCall(VxNatMB, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Ptr", &mbOut, "Int"))
+			return false
+		MiguBarL := FishBarLeft + NumGet(mbOut, 0, "Int")
+		MiguBarW := NumGet(mbOut, 4, "Int")
+		MiguBarFound := true
+		return true
+		}
 	qRows := [Floor(CaptureH * 0.30), Floor(CaptureH * 0.50), Floor(CaptureH * 0.70)]
 	qTrk := 0
 	qOff := qRows[2] * CaptureW * 4
@@ -22863,6 +23057,23 @@ MiguScan() {
 	MiguFishX := -1
 	if (CaptureW < 40 or CaptureH < 6)
 		return false
+	if (VxNatMF and !NatOff)
+		{
+		mfList := ColorListParse(FishColor)
+		if (mfList.n < 1)
+			return false
+		mfTol := FishBarColorTolerance
+		if (mfTol < 6)
+			mfTol := 6
+		mfX := DllCall(VxNatMF, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Ptr", ColorListBuf(mfList), "Int", mfList.n
+			, "Double", mfTol, "Double", (MiguLastX >= 0) ? MiguLastX : -1, "Double", FishBarLeft, "Int")
+		if (mfX < 0)
+			return false
+		MiguFishX := FishBarLeft + mfX
+		MiguLastX := MiguFishX
+		MiguFound := true
+		return true
+		}
 
 	gkRows := [Floor(CaptureH * 0.30), Floor(CaptureH * 0.55), Floor(CaptureH * 0.85)]
 	VarSetCapacity(gkBuf, CaptureW, 0)
@@ -23071,6 +23282,8 @@ CastboundScan() {
 	CastFishX := -1
 	if (CaptureW < 80 or CaptureH < 6)
 		return false
+	if (VxNatCB and !NatOff)
+		return CastNat(0) ? CastTail() : false
 
 	row := CaptureH // 2
 	rowOffset := row * CaptureW * 4
@@ -23277,6 +23490,28 @@ CastboundScan() {
 	if (sBest >= 0 and sLen >= 6)
 		CastFishX := FishBarLeft + sBest
 
+	return CastTail()
+}
+
+; Castbound's bar and sword in VeltrixNative (lut = CastboundScanX's colour masks, 0 = none); false = not on screen
+CastNat(lut) {
+	global pCaptureBits, CaptureW, CaptureH, FishBarLeft, CastBarL, CastBarW, CastFishX
+	VarSetCapacity(cbOut, 12, 0)
+	if (!DllCall(VxNatCB, "Ptr", pCaptureBits, "Int", CaptureW, "Int", CaptureH, "Ptr", lut, "Ptr", &cbOut, "Int"))
+		return false
+	if (NumGet(cbOut, 0, "Int") >= 0)
+		{
+		CastBarL := FishBarLeft + NumGet(cbOut, 0, "Int")
+		CastBarW := NumGet(cbOut, 4, "Int")
+		}
+	if (NumGet(cbOut, 8, "Int") >= 0)
+		CastFishX := FishBarLeft + NumGet(cbOut, 8, "Int")
+	return true
+}
+
+; the end of both Castbound scans: has the picture stood still (CastStatic), and is the fight found
+CastTail() {
+	global CastBarL, CastBarW, CastFishX, CastFound, CastPrevL, CastPrevW, CastPrevF, CastSameN, CastSameT, CastStatic, QpcFreq
 	DllCall("QueryPerformanceCounter", "Int64*", csNow)
 	if (CastBarW > 0 and CastBarL = CastPrevL and CastBarW = CastPrevW and CastFishX = CastPrevF)
 		{
@@ -23303,12 +23538,22 @@ CastboundScanX() {
 	global CastBarL, CastBarW, CastFishX, CastScanned, CastFound
 	global CastPrevL, CastPrevW, CastPrevF, CastSameN, CastSameT, CastStatic, QpcFreq
 	global CastboundBarColors, CastboundBarTol, CastboundFishColors, CastboundFishTol, CastboundTrackColors, CastboundTrackTol
-	global CbxKey, CbxR, CbxG, CbxB
+	global CbxKey, CbxR, CbxG, CbxB, CbxBuf
 	cxKey := CastboundBarColors . "|" . CastboundBarTol . "|" . CastboundFishColors . "|" . CastboundFishTol . "|" . CastboundTrackColors . "|" . CastboundTrackTol
 	if (cxKey != CbxKey)
 		{
 		CbxKey := cxKey
 		RodLut(CbxR, CbxG, CbxB, CastboundBarColors, CastboundBarTol, CastboundSwordX(), CastboundFishTol, CastboundTrackColors, CastboundTrackTol)
+		; the same masks for VeltrixNative: r, g, b - 256 each
+		VarSetCapacity(CbxBuf, 3 * 256 * 4, 0)
+		cxV := 0
+		while (cxV < 256)
+			{
+			NumPut(CbxR[cxV], CbxBuf, cxV * 4, "Int")
+			NumPut(CbxG[cxV], CbxBuf, (256 + cxV) * 4, "Int")
+			NumPut(CbxB[cxV], CbxBuf, (512 + cxV) * 4, "Int")
+			cxV++
+			}
 		}
 	if (CastScanned)
 		return CastFound
@@ -23319,6 +23564,8 @@ CastboundScanX() {
 	CastFishX := -1
 	if (CaptureW < 80 or CaptureH < 6)
 		return false
+	if (VxNatCB and !NatOff)
+		return CastNat(&CbxBuf) ? CastTail() : false
 
 	row := CaptureH // 2
 	rowOffset := row * CaptureW * 4
@@ -23527,25 +23774,7 @@ CastboundScanX() {
 	if (sBest >= 0 and sLen >= 6)
 		CastFishX := FishBarLeft + sBest
 
-	DllCall("QueryPerformanceCounter", "Int64*", csNow)
-	if (CastBarW > 0 and CastBarL = CastPrevL and CastBarW = CastPrevW and CastFishX = CastPrevF)
-		{
-		CastSameN := CastSameN + 1
-		if (!CastSameT)
-			CastSameT := csNow
-		}
-	else
-		{
-		CastSameN := 0
-		CastSameT := 0
-		}
-	CastPrevL := CastBarL
-	CastPrevW := CastBarW
-	CastPrevF := CastFishX
-	CastStatic := (CastSameT and ((csNow - CastSameT) / QpcFreq) >= 0.25)
-
-	CastFound := (CastBarW > 0 and CastFishX >= 0)
-	return CastFound
+	return CastTail()
 }
 
 CastboundXActive() {
@@ -24733,7 +24962,7 @@ LayoutMinigame() {
 		vis.Push("lullmode")
 	if (SpecialRod = "Pinions Aria")
 		vis.Push("notes")
-	else if ((ControlMode != "Lines" or SpecialRod = "Remembrance") and SpecialRod != "Tryhard Rod" and SpecialRod != "Stellarwave Melody")
+	if (SpecialRod != "Tryhard Rod" and SpecialRod != "Stellarwave Melody" and SpecialRod != "Castbound")
 		vis.Push("colors")
 	if (SpecialRod = "Stellarwave Melody")
 		{
@@ -27307,7 +27536,7 @@ Y := 216
 ; presets: the rod's default colours and your own saved ones (skins), per rod
 Gui, Add, Text, x%CX% y%Y% w%LW% h20 HwndhL, Preset:
 MgAdd("presets", hL)
-Gui, Add, DropDownList, x%IX% y%Y% w%IW% h200 vColPreset gColPresetChosen HwndhC, % ColPresetList()
+Gui, Add, DropDownList, x%IX% y%Y% w%IW% h200 vColPreset gColPresetChosen Choose1 HwndhC, % SubStr(ColPresetList(), 2)
 ColPresetDdl := hC
 MgAdd("presets", hC)
 ThemedCtrls.Push(hC)
@@ -32352,11 +32581,28 @@ VxNativeInit() {
 	VxNatRM := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_remscan", "Ptr")
 	VxNatSS := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_swshape", "Ptr")
 	VxNatIO := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_ignore_own", "Ptr")
+	VxNatFD := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_framedark", "Ptr")
+	VxNatCP := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_colspread", "Ptr")
+	VxNatCB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_castscan", "Ptr")
+	VxNatBL := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_bellona", "Ptr")
+	VxNatPS := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_pinscan", "Ptr")
+	VxNatRL := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_relbar", "Ptr")
+	VxNatRF := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_relfish", "Ptr")
+	VxNatHB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_halibut", "Ptr")
+	VxNatMB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_migubar", "Ptr")
+	VxNatMF := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_migufish", "Ptr")
+	VxNatNE := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_nz_edges", "Ptr")
+	VxNatNA := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_nz_arrow", "Ptr")
+	VxNatNB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_nz_bars", "Ptr")
+	VxNatNF := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_nz_fish", "Ptr")
+	VxNatNFB := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_nz_fishband", "Ptr")
+	VxNatTQ := DllCall("GetProcAddress", "Ptr", VxNatMod, "AStr", "vx_tq_runs", "Ptr")
 	if (!p or !VxNatEnable)
 		{
 		DllCall("FreeLibrary", "Ptr", VxNatMod)
 		VxNatMod := 0
 		VxNatCF := 0, VxNatCR := 0, VxNatFL := 0, VxNatRB := 0, VxNatGB := 0, VxNatRM := 0, VxNatSS := 0, VxNatIO := 0
+		VxNatFD := 0, VxNatCP := 0, VxNatCB := 0, VxNatBL := 0, VxNatPS := 0, VxNatRL := 0, VxNatRF := 0, VxNatHB := 0, VxNatMB := 0, VxNatMF := 0, VxNatNE := 0, VxNatNA := 0, VxNatNB := 0, VxNatNF := 0, VxNatNFB := 0, VxNatTQ := 0
 		return false
 		}
 	VxBlt := p
@@ -32405,13 +32651,13 @@ nd1 =
 (Join
 TVp4AAEAAAAEAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 eAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuJAAA
-UEUAAGSGBACs3OBqAAAAAAAAAADwACIgCwIOAABMAAAAEAAAAAAAAEBLAAAAEAAAAAAAgAEAAAAAEAAA
-AAIAAAYAAAAAAAAABgAAAAAAAAAAYA4AAAQAAAAAAAACAGABAAAQAAAAAAAAEAAAAAAAAAAAEAAAAAAA
-ABAAAAAAAAAAAAAAEAAAADBjAAAgAQAAUGQAAIwAAAAAAAAAAAAAAABQDgDwAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPhlAAAYAQAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAABmSwAAABAAAABMAAAABAAAAAAAAAAAAAAAAAAA
-IAAAYC5yZGF0YQAAiAsAAABgAAAADAAAAFAAAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAAMDUDQAAcAAA
-AAIAAABcAAAAAAAAAAAAAAAAAABAAADALnBkYXRhAADwAAAAAFAOAAACAAAAXgAAAAAAAAAAAAAAAAAA
+UEUAAGSGBAAuo+FqAAAAAAAAAADwACIgCwIOAACwAAAAGAAAAAAAAOCtAAAAEAAAAAAAgAEAAAAAEAAA
+AAIAAAYAAAAAAAAABgAAAAAAAAAAgBEAAAQAAAAAAAACAGABAAAQAAAAAAAAEAAAAAAAAAAAEAAAAAAA
+ABAAAAAAAAAAAAAAEAAAAJjHAAB7AgAAFMoAAIwAAAAAAAAAAAAAAABwEQCwAQAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALjLAAAYAQAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAAAGrgAAABAAAACwAAAABAAAAAAAAAAAAAAAAAAA
+IAAAYC5yZGF0YQAArBMAAADAAAAAFAAAALQAAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAANCEEAAA4AAA
+AAIAAADIAAAAAAAAAAAAAAAAAABAAADALnBkYXRhAACwAQAAAHARAAACAAAAygAAAAAAAAAAAAAAAAAA
 QAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -32420,29 +32666,29 @@ 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
-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
+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
-AEiLjYgAAAD/FcZVAACD+AMPhRAEAACDPW5fAAAAD4QDBAAAiUUESI1NCP8VW1YAAEiLjYgAAAD/FZZV
-AACD+AMPhesDAABIi42IAAAA/xXoVQAASIXAdBJJicf/FZpVAABJOccPhccDAACLBR9fAACFwHkL6KI7
-AACLBRBfAACFwIuVmAAAAA+ODwEAAEaNJC6LjYAAAAAB0YnATI09SV8AAOsVDx+AAAAAAEmDx3BIg8D/
+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
-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
+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
-JDAZAAAATIn5SIuViAAAAOjnOwAAhcB0MkHHR2gAAAAA62pBi0dQjUgBQYlPUIP4BQ+MKwEAAP8VZ1MA
-AAWYOgAAQYlHVOkXAQAAQYtHaI1IAUGJT2iD+AJ8MkHHR2gAAAAASLgAAAAABgAAAEmJR0z/FS1TAAAF
-iBMAAEGJR1RIgwWMXAAAAenVAAAAifGLlYAAAADoIkEAAIXAD4TAAAAA/xVUUgAASIsFvTAOAIsNvzAO
-AEjB4QJIiUwkMEiJRCQoi4WAAAAAiUQkIEyJ+USJ6kSLhZgAAABBifHoikIAAIXAdHxIiwVfMA4ASIlE
-JCiLhYAAAACJRCQgx0QkQCAAzADHRCQ4AAAAAMdEJDAAAAAATInxidpBifhBifH/Fa9RAACFwItFBHQr
-SI1N4P8VhlIAAEiDBZ5bAAABSItF4EgrRQhIAQWfWwAAuAEAAADpvQAAAIP4A4uNoAAAAHVwTIs9U1IA
+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
-+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
++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
@@ -32473,7 +32719,7 @@ Kc8PQvoPV8nyDyrPZg8uwXK2D7bLicpEKepEie8pzw9C+g9XyfIPKs9mDy7BcpnpNP///4N9+AWLVfQP
 jHH9//+4AQAAAOsCMcBIg8QwW19eQVxBXUFeQV9dw2YuDx+EAAAAAAAPHwBVQVdBVkFUVldTSIHskAAA
 AEiNrCSAAAAAZkQPf3UAZkQPf23wZkQPf2XgZkQPf13QZkQPf1XAZkQPf02wZkQPf0WgZg9/fZBmD391
 gIXSD47JAwAASWPATGPSTA+v0EqNBJFBidCD+ghzEDHSQbn/AAAARTHS6WwCAABEicKB4vj//39FicFB
-wekDQYHh////D0nB4QVKjQyRSIPBEGYP7+RmD28tdkMAAEUx0mYPbzV7QwAAZg9vBYNDAABmRA9vxWYP
+wekDQYHh////D0nB4QVKjQyRSIPBEGYP7+RmD28tdqMAAEUx0mYPbzV7owAAZg9vBYOjAABmRA9vxWYP
 b/1mD+/SZg/vyWaQ80YPb1QR8PNGD28MEWZFD2/aZkQP291mRQ9v4WZED9vlZkUPb+pmQQ9y1QhmRQ9v
 8WZBD3LWCGZED9vtZkUP/utmRA/b9WZFD/70ZkEPctIQZkEPctEQZkQP29VmRQ/+1WZFD2vSZkQP281m
 RQ/+zmZFD2vJZkQP5NZmQQ9x0gFmRA/kzmZBD3HRAWZED2HUZkQPYcxmRQ9v4mZED+vgZkUPb+hmRA/v
@@ -32487,30 +32733,30 @@ Zg9v4WYP7+BmD2bUZg/b6mYP39FmD+vVZg9wylVmD2/iZg/v4GYP78FmD2bgZg/b1GYP3+FmD+viZkEP
 nd2 =
 (Join
 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
-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
+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
-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
+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
-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
+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
-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
+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
-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
+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
-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
+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
@@ -32522,8 +32768,8 @@ QQ+23Q9X0vIPKtPyQQ8RC/IPEE1AZg8uykyNXSB2UfIPEU0g8g8QTWBmDy7KTI1dQHY98g8RTUDyDxBN
 aGYPLspMjV1gdinyDxFNYPIPEE3QZg8uykyNXWh2FfIPEU1oTI1d0GYuDx+EAAAAAABmkEEPtt4PV8ny
 DyrL8kEPERPyDxBVIGYPLtFMjV2oD4Zd/v//8g8RVajyDxBVQGYPLtFMjV0gD4ZF/v//8g8RVSDyDxBV
 YGYPLtFMjV1AD4Yt/v//8g8RVUDyDxBVaGYPLtFMjV1gD4YV/v//8g8RVWDyDxBV0GYPLtFMjV1oD4b9
-/f//8g8RVWhMjV3Q6e/9//9Mi004QY1B+kiYSI0NjkwAAEiNFYfMAQBFMcBmD1fAZg8oDSg5AABmDygV
-MDkAAGYPV9vrH2YuDx+EAAAAAABIg8EYSYPAAUiDwghNOcIPhKQBAABIxwIAAAAASYP4BnLeSTnAfdny
+/f//8g8RVWhMjV3Q6e/9//9Mi004QY1B+kiYSI0NjrwAAEiNFYc8AgBFMcBmD1fAZg8oDSiZAABmDygV
+MJkAAGYPV9vrH2YuDx+EAAAAAABIg8EYSYPAAUiDwghNOcIPhKQBAABIxwIAAAAASYP4BnLeSTnAfdny
 DxA58g8QaQjyDxBhEGYPFrlw////8kQPEEEYZg9Y+GZEDxZBiGZED1jH8g8QeTBmDxZ5oGZBD1j48kQP
 EEFIZkQPFkG4ZkQPWMfyDxB5YGYPFnnQZkEPWPjyRA8QQXhmRA8WQehmRA9Yx2ZED17BZkEPKPhmQQ8V
 +PJED1zHZkEPKPhmD1f68kEPX/jyD1j7Zg8WqXj///9mD1jo8kQPEEEgZkQPFkGQZkQPWMXyDxBpOGYP
@@ -32531,14 +32777,14 @@ FmmoZkEPWOjyRA8QQVBmRA8WQcBmRA9YxfIPEGloZg8WadhmQQ9Y6PJEDxCBgAAAAGZEDxZB8GZED1jF
 ZkQPXsFmQQ8o6GZBDxXo8kQPXMVmQQ8o6GYPV+ryQQ9f6PIPWO9mDxZhgGYPWODyDxB5KGYPFnmYZg9Y
 /PIPEGFAZg8WYbBmD1jn8g8QeVhmDxZ5yGYPWPzyDxBhcGYPFmHgZg9Y5/IPELmIAAAAZg8WefhmD1j8
 Zg9e+WYPKOdmDxXn8g9c/GYPKOdmD1fi8g9f5/IPWOXyDxEi6Uf+//9Bg/kFD4whBgAAQY15/kGNWf8x
-9kG+AgAAAEyNJYbKAQDyDxA9TjcAAEyLbThmLg8fhAAAAAAAQYP+CbgIAAAAQQ9NxkGNTgg52Q9Ny/JD
+9kG+AgAAAEyNJYY6AgDyDxA9TpcAAEyLbThmLg8fhAAAAAAAQYP+CbgIAAAAQQ9NxkGNTgg52Q9Ny/JD
 DxAE9GYPLvgPh58AAACNUPg5yn8pSIPA94nJZi4PH4QAAAAAAA8fAPJBDxBMxAhmDy7Id3hIg8ABSDnI
-fOpIY8ZIjQ0QSgIARIk0gUGNVrpMjTxAScHnBEiNBflZAgBJAcdFjUb6RInpTYn56IcMAACFwHUNSLgA
+fOpIY8ZIjQ0QugIARIk0gUGNVrpMjTxAScHnBEiNBfnJAgBJAcdFjUb6RInpTYn56IcMAACFwHUNSLgA
 AAAAAADwv0mJB0WNRkZJg8cYQY1WBkSJ6U2J+ehfDAAAhcB1DUi4AAAAAAAA8L9JiQeDxgFJg8YBSTn+
-cwyB/gAEAAAPjCb///+F9g+OEgUAAA9XwPIPKkU48g8QDVY2AADyD1nI8g8swfIPWQVONgAA8kQPLMBB
-ifHyDxANRjYAAMdFSP////9IjT2oWQIARTHbZg9X0vIPEB0xNgAAZg8oBfk1AADyDxAlKTYAAPIPEC0p
-NgAAZg8oPTE2AABNic9MjSUXSQIAx0VY/////+sjZi4PH4QAAAAAAA8fQABIg8cwSYPEBEmDx/9NOcsP
-hPgBAABMidlJg8MBTTnLc99IjRXYSAIAizSKSI0USUjB4gRIjQ3GWAIASAHKQb4BAAAASYn66yVmQQ8o
+cwyB/gAEAAAPjCb///+F9g+OEgUAAA9XwPIPKkU48g8QDVaWAADyD1nI8g8swfIPWQVOlgAA8kQPLMBB
+ifHyDxANRpYAAMdFSP////9IjT2oyQIARTHbZg9X0vIPEB0xlgAAZg8oBfmVAADyDxAlKZYAAPIPEC0p
+lgAAZg8oPTGWAABNic9MjSUXuQIAx0VY/////+sjZi4PH4QAAAAAAA8fQABIg8cwSYPEBEmDx/9NOcsP
+hPgBAABMidlJg8MBTTnLc99IjRXYuAIAizSKSI0USUjB4gRIjQ3GyAIASAHKQb4BAAAASYn66yVmQQ8o
 yolNWIl1SGYuDx+EAAAAAAAPHwBJg8IwSYPGAU0593STQ4sMtInLKfM5w3znRDnDf+LyRA8QQhhmQQ8u
 0HfV8kUPEErYZkEPLtF3yPJEDxAaZkEPLtN2CGZBDy5S8He0ZkQPLtpmRA8o03JUZkUPKNBmRA8WUiBm
 RA8WWghmRQ9c02ZFDyjaZkQPV9hmRQ9f2mZFDyjjZkUPFePyRQ9Y4/JEDxBaKPJED1xaEGZFDyjTZkQP
@@ -32547,10 +32793,10 @@ V9DyRQ9f0/JFD1jU8kUPEGrwZkQPLupzE/JFDxBi4PJFDxBa6GZEDyjr613yRQ8QYuDyRQ8QWuhmRQ8o
 KO9mRA9X6PJFD1/v8kUPWO7yRA9YQiDyRQ9d1fJED1hCKPJFD1jM8kUPWMvyRQ9cwWZFDyjIZkQPV8jy
 RQ9fyPJFD1zRZkEPLuIPh5j+//9mRA8owfJED1jFZkUPLtAPh2v+//9mRQ8owvJED1zBZkQPVMdmQQ8u
 6A+Gaf7//0SLbVhEK21IRDnrD49A/v//6VP+//+LVUiF0kyLdVAPiGgCAADyDyzBSIuNiAEAAIkRi1VY
-iVEEiUEIRInwJfgfAABCjQy1AAAAAIHh4H8AADHSTI0FrxYDAGYPV8lmLg8fhAAAAAAAkGZCDykMAmZC
+iVEEiUEIRInwJfgfAABCjQy1AAAAAIHh4H8AADHSTI0Fr4YDAGYPV8lmLg8fhAAAAAAAkGZCDykMAmZC
 DylMAhBIg8IgSDnRdepBOcZMi2U4TItVyHQyQo0MtQAAAACB4eB/AABMifJIKcIxwA8fgAAAAABMjQyB
 Q8cECAAAAABIg8ABSDnCdesxwLoAAAAARYXSD444AgAAQYPC/0G8q6qqqk0Pr+JJwewhTY1O/02JykmD
-4vxIi00wTI1ZBEqNDLUAAAAATI0sSTH/Zg9vDSAzAABmD28VKDMAADHb6x0PH0AASIPHA00B60Q5441L
+4vxIi00wTI1ZBEqNDLUAAAAATI0sSTH/Zg9vDSCTAABmD28VKJMAADHb6x0PH0AASIPHA00B60Q5441L
 AYnLTIt1UA+EvAEAAEiJ+UkPr85Ii1UwiwyKD7bVRA+28UEB1sHpEA+2yUQB8WYPbtlmD3DbADHJ6xZm
 Dx+EAAAAAABIg8EESTnKD4SzAAAAZg9v4/NBD28ci2YPb+tmD9vpZg9v+2YPctcIZg/b+WYP/v1mD3LT
 EGYP29lmD/7fD8bjAw/G45hmD2/rZg/67GYPZupmD/rjZg9m4mYP6+VmD37i9sIBdAZBg0SIBAFmD8XU
@@ -32559,24 +32805,24 @@ EIPCAUGJVIgQ6Ub///9mDx9EAABNOdEPhOf+//9mD3Db/2ZBD37eTInR6x4PH4QAAAAAAEGDRIgEAUiD
 wQFFif5JOckPhLr+//9BixSLRA+2+g+29kQB/sHqEEQPtvpBAfdEifpEKfKD+jZ/x0Up/kGD/jd8xOu8
 McAPKHVwDyi9gAAAAEQPKIWQAAAARA8ojaAAAABEDyiVsAAAAEQPKJ3AAAAARA8opdAAAABEDyit4AAA
 AEQPKLXwAAAARA8ovQABAABIgcSYAQAAW19eQVxBXUFeQV9dw0ONDKSDwQq6zczMzEgPr9FIweojTItl
-OIP6A7kCAAAAD0PKvv////9BuwEAAABMjQ3mUwMATI0V32MDADHSv/////8PH4QAAAAAAEOLHJg5y3xM
+OIP6A7kCAAAAD0PKvv////9BuwEAAABMjQ3mwwMATI0V39MDADHSv/////8PH4QAAAAAAEOLHJg5y3xM
 hf94JEWJ3kEp9kGD/gNMi3VQfxQ50w9P00SJ3usuZi4PH4QAAAAAAIX/eBgB/on3we8fAffR/0iYQYk8
 gUGJFIKDwAFEid9Eid6J2kmDwwFNOfNzBz0ABAAAfJw9AAQAAA+cwYX/QQ+ZwEEgyEGA+AF1GQH+ifHB
 6R8B8dH5TGPAQ4kMgUOJFIKDwAGLXUhEi3VYg/gCD4yyAAAAg8D/uv////8xyesNSIPBAUg5yA+EmQAA
 AEWLHIlFi0SJBESJxkQp3oPG4YP+5XLcRIneKd6J30Qp3w9M/oP/DnLKRInGKd6J30Qpxw9M/oP/DnK4
 RIneRCn2RIn3RCnfD0z+g/8OcqREicZEKfZEifdEKccPTP6D/w5ykEGLPIpBi3SKBDn3D0z3OdYPjnr/
-//9FAdhEicLB6h9EAcLR+kyLhYgBAABBiVAMifLpWv///0iNBZtyAwAxyUyNNQoxAABmD1fJTIttUGaQ
+//9FAdhEicLB6h9EAcLR+kyLhYgBAABBiVAMifLpWv///0iNBZviAwAxyUyNNWqVAABmD1fJTIttUGaQ
 )
 nd3 =
 (Join
-8kEPEBTO8g9Z1vIPLNIDVcBBD6/USGPSTItFME2NBJBIadEYgAEATI0NMnIDAErHRAoQAAAAAGZCDxEM
+8kEPEBTO8g9Z1vIPLNIDVcBBD6/USGPSTItFME2NBJBIadEYgAEATI0NMuIDAErHRAoQAAAAAGZCDxEM
 CkmJwUUx0kUx2zH2Mf9mDx9EAABBixy4D7bXRA+2+8HrEA+220gB3kiDxwFJiXHwSQHTTYlZ+E0B+k2J
 EUmDwRhJOf11zkiDwQFIBRiAAQBIg/kHD4Vq////uAEAAABBg/wpD4xB/f//QY1EJOuJRQhmD1fJQb8U
-AAAAQbgVAAAAQbsRAAAAvwQAAAC7JQAAAMdFUBgAAABMjRVlMAAAZg8oFb0uAABmD1fb8g8QJcEuAADr
+AAAAQbgVAAAAQbsRAAAAvwQAAAC7JQAAAMdFUBgAAABMjRXFlAAAZg8oFb2OAABmD1fb8g8QJcGOAADr
 MmYuDx+EAAAAAAAPH0QAAEGDwAFBg8MBg8cBg8MBg0VQAUQ7fQhBjUcBQYnHD4TIAwAARIn4i01IKchE
 KfkPTMiD+RByykSJ+ItNWCnIRCn5D0zIg/kQcrdFMclEiV0wiX0QSIldGOsRDx+AAAAAAEmDwQFJg/kE
 dJZDiwSKRIn5KcGD+RB86EKNFDiDwhFEOeJ/3I0URQEAAAAPV+3yDyrqTYnGQY0UAEhj0kiNFFJMjRW5
-cAMASY1U0hBIjQxJSY00ykiDxhBEidkpwUiNDElNjSzKSYPFEIn5KcFIjQxJSY0MykiDwRBEjQQDTWPA
+4AMASY1U0hBIjQxJSY00ykiDxhBEidkpwUiNDElNjSzKSYPFEIn5KcFIjQxJSY0MykiDwRBEjQQDTWPA
 T40EQE+NJMJJg8QQA0VQSJhIjQRASY0EwkiDwBBFMcBMjVXQZi4PH4QAAAAAAGaQTotcAvBKi3wC+E4r
 XAbwSit8BvhKixwCD1f/8kkPKvtKKxwGRQ9XwPJMDyrH80cPb0wF8PNGD29UAfAPV/bySA8q8/NHD29c
 BPDzRg9vZADwZkUPb+lmRQ9s62ZFD2/yZkUPbPRmRQ/77vIPXv1mTQ9+62ZFD3Dt7mZFD23L8kQPXsVm
@@ -32585,34 +32831,34 @@ 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
-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
+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
-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
+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
-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
+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
-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
+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
-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
+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
-AAAARYnMSIlNCEiLhcgAAADHQCD/////DygFuSYAAA8RQBBmDygFvSYAAGYPEQBBg/gGD5zBjYL/7///
+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
-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
+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
-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
+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
@@ -32621,20 +32867,20 @@ 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
-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
+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
-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
+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
@@ -32646,19 +32892,19 @@ xkWNPDpEhPNFD0XLQQ9F10iDxwFEidtMi33oSTn/dCJED7YcB0EB20w5x3LHSI0cPg+2HBhBKdvrurr/
 ////RTHJg72wAAAAALh0AAAAuSgAAAAPRMhBiVQkFEWJTCQYuAEAAABFhe0PjsIAAABmD3DA7mYPfsJB
 D6/VSGPSTItFCE2NDJBBuP////9FMdK6/////+sXZi4PH4QAAAAAAA8fQABJg8IBTTnXdFZDixyRQYnb
 QcHrEEUPttuJzkQp3kEpy0QPQt5Bg/sOd9YPtvdBictBKfMpzkEPQvOD/g53wkQPttuJzkQp3kEpy0QP
-Qt5Bg/sOd6yF0kEPSNJFidDroYXSeClEicEp0Q9XwPIPKsHyQQ8qz/IPWQ38HQAAZg8uwXIKQYlUJBxF
+Qt5Bg/sOd6yF0kEPSNJFidDroYXSeClEicEp0Q9XwPIPKsHyQQ8qz/IPWQ38fQAAZg8uwXIKQYlUJBxF
 iUQkIEiBxJgAAABbX15BXEFdQV5BX13DVUFXQVZBVUFUVldTSIHs6AwAAEiNrCSAAAAARA8pvVAMAABE
 Dym1QAwAAEQPKa0wDAAARA8ppSAMAABmRA8pnRAMAABEDymVAAwAAEQPKY3wCwAARA8pheALAAAPKb3Q
 )
 nd4 =
 (Join
 CwAADym1wAsAAEiJjZALAADyDxCt8AwAAPIPEKXgDAAA8g8QldgMAADyDxCF+AwAAPJEDxCV6AwAAPIP
-ED0+HQAA8kEPWfryD1j88g8QDTUdAADyRA8QBTQdAADyRA9ZwPJEDxANLh0AAPJED1nI8g8QNSkdAADy
-D1nw8g9Y9PIPEbWACwAA8kEPWOLyRA9Y0fIPWOHyD1kFCx0AAPIPWMTyDxGFiAsAAGYPKMVmRQ9X20jH
-hbgLAAAAAAAA8kQPECXqHAAA8kQPEC3pHAAA8kQPEDWoHAAAZkQPKD3fHAAAMcBmD1fJ8g8RjagLAADr
-M2YuDx+EAAAAAAAPH0QAAPIPEI2oCwAA8g9YDdgcAADyDxGNqAsAAIPAAYP4EA+EKAMAAInBweEESImN
+ED0+fQAA8kEPWfryD1j88g8QDTV9AADyRA8QBTR9AADyRA9ZwPJEDxANLn0AAPJED1nI8g8QNSl9AADy
+D1nw8g9Y9PIPEbWACwAA8kEPWOLyRA9Y0fIPWOHyD1kFC30AAPIPWMTyDxGFiAsAAGYPKMVmRQ9X20jH
+hbgLAAAAAAAA8kQPECXqfAAA8kQPEC3pfAAA8kQPEDWofAAAZkQPKD3ffAAAMcBmD1fJ8g8RjagLAADr
+M2YuDx+EAAAAAAAPH0QAAPIPEI2oCwAA8g9YDdh8AADyDxGNqAsAAIPAAYP4EA+EKAMAAInBweEESImN
 mAsAAGYPV8lFMcmJhbQLAADrY5APV+TyQQ8q5Q9X7fJBDyrq8g9e5UiLjbgLAABIY8nyDxFkzYBIi4WY
-CwAATIuNoAsAAEQByImEjYAHAACDwQFIiY24CwAAi4W0CwAA8g9YDVQcAABBg8EBQYP5EA+EXv///0yJ
+CwAATIuNoAsAAEQByImEjYAHAACDwQFIiY24CwAAi4W0CwAA8g9YDVR8AABBg8EBQYP5EA+EXv///0yJ
 jaALAABBsQFFMe1FMdLrHGYuDx+EAAAAAABmkEH2wQFBuQAAAAAPhGACAABmQQ8o5EH2wQF1BWZBDyjl
 8g9YpagLAADyD1ni8g9YpdAMAABmQQ8u43MVZkEPKO7yD1zs8kQPLPVB997rDGaQ8kEPWObyRA8s9EWF
 9kEPmMNFOcYPncNECNt1lEQPr/JBtwHpiAAAAE1j20uNPFtIi4UADQAARA+2HDgPtnQ4AQ+2fDgCRQH0
@@ -32666,170 +32912,646 @@ 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
-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
+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
-2vIPXMsx0vIPEB1RGAAA8g8QJVEYAADrIQ8fgAAAAABIi4UoDQAA8g8RLNBIg8IBSIP6DA+Ep/7//0mJ
+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
-D4Mu////8g9Z+PIPXvryD1z3D1f/8kEPUfjyD1738g9f9WYPKO7pCf///2YPH4QAAAAAAFVIg+wgSI1s
-JCCF0g+VwE2FwA+VwQjBdTjoQgAAAEiLDSv5DQBIhcl0J0iLFSf5DQD/FdkaAABIiw0i+Q0A/xW0GgAA
-SIsNBfkNAP8VnxoAALgBAAAASIPEIF3DDx9AAFVWV1NIg+woSI1sJCCDPVAkAAAASI09pSQAAA+OsAAA
-ADH2SIn76yAPH4QAAAAAAEiDxgFIYwUpJAAASIPDcEg5xg+NiQAAAEiLSxhIhcl0DkiLAf9QEEjHQxgA
-AAAASItLIEiFyXQOSIsB/1AQSMdDIAAAAABIi0soSIXJdA5IiwH/UBBIx0MoAAAAAEjHQzAAAAAAx0NI
-AAAAAEiLSxBIhcl0BkiLAf9QEEiLSwhIhcl0BkiLAf9QEEiLC0iFyQ+Eav///0iLAf9QEOlf////uYAD
-AAAxwPOqxwWAIwAA/////0iDxChbX15dww8fAFVBV0FWQVVBVFZXU0iB7OgAAABIjawkgAAAAEjHRTgA
-AAAASMdFWAAAAADo4P7//8cFOiMAAAAAAAD/FRgaAACJBdL3DQBIjQ3/FQAASI1VOOh6DgAAhcB4IUiL
-TThIiwFMjUVYMdL/UGA9AgB6iHUfSItNOEiLAf9QEJBIgcToAAAAW19eQVxBXUFeQV9dw0yNbUhIjX3Q
-TI01zRUAAEyNZVAx2+stZg8fhAAAAAAASItNWEiLAf9QEIPDAUiLTThIiwGJ2kyNRVj/UGA9AgB6iHSd
-iV00SMdFYAAAAABIx0VAAAAAAEjHRUgAAAAASItNWEiLATHSTYno/1A4PQIAeoh1K0iLTUBIhcl0BkiL
-Af9QEEiLTWBIhcmLXTR0kEiLAf9QEOuIDx+EAAAAAAC7AQAAAOssZg8fhAAAAAAASItNSEiLAf9QEEiL
-TVhIiwGJ2k2J6P9QOIPDAT0CAHqIdKJIx0VQAAAAAIM9AiIAAAd/zEiLTUhIiwFIifr/UDiFwHi7g30g
-AHS1SItNSEiLAUyJ8k2J4P8QhcB4okiDfWAAD4SGAAAASGMFxCEAAI1IAYkNuyEAAE2J9Exr8HBIjTUJ
-IgAATo08NrlwAAAAMcBIifpMif/zqkiJ10iLRVBJiQQ2SMdFUAAAAABIi01gSYlMNghIiwH/UAhIi01A
-SYlMNhBIiwH/UAhIjUUQDxAAQQ8RRDY4TYnmTI1lUIN9JAJycEHHR0z/////62ZIi01YSI1FQEiJRCRI
-SI1FMEiJRCRASI1FYEiJRCQ4x0QkMAcAAADHRCQoAAAAAEjHRCQgAAAAADHSRTHARTHJ6EwMAACFwHgN
-SIN9YAAPhSb////rEEjHRWAAAAAASMdFQAAAAABIi01QSIXJD4Se/v//SIsB/1AQ6ZP+//8PHwBVQVdB
-VkFVQVRWV1NIgezIAAAASI2sJIAAAABmD391MESJTShEiUUsSYnVSIlNAIuFuAAAAIudsAAAAEjHRQgA
-AAAAg/tgQb9gAAAAQQ9N34P4YEQPTPhFifxED6/jTI111LksAAAAMcBMiffzqsdF1CgAAACJXdhEifj3
-2IlF3MdF4AEAIABIidH/FVAWAABIicbHRCQoAAAAAEjHRCQgAAAAAEyNTQhMielMifJFMcD/FTEWAABI
-icf/FeAWAABNY8RJweACSInBMdL/Fd4WAABJicZIhfYPhNcAAABIhf8PhM4AAABNhfYPhMUAAABIifFI
-iX0YSIn6/xUQFgAASIlFEIt9KIl8JDhIifGLdSyJdCQwTIlsJChEiXwkIMdEJEAgAMwASIlNIDHSRTHA
-QYnZ/xWfFQAA/xXBFQAATIttAEyJ6ejVAQAAhcAPhKYAAABIY8NIweACTIl0JChEiXwkIEiJRCQwTInp
-ifJBifhBidno9wUAAIXASItVELsAAAAASIt9GEiLdSAPhFkBAACLhcAAAABIi00IRYXkfmtFieNBg/wI
-c2pFMcBFMcnp+wAAAE2F9rsAAAAAD4UxAQAASIX/dAlIifn/FScVAABIhfZ0CUiJ8f8VERUAAInYDyh1
-MEiBxMgAAABbX15BXEFdQV5BX13DSItVEDHbSIt9GEiLdSDp3wAAAEUxwOnAAAAARYnYQYHg+P//f2YP
-78BFMclmD28d4xAAAGYP79JmD+/JZi4PH4QAAAAAAJDzQg9vJInzQg9vbIkQ80MPbzSOZg/v9PNDD29k
-jhBmD+/lZg/b82YP2+NmD2bwZg/61mYPZuBmD/rMSYPBCE05yHW9Zg/+ymYPcMHuZg/+wWYPcMhVZg/+
-yGZBD37JRTnYdC1mLg8fhAAAAAAADx8AR4sUhkYzFIFBgeL///8AQYP6AUGD2f9Jg8ABTTnDdeBFa8Fk
-D7ZJA8HhGEGJTVhED6/gMdtFOeAPnsNIifH/FRwUAAD/FaYUAABIicEx0k2J8P8VsBQAAEiF/w+Ft/7/
-/+m7/v//Zi4PH4QAAAAAAFVWV1NIgeyYAAAASI2sJIAAAABIic5Ix0UIAAAAAEiNeRhIi0kYSIXJD4Sb
-AAAAMcCDfkgAupYAAAAPRdBIiwFMjUXYTI1NCP9QQD0nAHqID4RiAQAAhcAPiNAAAABIg33YAA+EMQEA
-AEjHRRAAAAAASItNCEiLAUiNFQ0QAABMjUUQ/xCFwA+IFwEAAEiLViBIhdIPhJ0BAABIi04QSIsBTItF
-EP+QeAEAAMdGSAEAAAD/FdATAACJRmBIi00QSIsB/1AQ6doAAAD/FbgTAACLTlyFyQ+VwjnID5jBhMoP
-hUQBAACJw0iLDkiLVghIiwFJifj/kLAAAACFwA+IuwAAAEiLD0iLAUiNVdj/UDiDfehXD4W3AAAAx0ZI
-AAAAAEiLThi6lgAAAOkP////SIsPSIXJdA1IiwH/UBBIxwcAAAAASItOIEiFyXQOSIsB/1AQSMdGIAAA
-AABIi04oSIXJdA5IiwH/UBBIx0YoAAAAAEjHRjAAAAAAx0ZIAAAAADHAg35M/w+UwPfYiUZMx0ZQAAAA
-AOmPAAAAg35IAA+Exf7//0iLTQhIiwH/UBBIi04YSIsB/1Bwi0ZI625Ix0YYAAAAAIHD6AMAAIleXOtZ
-SIsPSIXJdA1IiwH/UBBIxwcAAAAASItOIEiFyXQOSIsB/1AQSMdGIAAAAABIi04oSIXJdA5IiwH/UBBI
-x0YoAAAAAEjHRjAAAAAASLgAAAAA/////0iJRkgxwEiBxJgAAABbX15dw0iNfiBIi00QSIsBSI1drEiJ
-2v9QUA9XwA8RRchIuAEAAAABAAAASIlFtEiLTghIiwFIidpFMcBJifn/UCiFwHgRSIsXSIXSD4UW/v//
-6TL+//9IxwcAAAAA6Sb+//9mLg8fhAAAAAAAkFVBVlZXU0iD7GBIjWwkYEiLBXrvDQBIhcBBD5TAix2V
-7w0AOctBD5zBRIs1jO8NAEE51kEPnMJFCMpFCMK+AQAAAEGA+gEPhVQBAABIhcB0TUyLBUDvDQCJzkiJ
-wYnXTInC/xXoEAAASIsNMe8NAP8VwxAAAEiLDRTvDQD/Fa4QAACJ8Yn6SMcF/+4NAAAAAACLHSHvDQBE
-izUe7w0AOdkPT9lEOfJED0/yMfZIjX3UuSwAAAAxwPOqx0XUKAAAAIld2ESJ8PfYiUXcx0XgAQAgADHJ
-/xVGEAAASIkFr+4NAEiFwA+EjAAAAMdEJCgAAAAASMdEJCAAAAAATI0Nru4NAEiNVdRIicFFMcD/FRYQ
-AABIiQWH7g0ASIsNcO4NAEiFyQ+VwkiFwEEPlcBEhMJ0JEiJwv8VFRAAAEiJBVbuDQCJHXDuDQBEiTVt
-7g0AvgEAAADrSkiFwHQQSInB/xXUDwAASIsNJe4NAEiFyXQG/xW6DwAASMcFD+4NAAAAAABIxwUU7g0A
-AAAAAMcFJu4NAAAAAADHBRjuDQAAAAAAifBIg8RgW19eQV5dww8fAFVBV0FWQVVBVFZXU0iB7LgAAABI
-jawkgAAAAESJzkWJxkGJ10iJy0SLpaAAAABMjWkoSItRKEiF0nQcOXMwfAZEOWM0fXhIiwJIidH/UBBJ
+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
 )
 nd5 =
 (Join
-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
-AAAAAF5oAAAAAAAAcGgAAAAAAACAaAAAAAAAAAAAAAAAAAAAkmgAAAAAAAAAAAAAAAAAAKpoAAAAAAAA
-wGgAAAAAAADSaAAAAAAAAOJoAAAAAAAA7mgAAAAAAAD6aAAAAAAAAAAAAAAAAAAAEGcAAAAAAAAAAAAA
-AAAAACRnAAAAAAAAAAAAAAAAAAA6ZwAAAAAAAERnAAAAAAAAWmcAAAAAAABuZwAAAAAAAHpnAAAAAAAA
-imcAAAAAAACWZwAAAAAAAKZnAAAAAAAAAAAAAAAAAAC2ZwAAAAAAAMRnAAAAAAAA0mcAAAAAAADmZwAA
-AAAAAARoAAAAAAAAFmgAAAAAAAAmaAAAAAAAAEJoAAAAAAAAUmgAAAAAAABeaAAAAAAAAHBoAAAAAAAA
-gGgAAAAAAAAAAAAAAAAAAJJoAAAAAAAAAAAAAAAAAACqaAAAAAAAAMBoAAAAAAAA0mgAAAAAAADiaAAA
-AAAAAO5oAAAAAAAA+mgAAAAAAAAAAAAAAAAAAAAARDNEMTFDcmVhdGVEZXZpY2UAAABDcmVhdGVEWEdJ
-RmFjdG9yeTEAAAAAQml0Qmx0AAAAAENyZWF0ZUNvbXBhdGlibGVEQwAAAABDcmVhdGVESUJTZWN0aW9u
-AAAAAERlbGV0ZURDAAAAAERlbGV0ZU9iamVjdAAAAABHZGlGbHVzaAAAAABHZXRPYmplY3RUeXBlAAAA
-U2VsZWN0T2JqZWN0AAAAAEVudW1XaW5kb3dzAAAAR2V0QW5jZXN0b3IAAABHZXREZXNrdG9wV2luZG93
-AAAAAEdldExheWVyZWRXaW5kb3dBdHRyaWJ1dGVzAAAAAEdldFdpbmRvd0xvbmdXAAAAAEdldFdpbmRv
-d1JlY3QAAABHZXRXaW5kb3dUaHJlYWRQcm9jZXNzSWQAAAAASW50ZXJzZWN0UmVjdAAAAElzSWNvbmlj
-AAAAAElzV2luZG93VmlzaWJsZQAAAFdpbmRvd0Zyb21EQwAAAABXaW5kb3dGcm9tUG9pbnQAAABEd21H
-ZXRXaW5kb3dBdHRyaWJ1dGUAAABHZXRDdXJyZW50UHJvY2Vzc0lkAAAAR2V0UHJvY2Vzc0hlYXAAAAAA
-R2V0VGlja0NvdW50AAAAAEhlYXBBbGxvYwAAAEhlYXBGcmVlAAAAAFF1ZXJ5UGVyZm9ybWFuY2VDb3Vu
-dGVyAGQzZDExLmRsbABkeGdpLmRsbABHREkzMi5kbGwAVVNFUjMyLmRsbABkd21hcGkuZGxsAEtFUk5F
-TDMyLmRsbAABBAIFBAMBUAEbC4UbAxMBEwAMMAtwCmAJwAfQBeAD8AFQAAABEAoFEAMNAgwwC3AKYAnA
-B9AF4APwAVABFQoVFQMQEgwwC3AKYAnAB9AF4APwAVABFQo1FQMQUgwwC3AKYAnAB9AF4APwAVABTRyF
-TWgAAEh4AQBDiAIAPZgDADeoBAAxuAUAK8gGACXYBwAf6AgAGQMRARIACjAJcAhgB8AF4APwAVABBAIF
-BAMBUAEdDDUdaAAAGHgBABOIAgANAwhiBDADcAJgAVABcB+FcGgPAGt4EABjiBEAWpgSAFGoEwBIuBQA
-P8gVADbYFgAt6BcAJPgYABsDEwEzAAwwC3AKYAnAB9AF4APwAVAAAAETB4UTAwsBgQAEMANwAmABUAAA
-ARsLhRsDEwETAAwwC3AKYAnAB9AF4APwAVAAAAFqH4VqaMQAY3jFAFyIxgBUmMcATKjIAES4yQA7yMoA
-M9jLACvozAAj+M0AGwMTAZ0BDDALcApgCcAH0AXgA/ABUAAAAQoDJQoDBTIBUAAAAQ0GJQ0DCEIEMANw
-AmABUAEbC4UbAxMBHQAMMAtwCmAJwAfQBeAD8AFQAAABIA2FIGgLABsDEwEZAAwwC3AKYAnAB9AF4APw
-AVAAAAETB4UTAwsBEwAEMANwAmABUAAAAQ8HZQ8DCrIGMAVwBGAD4AFQAAABGwuFGwMTARcADDALcApg
-CcAH0AXgA/ABUAAAAQ8HVQ8DCpIGMAVwBGAD4AFQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAA/////wAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+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
+eRwAD0TCDyi10AAAAA8oveAAAABEDyiF8AAAAEQPKI0AAQAARA8olRABAABEDyidIAEAAEQPKKUwAQAA
+RA8orUABAABEDyi1UAEAAEQPKL1gAQAASIHE+AEAAFtfXkFcQV1BXkFfXcMPH0AAVUFXQVZBVUFUVldT
+SIPsGEiNbCQQRIlN+EiLhagAAABIxwD/////hdIPiAQCAACLtaAAAABED6/CSWPASI0EgUiJRfBBidCD
+wgFFMe3HRQT/////x0UA/////8dF/AAAAAC4/////0G8/////0G6/////7//////6yZmDx9EAABFhdJF
+D0jVRInvRInTSYPFAUSJyEGJ2kw56g+EiQEAALMBTTnFD4PVAAAASItN8EKLDKlED7bZD7bdwekQRA+2
+yUSJ2USLfXhEKflFKd9ED0z5QbYBRDu9gAAAAH84idlEi31wRCn5QSnfRA9M+UQ7vYAAAABEi72AAAAA
+dxhEiclEi3X4RCnxRSnORA9M8UU5/kEPl8ZEidlEi72YAAAARCn5RSnfRA9M+UE5938YidlEi52QAAAA
+RCnZQSnbRA9M2UE583YVswFFhPZ1MoXAQQ9IxUGJwUWJ7OszRInJRIudiAAAAEQp2UUpy0QPTNlBOfMP
+l8NFhPYPhJAAAACQhcB5TEGJwYTbD4Tx/v//RYXSD4jy/v//RInQKfi7/////4P49w+C4v7//4N9AAAP
+idj+//9BAfpIi4WoAAAARIlQBESJVQDpwf7//w8fQABFieNBKcNBjUvng/npD5LBRDtd/EEPnMFBCMlB
+uf////91lEGDwwFEAeBIi42oAAAAiQGJRQREiV386Xj///+FwEWJ6UQPSchFiexBOfMPh2v////pV/7/
+/4tFBPfQwegf6wIxwEiDxBhbX15BXEFdQV5BX13DZi4PH4QAAAAAAFVBV0FWQVVBVFZXU0iB7IgAAABI
+jawkgAAAAGZED39t8GZED39l4GZED39d0GZED39VwGZED39NsGZED39FoGYPf32QZg9/dYBBidNED6/C
+SWPYTI0kmUUx0kGJ0L8AAAAAuAAAAACF0g+OHgIAAEGD+whzCzHSMcAx/+ngAQAARInCgeL4//9/RInA
+wegDJf///w9IweAFSI0MmUiDwRBmD+/bMf9mD28tIlwAAGYPbzUqXAAAZg9vBTJcAABmD+//Zg/v5GYP
+78lmD+/SZpDzRA9vTDnw80QPbwQ5ZkUPb9FmRA/b1WZFD2/YZkQP291mRQ9v4WZBD3LUCGZFD2/oZkEP
+ctUIZkQP2+VmRQ/+4mZED9vtZkUP/utmQQ9y0RBmQQ9y0BBmRA/bzWZFD/7MZkUPa8lmRA/bxWZFD/7F
+ZkUPa8BmRA/kzmZBD3HRAWZED+TGZkEPcdABZkQPYctmRA9hw2ZBD/75ZkEP/uBmRQ9v0WZED+vQZkQP
+b9lmD+/IZkEPZspmRA/b2WZBD9/JZkEP68tmRQ9vyGZED+vIZkQPb9JmD+/QZkEPZtFmRA/b0mZBD9/Q
+ZkEP69JIg8cgSDn4D4UG////Zg/+52YPcNzuZg/+3GYPcONVZg/+42YPfuBmD2/aZg/v2GYPb+FmD+/g
+Zg9m42YP28xmD9/iZg/r4WYPcMzuZg9v1GYP79BmD2/ZZg/v2GYPZtNmD9viZg/f0WYP69RmD3DKVWYP
+b9pmD+/YZg/vwWYPZthmD9vTZg/f2WYP69pmD37fRDnCdDpmLg8fhAAAAAAADx8AQYsMlA+22Q+29QHe
+wekQD7bJAfFpyVZVAADB6RAByDnPD0b5SIPCAUk50HXTRYXbD57BmUH3+4n6KcJr0iNIY9JMadofhetR
+TInaSMHqP0nB+yVBAdNBg/sfuh4AAABBD03TAcI51w+cwAjID4XoAAAAQbr/////MdtFMfa//////0G/
+/////0G9/////0Ux2+shZi4PH4QAAAAAAA8fAIX/D0j7RTH2QYnaSIPDAUk52HRYQYsEnA+28A+2zAHx
 )
 nd6 =
 (Join
-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
+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
 )
-	return nd1 . nd2 . nd3 . nd4 . nd5 . nd6
+nd7 =
+(Join
+F2ZCDylMFxBIg8cgSDn4dd9EOdh0bEH2wxh0QkiJx0SJ2CX4//9/SI018icPAEyNFetHDwBmLg8fhAAA
+AAAAkEjHBDcAAAAASscEFwAAAABIg8cISDn4dedEOdh0JEiNNbsnDwBMjRW0Rw8ADx9AAMYEMABCxgQQ
+AEiDwAFJOcN17vIPEA22RwAA8g8swvIPWcgPr8pIY/mD+ghzBzH26aUBAABEid6B5vj//39Ii034SI0M
+uUiDwRAx22YPbxWNRwAAZg9vHZVHAABmD28lnUcAAGYPby2lRwAAZg9vNa1HAABmD289tUcAAEyNNS5H
+DwDrGWYuDx+EAAAAAABmkEiDwwhIOd4PhB0BAADzRA9vVJnw80QPbwSZZkUPb8pmRA/bymZED2/bZkUP
+ZtlmRQ9vymZED9vMZkQPb+VmRQ9m4WZFD9vjZkQP29ZmRA9vz2ZFD2bKZkUP28xmRA9+yvbCAXQFQsYE
+MwFmQQ/F0QL2wgF0BkLGRDMBAWZBD8XRBPbCAXQGQsZEMwIBZkEPxdEG9sIBdAZCxkQzAwFmRQ9vyGZE
+D9vKZkQPb9NmRQ9m0WZFD2/IZkQP28xmRA9v3WZFD2bZZkUP29pmRA/bxmZED2/PZkUPZshmRQ/by2ZE
+D37K9sIBdAZCxkQzBAFmQQ/F0QL2wgF0BkLGRDMFAWZBD8XRBPbCAXQGQsZEMwYBZkEPxdEG9sIBD4Th
+/v//QsZEMwcB6db+//9EOd5Ii1UAdRbyDyzxD6/CSGP4g/oIc3ExwOkKAgAASItN+EiNDLlMjTXIRQ8A
+6w9mDx9EAABIg8YBSTnzdMqLPLFBifpBgeIAAP4AQYH6//9tAHfhQYn6QYHiAP8AAEGB+gAjAABBD5LC
+gef4AAAAg/8oD5LDRCDTgPsBSItVAHW0QsYENgHrrUSJ2CX4//9/SItN+EiNDLlIg8EQMdtmD28Nf0UA
+AGYPbxWHRQAAZg9vHY9FAABmD28ll0UAAGYPby2fRQAAZg9vNadFAABMjTUgRQ8A6xtmLg8fhAAAAAAA
+Dx9AAEiDwwhIOdgPhBsBAADzRA9vTJnw8w9vPJlmRQ9vwWZED9vBZkQPb9JmRQ9m0GZFD2/BZkQP28Nm
+RA9v3GZFD2bYZkUP29pmRA/bzWZED2/GZkUPZsFmRQ/bw2ZED37C9sIBdAVCxgQzAWZBD8XQAvbCAXQG
+QsZEMwEBZkEPxdAE9sIBdAZCxkQzAgFmQQ/F0Ab2wgF0BkLGRDMDAWZED2/HZkQP28FmRA9vymZFD2bI
+ZkQPb8dmRA/bw2ZED2/UZkUPZtBmRQ/b0WYP2/1mRA9vxmZED2bHZkUP28JmRA9+wvbCAXQGQsZEMwQB
+ZkEPxdAC9sIBdAZCxkQzBQFmQQ/F0AT2wgF0BkLGRDMGAWZBD8XQBvbCAQ+E4/7//0LGRDMHAenY/v//
+RDnYSItVAHUSD6/ySGP2g/oIc3cxwOkGBQAASItN+EiNDLlMjTW+Qw8A6xVmLg8fhAAAAAAAZpBIg8AB
+STnDdMiLPIFBifpBgeIAAP4AQYH6//9tAHfhQYn6QYHiAP8AAEGB+gAjAABBD5LCgef4AAAAg/8oD5LD
+RCDTgPsBSItVAHW0QsYEMAHrrUSJ2CX4//9/SItN+EiNDLFIg8EQMf9mD28Nb0MAAGYPbxV3QwAAZg9v
+HX9DAABmD28lh0MAAGYPby2PQwAAZg9vNZdDAABIjR0QQw8A6xtmLg8fhAAAAAAADx9AAEiDxwhIOfgP
+hBMBAADzRA9vTLnw8w9vPLlmRQ9vwWZED9vBZkQPb9JmRQ9m0GZFD2/BZkQP28NmRA9v3GZFD2bYZkUP
+29pmRA/bzWZED2/GZkUPZsFmRQ/bw2ZED37C9sIBdATGBB8BZkEPxdAC9sIBdAXGRB8BAWZBD8XQBPbC
+AXQFxkQfAgFmQQ/F0Ab2wgF0BcZEHwMBZkQPb8dmRA/bwWZED2/KZkUPZshmRA9vx2ZED9vDZkQPb9Rm
+RQ9m0GZFD9vRZg/b/WZED2/GZkQPZsdmRQ/bwmZED37C9sIBdAXGRB8EAWZBD8XQAvbCAXQFxkQfBQFm
+QQ/F0AT2wgF0BcZEHwYBZkEPxdAG9sIBD4Tq/v//xkQfBwHp4P7//0Q52EiLVQAPhQwDAAAPV8nyDyrK
+8g8QFVRCAADyD1nRZg/v22YPLtNzFPIPEB1GQgAA8g9c2vIPLMP32OsM8g9YFTJCAADyDyzCg/gEuwMA
+AAAPTdjyDxAVI0IAAPIPWdFmD1fbZg8u03MU8g8QHQVCAADyD1za8g8sw/fY6wzyD1gV8UEAAPIPLMKD
++A25DAAAAA9NyIlN0PIPEBXnQQAA8g9Z0WYPV9tmDy7TcxTyDxAdwUEAAPIPXNryDyzD99jrDPIPWBWt
+QQAA8g8swoP4BL8DAAAAD0348g8QFa5BAADyD1nRZg9X22YPLtNMiUXocxTyDxAdfEEAAPIPXNryDyzD
+99jrDPIPWBVoQQAA8g8swoP4A7kCAAAAD03IiU3YhdIPjsABAACDw/8xyUyNNapADwBMjT2jIA8ASbwB
+AQEBAQEBAWYPKBVRQQAAiV0M6x5mLg8fhAAAAAAAZpCDwQFBic1EielBOdUPjXgBAABIY/FCgDw2AHTk
+QYnKQYnNOdF8GeszDx+EAAAAAACEwEQPRdZIg8YBSTnzdBlCD7YENoTAdehBifBFKdBBOfh+3UGJ9esD
+RYndRInQKcg52HyiO0XQfZ2LRdgpwYXJvgAAAAAPT/FBAcJEOdYPn8A50Q+dwQjBD4V4////ifNEidFI
+ichIKdhBuAAAAABMD0PAjUYBOcIPT8L31gHGSTnwTA9DxkmD+AdzC0iJ3otdDOmZAAAASY1wAUmD+B9z
+BUUxwOtJQYnwQYPg4EqNBDtIg8AQMdJmDx+EAAAAAABMjRQTZkMPERQXZg8RFBBIg8IgSTnQdehMOcZ1
+DEiLVQCLXQzp7f7//0D2xhh0XEiJdeCJ8IPg+EiNNBhJicJNKcJJAdhNAfgx0mYPH0QAAE2JJBBIg8II
+STnSdfNIOUXgSItVAItdDA+EqP7//2aQQsYEPgFIOc4Pg5j+//9Ig8YBOfJ/6umL/v//SQHYTInGSItV
+AOk1////i4UAAQAAQYnDhcAPjosAAACD+AhIi33oD4OTAAAAuf8AAAAxwLr/AAAA6ccCAABIi034SI0M
+sUiNPbg+DwDrE2YPH0QAAEiDwAFJOcMPhND8//+LNIFBifJBgeIAAP4AQYH6//9tAHfdQYnyQYHiAP8A
+AEGB+gAjAABBD5LCgeb4AAAAg/4oD5LDRCDTgPsBSItVAHWwxgQ4Aeuq8g8QHSI/AABmDyjjSIt96Ol6
+AgAARInYJfj//39EidnB6QOB4f///w9IweEFZg9vPQU/AABFMdJmD28VCj8AAGYPb+9mD2/3Zg9v32YP
+b+dmLg8fhAAAAAAA80cPbwwR80cPb0QREGZFD2/ZZkEPctMQZkUPb9BmQQ9y0hBmRA/b32ZED9vXZkEP
+ctEIZkEPctAIZkQP289mRA/bx2ZED2/lZkQP7+JmRQ9v62ZED+vqZkUPZuVmRQ/b3GZED9/lZkEPb+xm
+QQ/r62ZED2/eZkQP79pmRQ9v4mZED+viZkUPZtxmRQ/b02ZED9/eZkEPb/NmQQ/r8mZED2/TZkQP79Jm
+RQ9v2WZED+vaZkUPZtNmRQ/bymZED9/TZkEPb9pmQQ/r2WZED2/MZkQP78pmRQ9v0GZED+vSZkUPZspm
+RQ/bwWZED9/MZkEPb+FmQQ/r4EmDwiBMOdEPhfz+//9mD2/9Zg/v+mZED2/GZkQP78JmRA9mx2ZBD9vo
+ZkQP38ZmRA/rxWZBD3Do7mZBD2/wZg/v8mYPb/1mD+/6Zg9m/mZED9vHZg/f/WZBD+v4Zg9w71VmD2/3
+Zg/v8mZED2/FZkQP78JmRA9mxmZBD9v4ZkQP38VmRA/rx2ZED37BZg9v62YP7+pmD2/0Zg/v8mYPZvVm
+D9veZg/f9GYP6/NmD3De7mYPb+ZmD+/iZg9v62YP7+pmD2bsZg/b9WYP3+tmD+vuZg9w3VVmD2/lZg/v
+4mYP79NmD2bUZg/b6mYP39NmD+vVZg9+0kQ52HQxZi4PH4QAAAAAAA8fQABBixyBD7b3wesQRA+2w0E5
+yEEPQsg51g9C1kiDwAFJOcN13Q9X5PIPKuEPV9vyDyraSItVAPIPEK0IAQAAjUf/jQx/D1fS8g8q0WYP
+bvdmD289qjwAAGYP9P5mD/Q1rjwAAGYPYvfzD+b2Zg8UwmYPKBWqPAAAZg9e8mYP5vZmD17CZg/mwGYP
+FMZmD27QZg9w0gBmD2/yZg9m8GYP28ZmD9/yZg/r8I0M/w9XwPIPKsHyD14FdzwAAGYPf3WA8g8syDnB
+D0zBiUWQ8g8QBWY8AADyD1nBZg/v0mYPLsJzFPIPEBWwOwAA8g9c0PIPLML32OsM8g9YBZw7AADyDyzA
+8g8QhRgBAADyDxCVEAEAAPIPXOXyD1zdg/gJuQgAAAAPTciJTcSNQv+JRcxIY8JIiUXgjUIBSIlFoDHA
+6ypmkIt99IX/SItVAEiNNbASDwBIi0W4D4XaAgAASIPAAUiD+AMPhN8CAACF0njuSIlFuEiNDSU9AABI
+YwSBSGOEhXz///9ID69F4EiLTfhIjQSBSIlFsEUxwLv/////x0X0AAAAAOsrZi4PH4QAAAAAAJCF20iL
+TegPieQAAABBidpJg8ABRInTTDtFoA+EcP///0w7ReB92kiNBSMaDwBBgDwAAHXMSItFsEKLBICJwcHp
+EA+2yQ9X9vIPKvFmDy70cq8PttQPV/byDyryZg8u83KfQYnURA+20DH26w0PH0AASIPGAUk583SHQYsU
+sYnQwegQD7bAQYnGQSnOQYnPQSnHRQ9C/g9X9vJBDyr3Zg8u7nLND7b+ifhFieZEKeBBKf5ED0LwD1f2
+8kEPKvZmDy7ucq0PtsKJwkQp0kSJ1ynHD0L6D1f28g8q92YPLu5ykIXbRYnCRA9J0+kh////ZpBEicAp
+2EG6/////4P4Ag+MC////ztFxA+PAv///0yJRajR6I0UGDH/iVXIQYnWQYPuBUQPQvcBw4PDBYtFzDnD
+D03Yx0UMAAAAAEyJddjrGoNFDAFIi03oTIt12EiDxwFIg/8FD4TbAAAAi0S9gIXAeOo5yH3mQTnef+EP
+r0UASItN+EiNBIFIiUXQ6wwPHwBJOd5NjXYBc7tIjQXAGA8AQYA8BgB16UiLRdBCiwSwRA+24A+29MHo
+EEQPtsBFMdLrF2YuDx+EAAAAAAAPH0AASYPCAU0503S3Q4sUkYnQwegQRA+26ESJ6EQpwEWJx0Up70QP
+QvgPV/byQQ8q92YPLu5yzA+2zonIKfBBifdBKc9ED0L4D1f28kEPKvdmDy7ucq0PtsKJwUQp4USJ4inC
+D0LRD1f28g8q8mYPLu5ykOkL////i30Mg/8ED53Ai1X0gfoAAgAAD5zBIMGA+QFMi0WoQbr/////D4Ww
+/f//SGPCSI0N5wcPAIt1yIk0gUiNDdoPDwCJPIGDwgGJVfTpi/3//34RQYn7g/8Ic0sx0jHJ6f4AAAC4
+/////w8odRAPKH0gRA8oRTBEDyhNQEQPKFVQRA8oXWBEDyhlcEQPKK2AAAAASIHEGAEAAFtfXkFcQV1B
+XkFfXcNEidqB4vj//39EidnB6QOB4f///w9IweEFZg9X20UxwGYPV+QPHwBmQQ9vLDBmQQ9vdDAQZg9v
+/WYPZvtmD9vvZg/f+2YPb99mD+vdZg9v7mYPZuxmD9v1Zg/f7GYPb+VmD+vmSYPAIEw5wXW6Zg9v62YP
+ZuxmD9vdZg/f7GYP6+tmD3Dd7mYPb+VmD2bjZg/b7GYP3+NmD+vlZg9w3FVmD2/sZg9m62YP2+VmD9/r
+Zg/r7GYPfulEOdp0M02J2Ekp0EjB4gJFMclmLg8fhAAAAAAADx9AAE6NFIpGixQWQTnKQQ9PykmDwQFN
+Och16PIPWQ3ANwAAuP/////yDxAduzcAADHSZg/v5GYPKC21NwAATYnY6wpIg8IESYPA/3RHZg8u1HLw
+OQwyfOtMjQ1EBg8ARosMCg9X//JBDyr58g9Y+PIPXPpmDyj3Zg9X9fIPX/dmDy7edr5mDy7OcrhEichm
+Dyje66+FwA+JU/7//4P/AXUtMdJB9sMBD4RC/v//OQyWD4w5/v//SI0N5gUPAIsMkYXAeHA5wQ9Mwekh
+/v//RYnYQYHg/v//fzHS6xcPH4AAAAAAQTnBQQ9MwUiDwgJJOdB0sDkMlnwWTI0NpAUPAEWLDJGFwHgi
+QTnBQQ9MwTlMlgR81kyNDYgFDwBFi0yRBIXAeb9EicjrwUSJyDlMlgR8uOvgicjptP3//w8fhAAAAAAA
+)
+nd8 =
+(Join
+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
+)
+nd9 =
+(Join
+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
+)
+nd10 =
+(Join
+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
+yQBFMdIPHwDzQg9vVBHw80IPbxwRZg/b0GYP29hmD+vRZg/r2fNDD39UFfDzQw9/XBUASYPCIE051HXM
+SItF6EmJwkQ52A+EbP///0yJ00H2wwF0MkyJ+0kPr9hIA13wSIuFsAAAAEkPr8dCixyTRCHzQQsZSAOF
+qAAAAEKJHJBMidNIg8sBTDtV4A+EJ////w8fgAAAAACLBJ9EIfBBCwGJRJr8i0SfBEQh8EELAYkEmkiD
+wwJJOdt13en4/v//SItFKEiLSBBIi1AoSIsBRTHA/1B4Qb4BAAAA6wtJx0UAAAAAAEUx9kSJ8EiBxLgA
+AABbX15BXEFdQV5BX13DZg8fhAAAAAAAVUFWVldTSIPsUEiNbCRQSDtKEA+E9wAAAEiJz0iJ1v8Vcw8A
+ALsBAAAAhcAPhOAAAABIifn/FVUPAACFwA+FzwAAAIM99iIAAAB0J8dF5AAAAABIjVXkSIn5/xUgDwAA
+RIt15P8VXg8AAEE5xg+EnwAAAEiJ+brs/////xXvDgAAqQAACAAPhIYAAABIjVXkSIn5/xXfDgAAhcB0
+dUiNTdRIjVXkSYnw/xXaDgAAhcB0YMZF///HRfQAAAAAx0X4AAAAAEyNRf9MjU30SIn5MdL/FZEOAACF
+wHQM9kX0AnQGgH3/AHQrTI1F+EiJ+boOAAAAQbkEAAAA/xW5DgAAhcB4BoN9+AB1CcdGGAEAAAAx24nY
+SIPEUFtfXkFeXcPM/yXCDQAAzMzMzMzMzMzMzP8lwg0AAMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+/wAAAP8AAAD/AAAA/wAAAKuqq6qrqquqq6qrqquqq6oAAACAAAAAgAAAAIAAAACAmpmZmZmZ4T8AAAAA
+AAAAAP//////////AAAAAP////+4HoXrUbi+PwrXo3A9Csc/uB6F61G4zj9SuB6F61HoPz0K16NwPeo/
+KVyPwvUo7D8AAAAAAADgPwAAAAAAAAAAAAAAAAAAGEAAAAAAAAAYQAAAAAAAAACAAAAAAAAAAIAAAAAA
+AIBGQHsUrkfherQ/16NwPQrX4z8AAAAAZc3NwQAAAAAAOI9AAAAAAAAARECV1iboCy4RPgAAAAAAAAAA
+/////////3//////////f/8AAAD/AAAA/wAAAP8AAAA2AAAANgAAADYAAAA2AAAAAAAAAAAAKkAAAAAA
+AAAqQADITmdtwatDAAAAAAAA4D8AAAAA/////wAAAAD//////////wAAAAD//////////wcAAAAHAAAA
+BwAAAAcAAAAFAAAABQAAAAUAAAAFAAAAAAAAAAAAJEAAAAAAAAAkQAAAAAAAACRAAAAAAAAAAACamZmZ
+mZnJPwAAAAAAAOA/mpmZmZmZ6T8zMzMzMzPTPwAAAAAAAOA/AAAAAAAA8L8AAAAAAAA+QAAAAAAAACRA
+AAAAAAAAIMAAAAAAAAAgQAAAAAAAANA/AAAAAAAA6D//////////f/////////9/uB6F61G4nj8K16Nw
+PQrvPwAAAAAAAFBAAAAAAAAA8D8AAAAAAAAiwAAAAAAAACLAAAAAAAAAIsCN7bWg98awPv8AAAD/AAAA
+/wAAAP8AAAB4AAAAeAAAAHgAAAB4AAAAAAAAAAAA8L8AAAAAAAAAAP////////9//////////38AAAAA
+AAAsQAAAAAAAABxAmpmZmZmZuT/NzMzMzMzcP+xRuB6F66E/AAAAAAAA4D8zMzMzMzPrP3sUrkfhepQ/
+AAAAAAAA0D+amZmZmZmpP83MzMzMzOw/AAAAAAAAAAAAAAAAAAAAAP////8AAAAA7FG4HoXroT8AAAAA
+AADgPzMzMzMzM8M/MzMzMzMz6z+amZmZmZm5P5qZmZmZmck/XI/C9Shc7z+amZmZmZnZPwAAAAAAADxA
+AAAAAAAAXkDXo3A9CtfjPwAAAAAAADRAAAAAAPBp+EAAAAAAAAAAAP8AAAD/AAAA/wAAAP8AAACrqquq
+q6qrqquqq6qrqquqAAAAgAAAAIAAAACAAAAAgDMzMzMzM+M/AAAAAAAAAAD/AAAA/wAAAP8AAAD/AAAA
+7FG4HoXr0T9SuB6F61HYP/YoXI/C9eg/KVyPwvUo7D8zMzMzMzPjP7gehetRuJ4/AAAAAAAA4D97FK5H
+4XqUP3sUrkfherQ/MzMzMzMz6z8zMzMzMzPTPwAAAAAAAOA/ZmZmZmZm5j8AAAAAAADQP/8AAAD/AAAA
+/wAAAP8AAACWAAAAlgAAAJYAAACWAAAAbgAAAG4AAABuAAAAbgAAAAAAAIAAAACAAAAAgAAAAIBaAACA
+WgAAgFoAAIBaAACANwAAADcAAAA3AAAANwAAAOxRuB6F66E/mpmZmZmZqT8zMzMzMzPrPwAAAAAAAAAA
+MzMzMzMz0z+amZmZmZnhPzMzMzMzM+s/AAAAAAAAAAAAAP4AAAD+AAAA/gAAAP4AAABuAAAAbgAAAG4A
+AABuAAD/AAAA/wAAAP8AAAD/AAAAIwAAACMAAAAjAAAAIwAA+AAAAPgAAAD4AAAA+AAAACgAAAAoAAAA
+KAAAACgAAAB7FK5H4Xp0PwAAAAAAAOA/nMQgsHJooT/6fmq8dJN4P/yp8dJNYnA/AAAAAAAAAAABAQEB
+AQEBAQEBAQEBAQEBAAAAAADgb0AAAAAAAAAAAP8AAAD/AAAA/wAAAP8AAAAAAACAAAAAgAAAAIAAAACA
+BwAAAAcAAAAHAAAABwAAAAUAAAAFAAAABQAAAAUAAAAAAAAAAAAkQAAAAAAAACRAAAAAAAAAJEC4HoXr
+UbiePwAAAAAAANA/AAAAAH6ELkEAAAAAAAAAgAAAAAAAAACA2/l+arx0kz8AAAAAAADgPwrXo3A9Crc/
+MzMzMzMz0z8AAAAAAADAP5qZmZmZmck/AAAAAAAA4D9cj8L1KFzvP83MzMzMzNw/mpmZmZmZmT8pXI/C
+9SjMPwAAAAAAAAAAAAAAAAAAJEAAAAAAAAAAAP8AAAD/AAAA/wAAAP8AAAA9CtejcD3aPwAAAAAAAOA/
+eekmMQisjD8AAAAAAAAAAAAAAAAAAACAAAAAAAAAAID///8A////AP///wD///8AAQAAAAEAAABXAAAA
+AQAAAP///wD///8A////AP///wAzMzMzMzPDPwAAAAAAANA/ZmZmZmZm1j/NzMzMzMzcP5qZmZmZmeE/
+zczMzMzM5D8AAAAAAADoPwAAAAAAAAAAAwAAAAYAAAAKAAAAEAAAAAIAAAABAAAAAwAAAAMAAAACAAAA
+BAAAAHiuCndv8rpNqCklPIPRs4fyqhVvCNKJTpq0SJU100+cqN7NAJuTg0ujQKaFImZmzP//////////
+)
+nd11 =
+(Join
+AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAAAAAAAAAwMcAAAEAAAAbAAAAGwAAANbHAABCyAAA
+rsgAAFZlbHRyaXhOYXRpdmVfbmV3LmRsbABAWgAAIBAAAIBPAABwFQAAYBcAAIBNAABQIAAAwBgAAEBL
+AAAQIwAA4G8AAAAQAADAdAAAkHsAANCUAACwmAAAQI8AACCeAADQpAAAUGQAAKBmAACgagAAUDoAAOAb
+AABwIAAA4EMAAJCrAADkyAAA78gAAPbIAAACyQAADckAABfJAAAkyQAALskAADrJAABHyQAAUskAAF3J
+AABryQAAdskAAILJAACOyQAAmckAAKXJAACwyQAAv8kAAMrJAADUyQAA38kAAOrJAAD0yQAA/ckAAAjK
+AAAAAAEAAgADAAQABQAGAAcACAAJAAoACwAMAA0ADgAPABAAEQASABMAFAAVABYAFwAYABkAGgB2eF9i
+ZWxsb25hAHZ4X2JsdAB2eF9jYXN0c2NhbgB2eF9jbF9maW5kAHZ4X2NsX3J1bgB2eF9jb2xzcHJlYWQA
+dnhfZW5hYmxlAHZ4X2Zpc2hsaW5lAHZ4X2ZyYW1lZGFyawB2eF9ncmFkYmFyAHZ4X2hhbGlidXQAdnhf
+aWdub3JlX293bgB2eF9taWd1YmFyAHZ4X21pZ3VmaXNoAHZ4X256X2Fycm93AHZ4X256X2JhcnMAdnhf
+bnpfZWRnZXMAdnhfbnpfZmlzaAB2eF9uel9maXNoYmFuZAB2eF9waW5zY2FuAHZ4X3JlbGJhcgB2eF9y
+ZWxmaXNoAHZ4X3JlbXNjYW4Adnhfcm93YmFyAHZ4X3N0YXRzAHZ4X3N3c2hhcGUAdnhfdHFfcnVucwAA
+oMoAAAAAAAAAAAAA1M4AALjLAACwygAAAAAAAAAAAADezgAAyMsAAMDKAAAAAAAAAAAAAOfOAADYywAA
+CMsAAAAAAAAAAAAA8c4AACDMAABwywAAAAAAAAAAAAD8zgAAiMwAAIDLAAAAAAAAAAAAAAfPAACYzAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAADQzAAAAAAAAAAAAAAAAAAA5MwAAAAAAAAAAAAAAAAAAPrMAAAAAAAA
+BM0AAAAAAAAazQAAAAAAAC7NAAAAAAAAOs0AAAAAAABKzQAAAAAAAFbNAAAAAAAAZs0AAAAAAAAAAAAA
+AAAAAHbNAAAAAAAAhM0AAAAAAACSzQAAAAAAAKbNAAAAAAAAxM0AAAAAAADWzQAAAAAAAObNAAAAAAAA
+As4AAAAAAAASzgAAAAAAAB7OAAAAAAAAMM4AAAAAAABAzgAAAAAAAAAAAAAAAAAAUs4AAAAAAAAAAAAA
+AAAAAGrOAAAAAAAAgM4AAAAAAACSzgAAAAAAAKLOAAAAAAAArs4AAAAAAAC6zgAAAAAAAAAAAAAAAAAA
+0MwAAAAAAAAAAAAAAAAAAOTMAAAAAAAAAAAAAAAAAAD6zAAAAAAAAATNAAAAAAAAGs0AAAAAAAAuzQAA
+AAAAADrNAAAAAAAASs0AAAAAAABWzQAAAAAAAGbNAAAAAAAAAAAAAAAAAAB2zQAAAAAAAITNAAAAAAAA
+ks0AAAAAAACmzQAAAAAAAMTNAAAAAAAA1s0AAAAAAADmzQAAAAAAAALOAAAAAAAAEs4AAAAAAAAezgAA
+AAAAADDOAAAAAAAAQM4AAAAAAAAAAAAAAAAAAFLOAAAAAAAAAAAAAAAAAABqzgAAAAAAAIDOAAAAAAAA
+ks4AAAAAAACizgAAAAAAAK7OAAAAAAAAus4AAAAAAAAAAAAAAAAAAAAARDNEMTFDcmVhdGVEZXZpY2UA
+AABDcmVhdGVEWEdJRmFjdG9yeTEAAAAAQml0Qmx0AAAAAENyZWF0ZUNvbXBhdGlibGVEQwAAAABDcmVh
+dGVESUJTZWN0aW9uAAAAAERlbGV0ZURDAAAAAERlbGV0ZU9iamVjdAAAAABHZGlGbHVzaAAAAABHZXRP
+YmplY3RUeXBlAAAAU2VsZWN0T2JqZWN0AAAAAEVudW1XaW5kb3dzAAAAR2V0QW5jZXN0b3IAAABHZXRE
+ZXNrdG9wV2luZG93AAAAAEdldExheWVyZWRXaW5kb3dBdHRyaWJ1dGVzAAAAAEdldFdpbmRvd0xvbmdX
+AAAAAEdldFdpbmRvd1JlY3QAAABHZXRXaW5kb3dUaHJlYWRQcm9jZXNzSWQAAAAASW50ZXJzZWN0UmVj
+dAAAAElzSWNvbmljAAAAAElzV2luZG93VmlzaWJsZQAAAFdpbmRvd0Zyb21EQwAAAABXaW5kb3dGcm9t
+UG9pbnQAAABEd21HZXRXaW5kb3dBdHRyaWJ1dGUAAABHZXRDdXJyZW50UHJvY2Vzc0lkAAAAR2V0UHJv
+Y2Vzc0hlYXAAAAAAR2V0VGlja0NvdW50AAAAAEhlYXBBbGxvYwAAAEhlYXBGcmVlAAAAAFF1ZXJ5UGVy
+Zm9ybWFuY2VDb3VudGVyAGQzZDExLmRsbABkeGdpLmRsbABHREkzMi5kbGwAVVNFUjMyLmRsbABkd21h
+cGkuZGxsAEtFUk5FTDMyLmRsbAABBAIFBAMBUAEbC4UbAxMBEwAMMAtwCmAJwAfQBeAD8AFQAAABEAoF
+EAMNAgwwC3AKYAnAB9AF4APwAVABFQoVFQMQEgwwC3AKYAnAB9AF4APwAVABFQo1FQMQUgwwC3AKYAnA
+B9AF4APwAVABTRyFTWgAAEh4AQBDiAIAPZgDADeoBAAxuAUAK8gGACXYBwAf6AgAGQMRARIACjAJcAhg
+B8AF4APwAVABBAIFBAMBUAEdDDUdaAAAGHgBABOIAgANAwhiBDADcAJgAVABcB+FcGgPAGt4EABjiBEA
+WpgSAFGoEwBIuBQAP8gVADbYFgAt6BcAJPgYABsDEwEzAAwwC3AKYAnAB9AF4APwAVAAAAETB4UTAwsB
+gQAEMANwAmABUAAAARsLhRsDEwETAAwwC3AKYAnAB9AF4APwAVAAAAFqH4VqaMQAY3jFAFyIxgBUmMcA
+TKjIAES4yQA7yMoAM9jLACvozAAj+M0AGwMTAZ0BDDALcApgCcAH0AXgA/ABUAAAASsSVStoAQAmeAIA
+IYgDABuYBAAVAxCiDDALcApgCcAH0AXgA/ABUAEVCjUVAxBSDDALcApgCcAH0AXgA/ABUAEVClUVAxCi
+DDALcApgCcAH0AXgA/ABUAFuH4VuaBUAZ3gWAGCIFwBYmBgAUKgZAEi4GgA/yBsANtgcAC3oHQAk+B4A
+GwMTAT8ADDALcApgCcAH0AXgA/ABUAAAARUKFRUDECIMMAtwCmAJwAfQBeAD8AFQAUkbhUloAABEeAEA
+P4gCADmYAwAzqAQALbgFACfIBgAh2AcAGwMTAREADDALcApgCcAH0AXgA/ABUAAAATEUdTFoAgAseAMA
+J4gEACGYBQAbqAYAFQMQ4gwwC3AKYAnAB9AF4APwAVABFQoVFQMQIgwwC3AKYAnAB9AF4APwAVABVR+F
+VWgBAFB4AgBLiAMARZgEAD+oBQA5uAYAM8gHAC3YCAAn6AkAIfgKABsDEwEXAAwwC3AKYAnAB9AF4APw
+AVAAAAFMG4VMaAkAR3gKAEKICwA8mAwANqgNADC4DgAqyA8AJNgQABsDEwEjAAwwC3AKYAnAB9AF4APw
+AVAAAAEVClUVAxCiDDALcApgCcAH0AXgA/ABUAEQCgUQAw0CDDALcApgCcAH0AXgA/ABUAEbC4UbAxMB
+JQAMMAtwCmAJwAfQBeAD8AFQAAABGwqFGwMT8gwwC3AKYAnAB9AF4APwAVABFQolFQMQMgwwC3AKYAnA
+B9AF4APwAVABOxd1O2gAADZ4AQAxiAIAK5gDACWoBAAfuAUAGcgGABMDDtIKMAlwCGAHwAXgA/ABUAAA
+AQoDJQoDBTIBUAAAAQ0GJQ0DCEIEMANwAmABUAEbC4UbAxMBHQAMMAtwCmAJwAfQBeAD8AFQAAABIA2F
+IGgLABsDEwEZAAwwC3AKYAnAB9AF4APwAVAAAAETB4UTAwsBEwAEMANwAmABUAAAAQ8HZQ8DCrIGMAVw
+BGAD4AFQAAABGwuFGwMTARcADDALcApgCcAH0AXgA/ABUAAAAQ8HVQ8DCpIGMAVwBGAD4AFQAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAABAAAA/////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAATEAAA
+FM8AACAQAABtFQAAHM8AAHAVAABgFwAAOM8AAGAXAADAGAAAUM8AAMAYAADTGwAAaM8AAOAbAABLIAAA
+gM8AAFAgAABjIAAAvM8AAHAgAAABIwAAxM8AABAjAAB1NgAA4M8AAIA2AABQOgAAJNAAAFA6AADgQwAA
+ONAAAOBDAAA3SwAAVNAAAEBLAAB3TQAAmNAAAIBNAAB9TwAAwNAAAIBPAAA4WgAA2NAAAEBaAABMZAAA
+8NAAAFBkAACWZgAANNEAAKBmAACXagAATNEAAKBqAADVbwAAiNEAAOBvAAC5dAAAtNEAAMB0AACNewAA
+zNEAAJB7AAA4jwAAENIAAECPAADJlAAATNIAANCUAAChmAAAZNIAALCYAAAUngAAfNIAACCeAADKpAAA
+mNIAANCkAACEqwAAsNIAAJCrAADYrQAAyNIAAOCtAAA8rgAA/NIAAECuAAAtrwAACNMAADCvAADdsQAA
+GNMAAOCxAAD2tAAANNMAAAC1AACVtwAAVNMAAKC3AABNuQAAaNMAAFC5AADHvAAAfNMAANC8AADvvQAA
+mNMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+)
+	return nd1 . nd2 . nd3 . nd4 . nd5 . nd6 . nd7 . nd8 . nd9 . nd10 . nd11
 }
 
 ;---- Debug (Extra > Debug): scanning FPS and the bar's LEFT / RIGHT / LINE markers ---------------------------
