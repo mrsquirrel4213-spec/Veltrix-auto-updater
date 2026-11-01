@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 94
+VxBuild := 95
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -197,6 +197,20 @@ ProfileFields.Push(["Aquarium", "AquariumAuto", "false", "bool"]
     , ["Aquarium", "AquariumStepDelay", 320, "num"]
     , ["Aquarium", "AquariumOpenDelay", 1500, "num"]
     , ["Aquarium", "AquariumScrollSteps", 14, "num"])
+ProfileFields.Push(["Webhook", "WebhookOn", "false", "bool"]
+    , ["Webhook", "WebhookUrl", "", "str"]
+    , ["Webhook", "WebhookPing", "", "str"]
+    , ["Webhook", "WebhookStartStop", "true", "bool"]
+    , ["Webhook", "WebhookEachCatch", "false", "bool"]
+    , ["Webhook", "WebhookEvents", "true", "bool"]
+    , ["Webhook", "WebhookAlerts", "true", "bool"]
+    , ["Webhook", "WebhookShot", "true", "bool"]
+    , ["Webhook", "WebhookReportMin", 60, "num"]
+    , ["Webhook", "WebhookMilestone", 0, "num"]
+    , ["Webhook", "WebhookNoCatchMin", 10, "num"])
+ProfileFields.Push(["Reconnect", "ReconnectOn", "false", "bool"]
+    , ["Reconnect", "ReconnectLink", "", "str"]
+    , ["Reconnect", "ReconnectLoadSec", 30, "num"])
 ProfileFields.Push(["Totem", "TotemAuto", "false", "bool"]
     , ["Totem", "TotemPollSec", 20, "num"]
     , ["Totem", "TotemActDelay", 2500, "num"])
@@ -299,6 +313,8 @@ BelVel := [0, 0], BelBVel := [0, 0], BelDown := [0, 0], BelSide := [0, 0]
 BelAcc := [0, 0], BelBias := [0, 0]
 BelA := [-1, -1], BelB := [-1, -1], BelF := [-1, -1]
 BelOK := [false, false]
+BelSlotT := [0, 0], BelPressT := [0, 0], BelRate := [0, 0], BelLastT := [0, 0]
+VxDbgFish2 := -1, VxDbgFish2T := 0, VxDbgBar2C := -1, VxDbgBar2W := 0, VxDbgBar2T := 0
 DutyAvg := 0.5
 DarkAcc := 0
 
@@ -484,6 +500,8 @@ return
 ;====================================================================================================;
 
 runtime:
+    if (RcBusy)
+        return
     runtimeS += 1
     if (runtimeS >= 60) {
         runtimeS := 0
@@ -673,6 +691,7 @@ StartMacroFlow:
     WhLastCatchTick := 0
     WhLastSummary := A_TickCount
     WhStalled := false
+    RcLogPath := "", RcLogEnd := true, RcGoneT := 0, RcHungT := 0, RcBusy := false
 
     Send, {lbutton up}
     Send, {rbutton up}
@@ -689,6 +708,9 @@ StartMacroFlow:
     WinMaximize, ahk_id %RobloxHwnd%
     gosub Calculations
     SetTimer, runtime, 1000
+    SetTimer, WhTick, 5000
+    SetTimer, RcTick, 2000
+    WhStarted()
     gosub RefreshHints
     for cmIdx_, tipNo in [6, 10, 11, 12, 14, 16]
         VxTip(tipNo, "")
@@ -1645,6 +1667,17 @@ BarMinigame2:
                 MoveHudFish2(FishBarLeft + BelF[2])
             MoveHudBar2Span(FishBarLeft + BelA[2], BelB[2] - BelA[2])
         }
+        ; Debug > Bar positions: both bars as they were read (the first one's width is the read one, not the average)
+        if (BelOK[1]) {
+            VxDbgBarC := FishBarLeft + (BelA[1] + BelB[1]) / 2, VxDbgBarW := BelB[1] - BelA[1], VxDbgBarT := A_TickCount
+            if (BelF[1] >= 0)
+                VxDbgFish := FishBarLeft + BelF[1], VxDbgFishT := A_TickCount
+        }
+        if (BelOK[2]) {
+            VxDbgBar2C := FishBarLeft + (BelA[2] + BelB[2]) / 2, VxDbgBar2W := BelB[2] - BelA[2], VxDbgBar2T := A_TickCount
+            if (BelF[2] >= 0)
+                VxDbgFish2 := FishBarLeft + BelF[2], VxDbgFish2T := A_TickCount
+        }
         if (HudNoteX >= 0)
             MoveHudNote(-1)
         if (HudNote2X >= 0)
@@ -2253,6 +2286,7 @@ BarMinigameOver:
     WhCatches += 1
     KbCatches += 1
     KbOcrCatches += 1
+    WhCatch()
     WhLastCatchTick := A_TickCount
     WhStalled := false
     SetTimer, BarCalculationFailsafe, Off
@@ -2592,6 +2626,7 @@ AquariumRun:
         AqRecoverRow()
     if (!AqPanelSure()) {
         AqLastResult := "could not find the fish food panel"
+        WhEvent("Aquarium: did not open", "Could not find the fish food panel. Next try in " . Round(AquariumEveryMin) . " min.", "warn")
         AqStatus := "failed"
         MouseMove, %AqSaveX%, %AqSaveY%, 0
         VxTip(8, "")
@@ -2615,6 +2650,7 @@ AquariumRun:
     VxTip(8, "Action: Back To Start")
     AqScrollHome()
     AqLastResult := "bought " AqBuys ", used " AqUses
+    WhEvent("Aquarium: fed", "Bought " . AqBuys . ", used " . AqUses . " fish food. Next trip in " . Round(AquariumEveryMin) . " min.", "good")
     AqStatus := "done"
     ; falls through into AquariumClose
 AquariumClose:
@@ -2748,8 +2784,12 @@ Idle:
     KbBusy := false
     MacroPreview := false
     MgInPlay := false
+    if (WhStartTick)
+        WhStopped()
     WhStartTick := 0
     SetTimer, runtime, Off
+    SetTimer, WhTick, Off
+    SetTimer, RcTick, Off
     SetTimer, NavigationShakeFailsafe, Off
     SetTimer, BarCalculationFailsafe, Off
     GuiControl, 1:, StartStopDisplay, ▶ Start
@@ -3054,7 +3094,7 @@ LoadActiveProfile:
         LapDef := LapEnt[3]
         LapType := LapEnt[4]
         if (LapSec = "Aquarium" || LapSec = "Keeper" || LapSec = "Update" || LapSec = "Advanced"
-            || LapSec = "Misc" || (TotemGlobal && LapSec = "Totem"))
+            || LapSec = "Misc" || LapSec = "Webhook" || LapSec = "Reconnect" || (TotemGlobal && LapSec = "Totem"))
             LapFile := SettingsFile
         else
             LapFile := ActiveProfileFile
@@ -6107,6 +6147,11 @@ AdvRegistry() {
 	r.Push(["Aquarium", "L", "aqwh2", 30, "ms|Scroll: pause between wheel steps"])
 	r.Push(["Aquarium", "L", "aqwh3", 130, "ms|Scroll: pause after scrolling"])
 	r.Push(["Aquarium", "L", "aqtap", 55, "ms|Click: hover before clicking"])
+	r.Push(["Reconnect", "L", "rcgone", 8, "s|Roblox gone this long counts as closed"])
+	r.Push(["Reconnect", "L", "rchung", 30, "s|Roblox not responding this long counts as frozen"])
+	r.Push(["Reconnect", "L", "rcgap", 5, "s|Wait after closing Roblox before joining (grows with each try)"])
+	r.Push(["Reconnect", "L", "rcwin", 60, "s|Wait for the Roblox window (max)"])
+	r.Push(["Reconnect", "L", "rcjoin", 90, "s|Wait for Roblox to join a server (max)"])
 	r.Push(["Totem", "V", "TotemActDelay", 0, "ms|Wait after using a totem"])
 	r.Push(["Totem", "V", "TotemPollSec", 0, "s|Check for a totem every"])
 	r.Push(["Totem", "L", "totemcatch", 0, "ms|Wait after a catch before using a totem"])
@@ -7871,7 +7916,7 @@ BellonaScan() {
 }
 BellonaDrive(sd) {
     global BelOK, BelA, BelB, BelF, BelPrevF, BelPrevB, BelPrevT, BelVel, BelBVel
-    global BelBias, BelAcc, BelSide, QpcFreq, WindowWidth
+    global BelBias, BelAcc, BelSide, QpcFreq, WindowWidth, BelSlotT, BelRate, BelLastT
     if !BelOK[sd]
         return
     bar := (BelA[sd] + BelB[sd]) / 2
@@ -7892,46 +7937,77 @@ BellonaDrive(sd) {
     BelSide[sd] := fish > bar ? 1 : -1
 
     DllCall("QueryPerformanceCounter", "Int64*", now)
-    dt := 0
-    if (BelPrevT[sd] > 0) {
-        dt := (now - BelPrevT[sd]) / QpcFreq
-        if (dt > 0.0005 && dt < 0.5) {
-            BelVel[sd] := 0.4 * BelVel[sd] + 0.6 * ((fish - BelPrevF[sd]) / dt)
-            BelBVel[sd] := 0.4 * BelBVel[sd] + 0.6 * ((bar - BelPrevB[sd]) / dt)
+    dt := BelLastT[sd] ? (now - BelLastT[sd]) / QpcFreq : 0
+    BelLastT[sd] := now
+    ; speeds over at least 25 ms: the positions come in 4 px steps, and over one scan (3 ms) a single step reads as
+    ; 1300 px/s
+    vt := BelPrevT[sd] ? (now - BelPrevT[sd]) / QpcFreq : 1
+    if (vt >= 0.025) {
+        if (vt < 0.5) {
+            BelVel[sd] := 0.5 * BelVel[sd] + 0.5 * ((fish - BelPrevF[sd]) / vt)
+            BelBVel[sd] := 0.5 * BelBVel[sd] + 0.5 * ((bar - BelPrevB[sd]) / vt)
         }
+        BelPrevT[sd] := now
+        BelPrevF[sd] := fish
+        BelPrevB[sd] := bar
     }
-    BelPrevT[sd] := now
-    BelPrevF[sd] := fish
-    BelPrevB[sd] := bar
 
     err := bar - fish
     rel := BelBVel[sd] - BelVel[sd]
     if (Abs(err) <= 36 * rs && Abs(rel) <= 120 * rs) {
         kp := 0.0122 / rs
         kd := 0.00488 / rs
+        ; the bias learns the hold share that keeps the bar still, so the line ends up in the middle, not beside it
         if (dt > 0 && dt < 0.1) {
-            b := BelBias[sd] - 0.25 * kp * err * dt
-            BelBias[sd] := b < -0.2 ? -0.2 : (b > 0.2 ? 0.2 : b)
+            b := BelBias[sd] - 0.6 * kp * err * dt
+            BelBias[sd] := b < -0.3 ? -0.3 : (b > 0.3 ? 0.3 : b)
         }
         duty := 0.463 + BelBias[sd] - kp * err - kd * rel
         duty := duty < 0 ? 0 : (duty > 1 ? 1 : duty)
-        ; sigma-delta: emit a press whenever the accumulated duty crosses 1
-        BelAcc[sd] := BelAcc[sd] + duty
-        if (BelAcc[sd] >= 1) {
-            BelAcc[sd] := BelAcc[sd] - 1
-            want := true
-        } else
-            want := false
-    } else
+        ; press slots: one press per slot, held for the duty's share of it
+        BelRate[sd] := BellonaRate(err / rs, duty)
+        gap := 1.0 / BelRate[sd]
+        ph := BelSlotT[sd] ? (now - BelSlotT[sd]) / QpcFreq / gap : 1
+        if (ph >= 1 || ph < 0) {
+            BelSlotT[sd] := now
+            ph := 0
+        }
+        ; a press shorter than 8 ms does not count in game: leave that slot empty
+        want := (ph < duty) && (duty * gap >= 0.008)
+    } else {
+        BelSlotT[sd] := 0
         want := (err + 0.5 * rel) < 0
+    }
     BellonaSet(sd, want)
 }
+
+; press slots per second for one bar: the Max presses per second setting; up to 20 while the line is off the middle
+; (finer steering), down to 5 when the press has to be very short or very long (so it still counts). off = line - middle
+; in 2560-wide pixels.
+BellonaRate(off, duty) {
+    global PressCap
+    pref := (PressCap > 0) ? PressCap : 20
+    lo := (pref < 5) ? pref : 5
+    hi := (pref > 20) ? pref : 20
+    f := Abs(off) / 24
+    r := pref + (hi - pref) * ((f > 1) ? 1 : f)
+    if (duty < 0.12 || duty > 0.88) {
+        e := (duty < 0.12) ? (0.12 - duty) / 0.12 : (duty - 0.88) / 0.12
+        r := r - (r - lo) * ((e > 1) ? 1 : e)
+    }
+    return (r < lo) ? lo : (r > hi) ? hi : r
+}
 BellonaSet(sd, want) {
-    global BelDown
+    global BelDown, BelPressT, QpcFreq, PressCap
     btn := sd = 1 ? "LButton" : "RButton"
     if (want && (!BelDown[sd] || !GetKeyState(btn, "P"))) {
-        if !VxPressOk(sd = 1 ? "L" : "R")
+        ; each bar has its own press budget: the press slots set the pace, this only stops a burst (20 a second, or
+        ; the setting when it is higher)
+        DllCall("QueryPerformanceCounter", "Int64*", pn)
+        cap := (PressCap > 20) ? PressCap : 20
+        if (BelPressT[sd] && (pn - BelPressT[sd]) / QpcFreq < 1.0 / cap)
             return
+        BelPressT[sd] := pn
         if (sd = 1)
             Send {LButton down}
         else
@@ -10031,6 +10107,7 @@ if (MacroRunning and !NukeFalse)
 	{
 	NukeAfter := true
 	ForceReset := true
+	WhEvent("Nuke balanced", "The gauge closed after " . Round((A_TickCount - NukeFocusT) / 1000) . " s.", "good")
 	}
 gosub, NukeTimerRefresh
 return
@@ -13385,7 +13462,8 @@ ColorListParse(s) {
         ColorListCacheN := 0
     }
     res := {n: 0, r: [], g: [], b: []}
-    Loop, Parse, s, `,;|%A_Space%, %A_Space%%A_Tab%
+    src := ColExpand(s)
+    Loop, Parse, src, `,;|%A_Space%, %A_Space%%A_Tab%
     {
         v := ColNorm(A_LoopField)
         if (v < 0)
@@ -13399,6 +13477,57 @@ ColorListParse(s) {
     ColorListCacheN += 1
     return res
 }
+; a gradient "0xAAAAAA-0xBBBBBB" in a colour list stands for every shade between its ends: it is handed on as
+; stops at most 6 shades apart (up to 25), so a tolerance of 3 or more closes the gaps between them
+ColExpand(s) {
+	if (!InStr(s, "-"))
+		return s
+	s := RegExReplace(s, "\s*-\s*", "-")
+	out := ""
+	Loop, Parse, s, `,;|%A_Space%, %A_Space%%A_Tab%
+	{
+		t := A_LoopField
+		if (t = "")
+			continue
+		if (!InStr(t, "-"))
+		{
+			out .= (out = "" ? "" : ",") . t
+			continue
+		}
+		g := ColGradNorm(t)
+		if (g = "")
+			continue
+		a := ColNorm(SubStr(g, 1, 8)), b := ColNorm(SubStr(g, 10))
+		ar := (a >> 16) & 0xFF, ag := (a >> 8) & 0xFF, ab := a & 0xFF
+		br := (b >> 16) & 0xFF, bg := (b >> 8) & 0xFF, bb := b & 0xFF
+		n := Ceil(Max(Abs(br - ar), Abs(bg - ag), Abs(bb - ab)) / 6)
+		n := (n < 1) ? 1 : (n > 24) ? 24 : n
+		Loop, % n + 1
+		{
+			f := (A_Index - 1) / n
+			out .= (out = "" ? "" : ",") . Format("0x{:02X}{:02X}{:02X}", Round(ar + (br - ar) * f), Round(ag + (bg - ag) * f), Round(ab + (bb - ab) * f))
+		}
+	}
+	return out
+}
+
+; "0xAAAAAA-0xBBBBBB" (any colour notation on either side) in one notation, "" when it is not a gradient
+ColGradNorm(t) {
+	k := InStr(t, "-")
+	if (!k)
+		return ""
+	a := ColNorm(SubStr(t, 1, k - 1)), b := ColNorm(SubStr(t, k + 1))
+	return (a >= 0 and b >= 0) ? Format("0x{:06X}-0x{:06X}", a, b) : ""
+}
+
+; a colour list item (a colour, or a gradient as text) for the list rows: its text and its swatch
+ColItemText(v) {
+	return InStr(v, "-") ? v : Format("0x{:06X}", v)
+}
+ColItemSw(v) {
+	return InStr(v, "-") ? SubStr(v, 3, 6) : Format("{:06X}", v)
+}
+
 ColMain(s) {
 	lst := ColorListParse(s)
 	if (lst.n < 1)
@@ -14262,7 +14391,7 @@ TryhardScan() {
                   , [TryhardFishColors, [0x2F020C]]
                   , [TryhardTrackColors, [0x3A0608]]] {
         out := ""
-        src := item[1]
+        src := ColExpand(item[1])
         Loop, Parse, src, `,;|%A_Space%, %A_Space%%A_Tab%
         {
             v := ColNorm(A_LoopField)
@@ -21175,7 +21304,8 @@ CastboundSwordX() {
     if (CastboundFishColors == inp)
         return outp
     txt := ""
-    Loop, Parse, CastboundFishColors, `,;| %A_Tab%
+    cbs := ColExpand(CastboundFishColors)
+    Loop, Parse, cbs, `,;| %A_Tab%
     {
         v := ColNorm(A_LoopField)
         if (v < 0 || v = 0x5522A3)
@@ -22420,6 +22550,7 @@ ChangelogCtrls := [], DebugCtrls := [], VxKeyCtrls := {}, VxKeyH := {}, HomeCtrl
 CastCtrls := [], NormalCastCtrls := [], PerfectCastCtrls := [], ShakeCtrls := [], UtilCtrls := []
 TotemCtrls := [], MiscCtrls := [], TotemBodyCtrls := [], AquariumCtrls := [], AquariumBodyCtrls := []
 KeeperCtrls := [], KeeperBodyCtrls := [], AdvCtrls := [], GuessCtrls := [], NukeCtrls := []
+WebhookCtrls := [], WebhookBodyCtrls := [], ReconnectCtrls := [], ReconnectBodyCtrls := []
 NukeBodyCtrls := [], GuessBodyCtrls := [], FaqCtrls := [], AboutCtrls := [], VersionsCtrls := []
 ThemedCtrls := [], CMCtrls := [], NavHwnd := {}
 
@@ -22673,6 +22804,16 @@ else if (NeedSection = "Nuke")
 {
     gosub BuildNukeSection
     NewLists := [NukeCtrls]
+}
+else if (NeedSection = "Webhook")
+{
+    gosub BuildWebhookSection
+    NewLists := [WebhookCtrls]
+}
+else if (NeedSection = "Reconnect")
+{
+    gosub BuildReconnectSection
+    NewLists := [ReconnectCtrls]
 }
 else if (NeedSection = "Keeper")
 {
@@ -23117,6 +23258,19 @@ Loop, %IpTot%
 		IpRe := true
 		}
 	}
+; rows below the last one keep no text: they sit under the panel's bottom edge and would peek out
+IpK := IpTot
+while (IpK < IpFixN + IpStMax)
+	{
+	IpK += 1
+	if (IpLab%IpK% != "" or IpTxt%IpK% != "")
+		{
+		IpLab%IpK% := "", IpTxt%IpK% := "", IpVw%IpK% := 0
+		GuiControl, InfoP:, % IpLabH%IpK%,
+		GuiControl, InfoP:, % IpValH%IpK%,
+		IpRe := true
+		}
+	}
 if (IpRe)
 	{
 	IpNeed := 246
@@ -23145,7 +23299,7 @@ if (IpRe)
 			}
 		}
 	GuiControl, InfoP:Move, %hIpDiv%, % "w" . (IpNewW - 28)
-	IpNewH := (IpTot > IpFixN) ? IpStY + (IpTot - IpFixN) * 20 + 6 : 36 + IpFixN * 20 + 6
+	IpNewH := (IpTot > IpFixN) ? IpStY + (IpTot - IpFixN) * 20 + 12 : 36 + IpFixN * 20 + 12
 	IpCurN := IpTot
 	if (IpNewW != IpCurW or IpNewH != IpCurH)
 		{
@@ -23311,6 +23465,7 @@ FsCommitDue() {
 			FsLastName := (g.k = "?") ? "unknown fish" : kp[1]
 			FsLastKg := kp[2]
 			FsLastVal := val
+			WhScanned(FsLastName, FsLastKg, val)
 			if (val > 0)
 				FsTotal := FsTotal + val
 			FsDone.Push({k: g.k, dg: g.dg, t: g.t})
@@ -25129,7 +25284,9 @@ UtilRowDefs := [["Auto Totem", "UtilTotemOn", "UtilTotemToggle", "UtilOpenTotem"
     , ["Auto Aquarium", "UtilAquariumOn", "UtilAquariumToggle", "UtilOpenAquarium", AquariumAuto]
     , ["Auto Keeperbound Recharge", "UtilKeeperOn", "UtilKeeperToggle", "UtilOpenKeeper", KeeperAuto]
     , ["Stellarwave Auto Retry", "UtilGuessOn", "UtilGuessToggle", "UtilOpenGuess", SwGuessOn]
-    , ["Auto Nuke", "UtilNukeOn", "UtilNukeToggle", "UtilOpenNuke", NukeAuto]]
+    , ["Auto Nuke", "UtilNukeOn", "UtilNukeToggle", "UtilOpenNuke", NukeAuto]
+    , ["Discord Webhook", "UtilWebhookOn", "UtilWebhookToggle", "UtilOpenWebhook", WebhookOn]
+    , ["Auto Reconnect", "UtilReconnectOn", "UtilReconnectToggle", "UtilOpenReconnect", ReconnectOn]]
 for UtilIdx, UtilDef in UtilRowDefs
 {
     UtilCtrls.Push(AddPanel(CARDX, UtilRowY, CARDW, 54))
@@ -25158,7 +25315,7 @@ UtilCtrls.Push(UtilH)
 UtilSpeedDefs := [["Max scans per second:", "ScanCap", ScanCap
         , "How often the fish bar is sampled while reeling.`n0 = no limit (often 300-400 a second on a fast PC).`nLower it if CPU use is high. Below 60 the bar control becomes sluggish."]
     , ["Max presses per second:", "PressCap", PressCap
-        , "Hard limit on mouse presses per second while reeling, for every rod and control mode.`nToo many presses shake the bar and lose the fish. Default 10, 0 = no limit.`nNever goes below 5 or above 60. Holding and releasing are never delayed - only new presses are."]]
+        , "Hard limit on mouse presses per second while reeling, for every rod and control mode.`nToo many presses shake the bar and lose the fish. Default 10, 0 = no limit.`nNever goes below 5 or above 60. Holding and releasing are never delayed - only new presses are.`nBellona's Waraxe: the rate each bar prefers - a bar may go up to 20 a second (or down to 5) when it needs to."]]
 UtilFieldY := UtilHeadY + 30
 for UtilIdx, UtilDef in UtilSpeedDefs
 {
@@ -25204,6 +25361,30 @@ gosub QueueAutoSave
 return
 UtilOpenAquarium:
 TargetSection := "Aquarium"
+gosub, ShowSection
+return
+
+UtilWebhookToggle:
+GuiControlGet, UtilWebhookOn, 1:
+WebhookOn := UtilWebhookOn
+GuiControl, 1:, WebhookOn, %WebhookOn%
+gosub ShowSection
+gosub QueueAutoSave
+return
+UtilOpenWebhook:
+TargetSection := "Webhook"
+gosub, ShowSection
+return
+
+UtilReconnectToggle:
+GuiControlGet, UtilReconnectOn, 1:
+ReconnectOn := UtilReconnectOn
+GuiControl, 1:, ReconnectOn, %ReconnectOn%
+gosub ShowSection
+gosub QueueAutoSave
+return
+UtilOpenReconnect:
+TargetSection := "Reconnect"
 gosub, ShowSection
 return
 
@@ -26618,6 +26799,788 @@ if (AqLastResult != "")
     AqLine .= "   Last trip: " AqLastResult "."
 GuiControl, 1:, AqStatLine, %AqLine%
 return
+
+BuildWebhookSection:
+if !IsObject(IconTips)
+    IconTips := {}
+Gui, 1:Font, s9 norm c%ColorAccent%
+Gui, 1:Add, Text, x%CARDX% y120 w220 h18 BackgroundTrans gUtilBack hwndWhH, ‹  Tools
+SpecialBrushes[WhH] := {brush: hBrushBG, text: ColorAccentBGR}
+WebhookCtrls.Push(WhH)
+WebhookCtrls.Push(AddPanel(CARDX, 140, CARDW, 54))
+Gui, 1:Font, s11 bold c%ColorText%
+Gui, 1:Add, Text, x%CX% y157 w220 h20 BackgroundTrans hwndWhH, Discord Webhook
+WebhookCtrls.Push(WhH)
+Gui, 1:Font, s9 norm c%ColorText%
+WhChk := WebhookOn ? " Checked" : ""
+Gui, 1:Add, Checkbox, x572 y157 w58 h20 vWebhookOn gWebhookOnChanged hwndWhH%WhChk%, On
+WebhookCtrls.Push(WhH)
+Gui, 1:Font, s9 bold c%ColorAccent%
+Gui, 1:Add, Text, x642 y153 w86 h28 Center 0x200 gUtilBack hwndWhH, Hide
+SpecialBrushes[WhH] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(WhH, 86, 28, 7)
+WebhookCtrls.Push(WhH)
+; connection
+WhH := AddPanel(CARDX, 204, CARDW, 100)
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+Gui, 1:Font, s10 bold c%ColorText%
+Gui, 1:Add, Text, x%CX% y216 w240 h20 BackgroundTrans hwndWhH, Connection
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+WhRows := [["Webhook link:", "WebhookUrl", 316, 326, "In Discord: channel settings > Integrations > Webhooks > New Webhook > Copy Webhook URL.`nPaste it here. Anyone with the link can post in that channel, so keep it to yourself."]
+    , ["Ping user ID:", "WebhookPing", IX, IW, "Your Discord user ID, for pings on alerts (no fish, disconnects).`nIn Discord: Settings > Advanced > Developer Mode on, then right-click your name > Copy User ID.`nEmpty = no pings."]]
+WhY := 246
+for WhIdx, WhDef in WhRows
+{
+    WhVar := WhDef[2]
+    Gui, 1:Font, s9 norm c%ColorText%
+    Gui, 1:Add, Text, % "x" CX " y" WhY " w110 h20 BackgroundTrans hwndWhH", % WhDef[1]
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    Gui, 1:Add, Edit, % "x" WhDef[3] " y" WhY " w" WhDef[4] " h20 v" WhVar " gWebhookFieldChanged hwndWhH", % %WhVar%
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    Gui, 1:Font, s9 bold c%ColorMuted%
+    Gui, 1:Add, Text, % "x" QX " y" WhY " w16 h20 Center BackgroundTrans hwndWhH", ?
+    IconTips[WhH] := WhDef[5]
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    WhY += 26
+}
+; what gets sent
+WhH := AddPanel(CARDX, 314, CARDW, 262)
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+Gui, 1:Font, s10 bold c%ColorText%
+Gui, 1:Add, Text, x%CX% y326 w240 h20 BackgroundTrans hwndWhH, Messages
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+WhChecks := [["Start and stop", "WebhookStartStop", "A message when the macro starts (rod, profile, extras) and when it stops (runtime, fish, fish per hour)."]
+    , ["Every fish", "WebhookEachCatch", "A message for each fish.`nWith Fish Scan on it names the fish, its weight and value."]
+    , ["Nuke, aquarium and reconnect", "WebhookEvents", "A message when a nuke is balanced, after each aquarium trip and when Auto Reconnect is back in the game."]
+    , ["Alerts", "WebhookAlerts", "No fish for a while, Roblox disconnected or closed, reconnect failing.`nAlerts ping you when a Ping user ID is set."]
+    , ["Screenshot with reports and alerts", "WebhookShot", "Adds a picture of the Roblox window to reports, alerts and the test message."]]
+WhY := 356
+for WhIdx, WhDef in WhChecks
+{
+    WhVar := WhDef[2]
+    WhChk := %WhVar% ? " Checked" : ""
+    Gui, 1:Font, s9 norm c%ColorText%
+    Gui, 1:Add, Checkbox, % "x" CX " y" WhY " w320 h20 v" WhVar " gWebhookFieldChanged hwndWhH" WhChk, % WhDef[1]
+    SpecialBrushes[WhH] := {brush: hBrushCard, text: ColorTextBGR}
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    Gui, 1:Font, s9 bold c%ColorMuted%
+    Gui, 1:Add, Text, % "x" QX " y" WhY " w16 h20 Center BackgroundTrans hwndWhH", ?
+    IconTips[WhH] := WhDef[3]
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    WhY += 26
+}
+WhNums := [["Report every (minutes):", "WebhookReportMin", "Runtime, fish and fish per hour, with a screenshot when that is on.`n0 = no reports."]
+    , ["Milestone every (fish):", "WebhookMilestone", "A message every this many fish (100, 200, ...).`n0 = no milestones."]
+    , ["Alert after no fish for (minutes):", "WebhookNoCatchMin", "Alert when no fish has been caught for this long.`nOnce per dry spell; a message follows when fish come again. 0 = off."]]
+for WhIdx, WhDef in WhNums
+{
+    WhVar := WhDef[2]
+    Gui, 1:Font, s9 norm c%ColorText%
+    Gui, 1:Add, Text, % "x" CX " y" WhY " w" LW " h20 BackgroundTrans hwndWhH", % WhDef[1]
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    Gui, 1:Add, Edit, % "x" IX " y" WhY " w" IW " h20 +Number v" WhVar " gWebhookFieldChanged hwndWhH", % %WhVar%
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    Gui, 1:Font, s9 bold c%ColorMuted%
+    Gui, 1:Add, Text, % "x" QX " y" WhY " w16 h20 Center BackgroundTrans hwndWhH", ?
+    IconTips[WhH] := WhDef[3]
+    WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+    WhY += 26
+}
+; status and test
+WhH := AddPanel(CARDX, 586, CARDW, 54)
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+Gui, 1:Font, s9 norm c%ColorMuted%
+Gui, 1:Add, Text, x%CX% y603 w420 h20 BackgroundTrans vWhStatLine hwndWhH, Off.
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+Gui, 1:Font, s9 bold c%ColorAccent%
+Gui, 1:Add, Text, x642 y599 w86 h28 Center 0x200 gWebhookTest hwndWhH, Send test
+SpecialBrushes[WhH] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(WhH, 86, 28, 7)
+WebhookCtrls.Push(WhH), WebhookBodyCtrls.Push(WhH)
+Gui, 1:Font, s8 norm c%ColorMuted%
+Gui, 1:Add, Text, x%CARDX% y650 w%CARDW% h48 BackgroundTrans hwndWhH
+    , % "Posts to a Discord channel while the macro runs: start and stop, reports, alerts and the extras.`n"
+    . "Messages go out in the background, one at a time - fishing never waits on Discord."
+SpecialBrushes[WhH] := {brush: hBrushBG, text: ColorMutedBGR}
+WebhookCtrls.Push(WhH)
+return
+WebhookOnChanged:
+GuiControlGet, WebhookOn, 1:
+GuiControl, 1:, UtilWebhookOn, % (WebhookOn ? 1 : 0)
+gosub ShowSection
+gosub QueueAutoSave
+return
+WebhookFieldChanged:
+GuiControlGet, %A_GuiControl%, 1:
+gosub QueueAutoSave
+return
+WebhookTest:
+Gui, 1:Submit, NoHide
+if (!WhValid(WebhookUrl))
+{
+    GuiControl, 1:, WhStatLine, That is not a Discord webhook link.
+    return
+}
+WhSend("Test: Veltrix is connected", RegExMatch(Trim(WebhookPing), "^\d{5,25}$") ? "This message should ping you." : "No ping user ID set."
+    , WhCol(""), WhStats(), true, WebhookShot)
+WhLast := "test queued"
+gosub, WebhookStatusTick
+return
+WebhookStatusTick:
+if (!WebhookOn)
+    WhLine := "Off."
+else if (!WhValid(WebhookUrl))
+    WhLine := "Paste the webhook link from Discord."
+else
+{
+    WhN := IsObject(WhQ) ? WhQ.Length() : 0
+    WhLine := WhN ? WhN . " waiting to send." : "Ready."
+    if (WhLast != "")
+        WhLine .= "   Last: " . WhLast . "."
+}
+GuiControl, 1:, WhStatLine, % WhLine
+return
+
+BuildReconnectSection:
+if !IsObject(IconTips)
+    IconTips := {}
+Gui, 1:Font, s9 norm c%ColorAccent%
+Gui, 1:Add, Text, x%CARDX% y120 w220 h18 BackgroundTrans gUtilBack hwndRcH, ‹  Tools
+SpecialBrushes[RcH] := {brush: hBrushBG, text: ColorAccentBGR}
+ReconnectCtrls.Push(RcH)
+ReconnectCtrls.Push(AddPanel(CARDX, 140, CARDW, 54))
+Gui, 1:Font, s11 bold c%ColorText%
+Gui, 1:Add, Text, x%CX% y157 w220 h20 BackgroundTrans hwndRcH, Auto Reconnect
+ReconnectCtrls.Push(RcH)
+Gui, 1:Font, s9 norm c%ColorText%
+RcChk := ReconnectOn ? " Checked" : ""
+Gui, 1:Add, Checkbox, x572 y157 w58 h20 vReconnectOn gReconnectOnChanged hwndRcH%RcChk%, On
+ReconnectCtrls.Push(RcH)
+Gui, 1:Font, s9 bold c%ColorAccent%
+Gui, 1:Add, Text, x642 y153 w86 h28 Center 0x200 gUtilBack hwndRcH, Hide
+SpecialBrushes[RcH] := {brush: hBrushCard, text: ColorAccentBGR}
+RoundCtrl(RcH, 86, 28, 7)
+ReconnectCtrls.Push(RcH)
+RcH := AddPanel(CARDX, 204, CARDW, 120)
+ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+Gui, 1:Font, s10 bold c%ColorText%
+Gui, 1:Add, Text, x%CX% y216 w240 h20 BackgroundTrans hwndRcH, Server
+ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+RcRows := [["Private server link:", "ReconnectLink", 316, 326, "The link of your private server (a share link or one with privateServerLinkCode).`nEmpty = a public Fisch server."]
+    , ["Load wait (seconds):", "ReconnectLoadSec", IX, IW, "Time Fisch gets to load after Roblox has joined the server, before fishing starts again."]]
+RcY := 246
+for RcIdx, RcDef in RcRows
+{
+    RcVar := RcDef[2]
+    Gui, 1:Font, s9 norm c%ColorText%
+    Gui, 1:Add, Text, % "x" CX " y" RcY " w" (RcDef[3] = IX ? LW : 110) " h20 BackgroundTrans hwndRcH", % RcDef[1]
+    ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+    Gui, 1:Add, Edit, % "x" RcDef[3] " y" RcY " w" RcDef[4] " h20 v" RcVar " gReconnectFieldChanged hwndRcH" (RcDef[3] = IX ? " +Number" : ""), % %RcVar%
+    ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+    Gui, 1:Font, s9 bold c%ColorMuted%
+    Gui, 1:Add, Text, % "x" QX " y" RcY " w16 h20 Center BackgroundTrans hwndRcH", ?
+    IconTips[RcH] := RcDef[5]
+    ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+    RcY += 26
+}
+Gui, 1:Font, s9 norm c%ColorMuted%
+Gui, 1:Add, Text, x%CX% y%RcY% w520 h20 BackgroundTrans vRcStatLine hwndRcH, Off.
+ReconnectCtrls.Push(RcH), ReconnectBodyCtrls.Push(RcH)
+Gui, 1:Font, s8 norm c%ColorMuted%
+Gui, 1:Add, Text, x%CARDX% y334 w%CARDW% h62 BackgroundTrans hwndRcH
+    , % "Watches Roblox while the macro runs. When the game closes, crashes, stops responding or loses its connection to the server,`n"
+    . "it closes Roblox, opens Fisch again and fishing starts over (re-equip, cast). Teleports do not count as a disconnect.`n"
+    . "You are where Fisch spawns you after joining."
+SpecialBrushes[RcH] := {brush: hBrushBG, text: ColorMutedBGR}
+ReconnectCtrls.Push(RcH)
+return
+ReconnectOnChanged:
+GuiControlGet, ReconnectOn, 1:
+GuiControl, 1:, UtilReconnectOn, % (ReconnectOn ? 1 : 0)
+gosub ShowSection
+gosub QueueAutoSave
+return
+ReconnectFieldChanged:
+GuiControlGet, %A_GuiControl%, 1:
+gosub QueueAutoSave
+return
+ReconnectStatusTick:
+if (RcBusy)
+    RcLine := "Reconnecting - try " . RcTry . "..."
+else if (!ReconnectOn)
+    RcLine := "Off."
+else if (!MacroRunning)
+    RcLine := "Waiting for the macro to start."
+else
+    RcLine := "Watching Roblox."
+if (RcStat != "")
+    RcLine .= "   Last: " . RcStat . "."
+GuiControl, 1:, RcStatLine, % RcLine
+return
+
+;---- Discord webhook ----------------------------------------------------------------------------------------------
+; messages queue up and a timer sends them one at a time (WinHttp, asynchronous), so the macro never waits on Discord
+
+WhPump:
+if (IsObject(WhReq))
+{
+    WhDone := 0
+    try WhDone := WhReq.WaitForResponse(0)
+    catch
+        WhDone := 1
+    if (!WhDone and A_TickCount - WhReqT < 25000)
+        return
+    WhSt := 0, WhRa := ""
+    try WhSt := WhReq.Status
+    try WhRa := WhReq.GetResponseHeader("Retry-After")
+    WhReq := ""
+    WhJob := WhQ[1]
+    FormatTime, WhHm, , HH:mm
+    if (WhSt >= 200 and WhSt < 300)
+    {
+        WhDrop(1)
+        WhLast := "sent at " . WhHm
+    }
+    else if (WhSt = 429)
+    {
+        ; too many messages: Discord says how long to wait
+        WhRa := Trim(WhRa)
+        WhNextT := A_TickCount + ((WhRa != "" and WhRa > 0) ? Ceil(WhRa * 1000) : 5000)
+    }
+    else if (WhSt = 401 or WhSt = 404)
+    {
+        WhDrop(0)
+        WhLast := "Discord does not know this webhook link - copy it again from Discord"
+    }
+    else
+    {
+        WhJob.tries += 1
+        WhLast := (WhSt ? "Discord answered " . WhSt : "could not reach Discord") . " at " . WhHm
+        if (WhJob.tries >= 3)
+            WhDrop(1)
+        WhNextT := A_TickCount + 5000 * WhJob.tries
+    }
+}
+if (!IsObject(WhQ) or WhQ.Length() = 0)
+{
+    SetTimer, WhPump, Off
+    return
+}
+if (A_TickCount < WhNextT)
+    return
+WhJob := WhQ[1]
+try
+{
+    WhReq := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+    WhReq.Open("POST", Trim(WebhookUrl) . "?wait=true", true)
+    WhReq.SetTimeouts(5000, 5000, 15000, 15000)
+    WhReq.SetRequestHeader("User-Agent", "Veltrix")
+    if (WhJob.img != "" and FileExist(WhJob.img))
+    {
+        WhB := "VeltrixPart" . A_TickCount
+        WhReq.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" . WhB)
+        WhReq.Send(WhBytes(["--" . WhB . "`r`nContent-Disposition: form-data; name=""payload_json""`r`nContent-Type: application/json`r`n`r`n"
+            . WhJob.j . "`r`n--" . WhB . "`r`nContent-Disposition: form-data; name=""files[0]""; filename=""screen.jpg""`r`nContent-Type: image/jpeg`r`n`r`n"
+            , {file: WhJob.img}, "`r`n--" . WhB . "--`r`n"]))
+    }
+    else
+    {
+        WhReq.SetRequestHeader("Content-Type", "application/json")
+        WhReq.Send(WhBytes([WhJob.j]))
+    }
+    WhReqT := A_TickCount
+}
+catch WhErr
+{
+    WhReq := ""
+    WhJob.tries += 1
+    WhLast := "could not send (" . WhErr.Message . ")"
+    if (WhJob.tries >= 3)
+        WhDrop(1)
+    WhNextT := A_TickCount + 5000
+}
+return
+
+; while the macro runs: reports and the no-fish alert
+WhTick:
+if (!WebhookOn or !MacroRunning or !WhStartTick)
+    return
+if (WebhookReportMin > 0 and A_TickCount - WhLastSummary >= WebhookReportMin * 60000)
+{
+    WhLastSummary := A_TickCount
+    WhSend("Report", "", WhCol(""), WhStats(), false, WebhookShot)
+}
+if (WebhookAlerts and WebhookNoCatchMin > 0 and !WhStalled)
+{
+    WhRef := WhLastCatchTick ? WhLastCatchTick : WhStartTick
+    if (A_TickCount - WhRef >= WebhookNoCatchMin * 60000)
+    {
+        WhStalled := true
+        WhSend("Alert: no fish for " . Round(WebhookNoCatchMin) . " min", WhLastCatchTick ? "Last fish " . WhDur(A_TickCount - WhLastCatchTick) . " ago." : "No fish yet this session."
+            , WhCol("warn"), WhStats(), true, WebhookShot)
+    }
+}
+return
+
+WhValid(u) {
+	return RegExMatch(Trim(u), "i)^https://(?:(?:canary|ptb)\.)?discord(?:app)?\.com/api(?:/v\d+)?/webhooks/\d+/[\w-]+/?$")
+}
+
+; message colours: the theme's accent, or good / warn / bad
+WhCol(kind) {
+	global ColorAccent
+	return (kind = "good") ? 0x34D399 : (kind = "warn") ? 0xFBBF24 : (kind = "bad") ? 0xFB7185 : VxHexNum(ColorAccent)
+}
+
+WhDur(ms) {
+	s := ms // 1000
+	return (s >= 3600) ? (s // 3600) . "h " . Mod(s // 60, 60) . "m" : (s // 60) . "m " . Mod(s, 60) . "s"
+}
+
+; the session so far, as message fields
+WhStats() {
+	global WhStartTick, FishScanOn, FsTotal
+	ms := WhStartTick ? A_TickCount - WhStartTick : 0
+	n := CaughtTotal()
+	hr := ms / 3600000.0
+	f := [["Runtime", WhDur(ms)], ["Fish", n . ""], ["Per hour", (hr > 0.02) ? Round(n / hr) . "" : "-"]]
+	if (FishScanOn)
+		f.Push(["Earned", FsMoney(FsTotal) . " C$"])
+	return f
+}
+
+; one message: a card with a title, a line of text and fields ([name, value], side by side); ping = mention the
+; Ping user ID, shot = a picture of the Roblox window under it. Fish messages are the first to go when Discord falls behind.
+WhSend(title, text, color, fields := "", ping := false, shot := false, fish := false) {
+	global WebhookOn, WebhookUrl, WebhookPing, WhQ, VxVersion
+	if (!WebhookOn or !WhValid(WebhookUrl))
+		return false
+	if (!IsObject(WhQ))
+		WhQ := []
+	if (WhQ.Length() >= (fish ? 5 : 20))
+		return false
+	f := ""
+	if (IsObject(fields))
+		for i, kv in fields
+			if (kv[2] != "")
+				f .= (f = "" ? "" : ",") . "{""name"":" . UiJ(kv[1]) . ",""value"":" . UiJ(kv[2] . "") . ",""inline"":true}"
+	img := shot ? WhShot() : ""
+	FormatTime, ts, %A_NowUTC%, yyyy-MM-dd'T'HH:mm:ss
+	e := "{""title"":" . UiJ(title) . ((text != "") ? ",""description"":" . UiJ(text) : "") . ",""color"":" . Round(color)
+		. ((f != "") ? ",""fields"":[" . f . "]" : "") . ((img != "") ? ",""image"":{""url"":""attachment://screen.jpg""}" : "")
+		. ",""footer"":{""text"":" . UiJ("Veltrix V" . VxVersion) . "},""timestamp"":""" . ts . "Z""}"
+	pid := Trim(WebhookPing)
+	j := "{""username"":""Veltrix"""
+	if (ping and RegExMatch(pid, "^\d{5,25}$"))
+		j .= ",""content"":""<@" . pid . ">"",""allowed_mentions"":{""users"":[""" . pid . """]}"
+	else
+		j .= ",""allowed_mentions"":{""parse"":[]}"
+	j .= ",""embeds"":[" . e . "]}"
+	WhQ.Push({j: j, img: img, tries: 0})
+	SetTimer, WhPump, 250
+	return true
+}
+
+; take messages off the queue: n = 1 the first, 0 all (their pictures go too)
+WhDrop(n) {
+	global WhQ
+	while (IsObject(WhQ) and WhQ.Length())
+	{
+		job := WhQ.RemoveAt(1)
+		if (job.img != "")
+			FileDelete, % job.img
+		if (n)
+			break
+	}
+}
+
+; the request body as bytes: text parts (UTF-8) and {file: path} parts, one after the other
+WhBytes(parts) {
+	n := 0
+	for i, p in parts
+	{
+		if (IsObject(p))
+		{
+			FileGetSize, sz, % p.file
+			n += sz
+		}
+		else
+			n += StrPut(p, "UTF-8") - 1
+	}
+	arr := ComObjArray(0x11, n)
+	DllCall("oleaut32\SafeArrayAccessData", "Ptr", ComObjValue(arr), "Ptr*", pd)
+	off := 0
+	for i, p in parts
+	{
+		if (IsObject(p))
+		{
+			fh := FileOpen(p.file, "r")
+			sz := fh.Length
+			sz := (off + sz > n) ? n - off : sz
+			fh.RawRead(pd + off, sz)
+			fh.Close()
+		}
+		else
+		{
+			sz := StrPut(p, "UTF-8") - 1
+			VarSetCapacity(tb, sz + 1)
+			StrPut(p, &tb, "UTF-8")
+			DllCall("RtlMoveMemory", "Ptr", pd + off, "Ptr", &tb, "Ptr", sz)
+		}
+		off += sz
+	}
+	DllCall("oleaut32\SafeArrayUnaccessData", "Ptr", ComObjValue(arr))
+	return arr
+}
+
+; a JPEG of the Roblox window (4K is halved), "" when there is none
+WhShot() {
+	global RobloxHwnd, WhShotN
+	if (!RobloxHwnd or !WinExist("ahk_id " . RobloxHwnd) or !HudGdipStart())
+		return ""
+	if (!RobloxClientRect(RobloxHwnd, x, y, w, h) or w < 64 or h < 64)
+		return ""
+	sdc := DllCall("GetDC", "Ptr", 0, "Ptr")
+	mdc := DllCall("CreateCompatibleDC", "Ptr", sdc, "Ptr")
+	hbm := DllCall("CreateCompatibleBitmap", "Ptr", sdc, "Int", w, "Int", h, "Ptr")
+	ob := DllCall("SelectObject", "Ptr", mdc, "Ptr", hbm, "Ptr")
+	DllCall("gdi32\BitBlt", "Ptr", mdc, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", sdc, "Int", x, "Int", y, "UInt", 0x00CC0020)
+	DllCall("SelectObject", "Ptr", mdc, "Ptr", ob)
+	DllCall("DeleteDC", "Ptr", mdc)
+	DllCall("ReleaseDC", "Ptr", 0, "Ptr", sdc)
+	bmp := 0
+	DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hbm, "Ptr", 0, "Ptr*", bmp)
+	DllCall("DeleteObject", "Ptr", hbm)
+	if (!bmp)
+		return ""
+	img := bmp
+	if (w > 1920)
+	{
+		w2 := w // 2, h2 := h // 2, sm := 0, g := 0
+		DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", w2, "Int", h2, "Int", 0, "Int", 0x21808, "Ptr", 0, "Ptr*", sm)
+		if (sm)
+		{
+			DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", sm, "Ptr*", g)
+			DllCall("gdiplus\GdipSetInterpolationMode", "Ptr", g, "Int", 7)
+			DllCall("gdiplus\GdipDrawImageRectI", "Ptr", g, "Ptr", bmp, "Int", 0, "Int", 0, "Int", w2, "Int", h2)
+			DllCall("gdiplus\GdipDeleteGraphics", "Ptr", g)
+			DllCall("gdiplus\GdipDisposeImage", "Ptr", bmp)
+			img := sm
+		}
+	}
+	; JPEG encoder, quality 85
+	VarSetCapacity(clsid, 16, 0), VarSetCapacity(ep, 40, 0), VarSetCapacity(q, 4, 0)
+	DllCall("ole32\CLSIDFromString", "WStr", "{557CF401-1A04-11D3-9A73-0000F81EF32E}", "Ptr", &clsid)
+	DllCall("ole32\CLSIDFromString", "WStr", "{1D5BE4B5-FA4A-452D-9CDD-5DB35105E7EB}", "Ptr", &ep + 8)
+	NumPut(85, q, 0, "UInt")
+	NumPut(1, ep, 0, "UInt"), NumPut(1, ep, 24, "UInt"), NumPut(4, ep, 28, "UInt"), NumPut(&q, ep, 32, "Ptr")
+	WhShotN := Mod(Round(WhShotN) + 1, 40)
+	path := A_Temp . "\VeltrixWh" . WhShotN . ".jpg"
+	r := DllCall("gdiplus\GdipSaveImageToFile", "Ptr", img, "WStr", path, "Ptr", &clsid, "Ptr", &ep)
+	DllCall("gdiplus\GdipDisposeImage", "Ptr", img)
+	return (r = 0) ? path : ""
+}
+
+WhStarted() {
+	global
+	local x, i, u
+	if (!WebhookOn or !WebhookStartStop)
+		return
+	x := ""
+	for i, u in [[TotemAuto, "Auto Totem"], [AquariumAuto, "Auto Aquarium"], [KeeperAuto, "Keeperbound"], [NukeAuto, "Auto Nuke"], [ReconnectOn, "Auto Reconnect"]]
+		if (u[1])
+			x .= (x = "" ? "" : ", ") . u[2]
+	WhSend("Veltrix started", "Fishing has started.", WhCol("good")
+		, [["Rod", (SpecialRod = "" or SpecialRod = "None") ? "Normal rod" : SpecialRod], ["Profile", ActiveProfile], ["Extras", (x = "") ? "none" : x]
+		, ["Reports", (WebhookReportMin > 0) ? "every " . Round(WebhookReportMin) . " min" : "off"]])
+}
+
+WhStopped() {
+	global WebhookOn, WebhookStartStop
+	if (WebhookOn and WebhookStartStop)
+		WhSend("Veltrix stopped", "Session report.", WhCol(""), WhStats())
+}
+
+; after every fight (BarMinigameOver), before its catch time is taken
+WhCatch() {
+	global
+	local n
+	if (!WebhookOn)
+		return
+	n := CaughtTotal()
+	if (WhStalled and WebhookAlerts)
+		WhSend("Catching again", "First fish after " . WhDur(A_TickCount - (WhLastCatchTick ? WhLastCatchTick : WhStartTick)) . " without one.", WhCol("good"))
+	if (WebhookMilestone > 0 and n > 0 and Mod(n, Round(WebhookMilestone)) = 0)
+		WhSend("Milestone: " . n . " fish", "", WhCol("good"), WhStats())
+	if (WebhookEachCatch and !FishScanOn)
+		WhSend("Caught a fish", "Fish " . n . " this session.", WhCol(""), "", false, false, true)
+}
+
+; Fish Scan named a fish
+WhScanned(name, kg, val) {
+	global WebhookOn, WebhookEachCatch
+	if (!WebhookOn or !WebhookEachCatch)
+		return
+	WhSend("Caught: " . name, (kg != "") ? kg . " kg" : "", WhCol("")
+		, [["Value", (val > 0) ? FsMoney(val) . " C$" : "unknown"], ["Fish", CaughtTotal() . ""]], false, false, true)
+}
+
+; nuke, aquarium, reconnect
+WhEvent(title, text, kind := "") {
+	global WebhookOn, WebhookEvents
+	if (WebhookOn and WebhookEvents)
+		WhSend(title, text, WhCol(kind))
+}
+
+WhAlert(title, text, kind := "warn", shot := false) {
+	global WebhookOn, WebhookAlerts
+	if (WebhookOn and WebhookAlerts)
+		WhSend(title, text, WhCol(kind), "", true, shot)
+}
+
+;---- Auto Reconnect -----------------------------------------------------------------------------------------------
+; watches Roblox while the macro runs: gone (closed or crashed), not responding, or its own log says the connection
+; to the server was lost (a teleport disconnects too, with reason 285 - that one is left alone). Then it opens Fisch
+; again and - like after a nuke - the fishing step that was going on ends, the rod comes out again and it casts.
+; It runs on its timer's thread, so whatever was going on waits underneath.
+
+RcTick:
+if (!ReconnectOn or !MacroRunning or RcBusy)
+    return
+RcWhy := RcCheck()
+if (RcWhy = "")
+    return
+RcBusy := true
+gosub, RcRejoin
+RcBusy := false
+return
+
+RcRejoin:
+Send, {LButton up}{RButton up}{Shift up}
+PrecisionDown := false
+RcT0 := A_TickCount
+RcTry := 0
+RcOk := false
+RcWarned := false
+RcLast := RcWhy
+RcStat := RcWhy . " - reconnecting"
+WhAlert("Disconnected", "Roblox " . RcWhy . ". Veltrix is opening Fisch again.", "bad", InStr(RcWhy, "connection"))
+Loop
+{
+    if (!MacroRunning or !ReconnectOn)
+        break
+    if (RcTry >= 3 and !RcWarned)
+    {
+        RcWarned := true
+        WhAlert("Reconnect failing", RcTry . " tries so far, last problem: " . RcLast . ". Veltrix keeps trying.")
+    }
+    RcTry += 1
+    VxTip(7, "Current Task: Reconnecting (try " . RcTry . ")")
+    ; close what is left of the old game
+    VxTip(8, "Action: Closing Roblox")
+    Loop, 10
+    {
+        Process, Close, RobloxPlayerBeta.exe
+        if (!ErrorLevel)
+            break
+        Sleep, 300
+    }
+    RcGap := TA("rcgap", 5) * ((RcTry = 1) ? 1 : RcTry * 2)
+    RcGap := (RcGap > 60) ? 60 : RcGap
+    VxTip(8, "Action: Waiting " . RcGap . " s before joining")
+    if (!RcWait(RcGap))
+        break
+    VxTip(8, "Action: Opening Fisch")
+    RcOld := RcNewestLog()
+    Run, % RcUri(), , UseErrorLevel
+    if (ErrorLevel)
+    {
+        RcLast := "Roblox could not be opened"
+        continue
+    }
+    VxTip(8, "Action: Waiting for Roblox")
+    WinWait, ahk_exe RobloxPlayerBeta.exe, , % TA("rcwin", 60)
+    if (ErrorLevel)
+    {
+        RcLast := "the Roblox window never opened"
+        continue
+    }
+    ; joined: a new log that says so
+    VxTip(8, "Action: Joining Fisch")
+    RcJ := false, RcW0 := A_TickCount
+    while (MacroRunning and ReconnectOn and A_TickCount - RcW0 < TA("rcjoin", 90) * 1000)
+    {
+        Process, Exist, RobloxPlayerBeta.exe
+        if (!ErrorLevel)
+            break
+        RcNew := RcNewestLog()
+        if (RcNew != "" and RcNew != RcOld and InStr(RcReadAll(RcNew), "! Joining game"))
+        {
+            RcJ := true
+            break
+        }
+        Sleep, 1000
+    }
+    if (!RcJ)
+    {
+        RcLast := "Roblox did not join a server"
+        continue
+    }
+    VxTip(8, "Action: Loading into Fisch")
+    if (!RcWait(Round(ReconnectLoadSec), true))
+    {
+        RcLast := "Roblox closed while loading"
+        continue
+    }
+    gosub, ResolveRoblox
+    if (!RobloxHwnd)
+    {
+        RcLast := "the Roblox window is gone"
+        continue
+    }
+    WinActivate, ahk_id %RobloxHwnd%
+    WinWaitActive, ahk_id %RobloxHwnd%, , 3
+    WinMaximize, ahk_id %RobloxHwnd%
+    Sleep, 1000
+    gosub, Calculations
+    RcOk := true
+    break
+}
+RcGoneT := 0, RcHungT := 0
+; watch the new log from where it is now
+RcLogPath := "", RcLogEnd := true
+VxTip(8, "")
+if (RcOk)
+{
+    RcStat := "back in Fisch after " . WhDur(A_TickCount - RcT0) . " (" . RcWhy . ")"
+    WhEvent("Reconnected", "Back in Fisch after " . WhDur(A_TickCount - RcT0) . " (" . RcTry . ((RcTry = 1) ? " try" : " tries") . ").", "good")
+    ; fishing starts over: the rod comes out again, then it casts
+    RodEquippedOnce := false
+    NukeAfter := true
+    ForceReset := true
+}
+return
+
+; why Roblox needs a reconnect, "" when it is fine
+RcCheck() {
+	global RobloxHwnd, RcGoneT, RcHungT
+	Process, Exist, RobloxPlayerBeta.exe
+	if (!ErrorLevel)
+	{
+		if (!RcGoneT)
+			RcGoneT := A_TickCount
+		return (A_TickCount - RcGoneT >= TA("rcgone", 8) * 1000) ? "closed" : ""
+	}
+	RcGoneT := 0
+	if (RobloxHwnd and DllCall("IsHungAppWindow", "Ptr", RobloxHwnd))
+	{
+		if (!RcHungT)
+			RcHungT := A_TickCount
+		if (A_TickCount - RcHungT >= TA("rchung", 30) * 1000)
+			return "stopped responding"
+	}
+	else
+		RcHungT := 0
+	return RcLogScan()
+}
+
+; the newest Roblox game log
+RcNewestLog() {
+	EnvGet, la, LOCALAPPDATA
+	best := "", bt := 0
+	Loop, Files, %la%\Roblox\logs\*_Player_*.log
+	{
+		if (InStr(A_LoopFileName, "CrashHandler"))
+			continue
+		if (A_LoopFileTimeModified > bt)
+			bt := A_LoopFileTimeModified, best := A_LoopFileLongPath
+	}
+	return best
+}
+
+RcReadAll(path) {
+	fh := FileOpen(path, "r", "UTF-8")
+	if (!IsObject(fh))
+		return ""
+	t := fh.Read()
+	fh.Close()
+	return t
+}
+
+; what Roblox wrote to its log since the last look: a lost connection gives its reason
+RcLogScan() {
+	global RcLogPath, RcLogPos, RcLogT, RcLogEnd
+	if (RcLogPath = "" or A_TickCount - RcLogT > 10000)
+	{
+		RcLogT := A_TickCount
+		nw := RcNewestLog()
+		if (nw != RcLogPath)
+		{
+			; the log that is there when watching starts: only what comes after counts
+			RcLogPos := RcLogEnd ? -1 : 0
+			RcLogEnd := false
+			RcLogPath := nw
+		}
+	}
+	if (RcLogPath = "")
+		return ""
+	fh := FileOpen(RcLogPath, "r", "UTF-8")
+	if (!IsObject(fh))
+		return ""
+	len := fh.Length
+	if (RcLogPos < 0 or RcLogPos > len)
+		RcLogPos := (RcLogPos < 0) ? len : 0
+	if (len <= RcLogPos)
+	{
+		fh.Close()
+		return ""
+	}
+	fh.Pos := RcLogPos
+	txt := fh.Read()
+	RcLogPos := len
+	fh.Close()
+	why := "", p := 1
+	while (p := RegExMatch(txt, "Disconnection Notification\. Reason: (\d+)", mt, p))
+	{
+		if (mt1 != 285)
+			why := "lost the connection (reason " . mt1 . ")"
+		p += StrLen(mt)
+	}
+	if (why = "" and RegExMatch(txt, "Disconnected from server for reason: ([^\r\n]*)", mt) and !InStr(mt1, "285"))
+		why := "lost the connection (" . Trim(mt1) . ")"
+	return why
+}
+
+; the link Roblox is opened with: the private server when one is set, else a public Fisch server
+RcUri() {
+	global ReconnectLink
+	l := Trim(ReconnectLink)
+	if (RegExMatch(l, "share\?code=([0-9A-Za-z]+)", mt))
+		return "roblox://navigation/share_links?code=" . mt1 . "&type=Server"
+	pid := RegExMatch(l, "/games/(\d+)", g) ? g1 : "16732694052"
+	if (RegExMatch(l, "privateServerLinkCode=([0-9A-Za-z_\-]+)", mt))
+		return "roblox://placeId=" . pid . "&linkCode=" . mt1
+	return "roblox://placeId=" . pid
+}
+
+; wait sec seconds; false when the macro was stopped (or, with alive, Roblox closed) meanwhile
+RcWait(sec, alive := false) {
+	global MacroRunning, ReconnectOn
+	t0 := A_TickCount
+	while (A_TickCount - t0 < sec * 1000)
+	{
+		if (!MacroRunning or !ReconnectOn)
+			return false
+		if (alive)
+		{
+			Process, Exist, RobloxPlayerBeta.exe
+			if (!ErrorLevel)
+				return false
+		}
+		Sleep, 250
+	}
+	return true
+}
 BuildMiscSection:
 
 Gui, Font, s8 Bold c%ColorMuted%, Segoe UI
@@ -27378,6 +28341,8 @@ OnUtil := (TargetSection = "Utilities")
 OnTotem := (TargetSection = "Totem")
 OnAqua := (TargetSection = "Aquarium")
 OnNuke := (TargetSection = "Nuke")
+OnWebhook := (TargetSection = "Webhook")
+OnRecon := (TargetSection = "Reconnect")
 OnKeep := (TargetSection = "Keeper")
 OnAdv := (TargetSection = "Advanced")
 OnGuess := (TargetSection = "Guess")
@@ -27499,18 +28464,45 @@ if (OnAqua)
 else
     SetTimer, AquariumStatusTick, Off
 
+; webhook page
+ShowList(WebhookCtrls, OnWebhook)
+if (!WebhookOn)
+    ShowList(WebhookBodyCtrls, false)
+if (OnWebhook)
+{
+    gosub WebhookStatusTick
+    SetTimer, WebhookStatusTick, 1000
+}
+else
+    SetTimer, WebhookStatusTick, Off
+
+; reconnect page
+ShowList(ReconnectCtrls, OnRecon)
+if (!ReconnectOn)
+    ShowList(ReconnectBodyCtrls, false)
+if (OnRecon)
+{
+    gosub ReconnectStatusTick
+    SetTimer, ReconnectStatusTick, 1000
+}
+else
+    SetTimer, ReconnectStatusTick, Off
+
 ; keep the Tools page checkboxes in step
 GuiControl, 1:, UtilTotemOn, % (TotemAuto ? 1 : 0)
 GuiControl, 1:, UtilAquariumOn, % (AquariumAuto ? 1 : 0)
 GuiControl, 1:, UtilKeeperOn, % (KeeperAuto ? 1 : 0)
 GuiControl, 1:, UtilGuessOn, % (SwGuessOn ? 1 : 0)
 GuiControl, 1:, UtilNukeOn, % (NukeAuto ? 1 : 0)
+GuiControl, 1:, UtilWebhookOn, % (WebhookOn ? 1 : 0)
+GuiControl, 1:, UtilReconnectOn, % (ReconnectOn ? 1 : 0)
 
 ; sidebar highlight
 NavActive := TargetSection
 if (NavActive = "Advanced")
     NavActive := "General"
-else if (NavActive = "Totem" || NavActive = "Aquarium" || NavActive = "Keeper" || NavActive = "Guess" || NavActive = "Nuke")
+else if (NavActive = "Totem" || NavActive = "Aquarium" || NavActive = "Keeper" || NavActive = "Guess" || NavActive = "Nuke"
+    || NavActive = "Webhook" || NavActive = "Reconnect")
     NavActive := "Utilities"
 for SsIdx, SsDef in NavDefs
 {
@@ -27966,7 +28958,7 @@ for SvIdx, SvField in ProfileFields
     SvVal := %SvKey%
     if (SvField[4] = "bool")
         SvVal := SvVal ? "true" : "false"
-    if SvSec in Aquarium,Keeper,Update,Advanced,Misc
+    if SvSec in Aquarium,Keeper,Update,Advanced,Misc,Webhook,Reconnect
         SvDest := SettingsFile
     else if (SvSec = "Totem" && TotemGlobal)
         SvDest := SettingsFile
@@ -28123,8 +29115,17 @@ ColNorm(v) {
 }
 ColListToArray(str) {
     out := []
+    str := RegExReplace(str, "\s*-\s*", "-")
     Loop, Parse, str, `,;|%A_Space%, %A_Space%%A_Tab%
     {
+        ; a gradient stays one item, as text
+        if (InStr(A_LoopField, "-"))
+        {
+            g := ColGradNorm(A_LoopField)
+            if (g != "")
+                out.Push(g)
+            continue
+        }
         c := ColNorm(A_LoopField)
         if (c >= 0)
             out.Push(c)
@@ -28134,14 +29135,14 @@ ColListToArray(str) {
 ColArrayToList(arr) {
 	out := ""
 	for _i, v in arr
-		out .= (out != "" ? ", " : "") . Format("0x{:06X}", v)
+		out .= (out != "" ? ", " : "") . ColItemText(v)
 	return out
 }
 
 ColListAdd(str, hex) {
     list := ColListToArray(str)
-    c := ColNorm(hex)
-    if (c < 0)
+    c := InStr(hex, "-") ? ColGradNorm(hex) : ColNorm(hex)
+    if (c = "" || c < 0)
         return ColArrayToList(list)
     for i, have in list
         if (have = c)
@@ -28347,8 +29348,8 @@ CMRefresh:
         ri := A_Index
         if (ri <= CMn)
         {
-            hx := Format("0x{:06X}", CMList[ri])
-            sw := SubStr(hx, 3)
+            hx := ColItemText(CMList[ri])
+            sw := ColItemSw(CMList[ri])
             GuiControl, 1:+Background%sw%, CMSw%ri%
             GuiControl, 1:, CMHex%ri%, % hx . ((ri = 1) ? "      (primary)" : "")
             GuiControl, 1:Show, CMSw%ri%
@@ -28380,7 +29381,7 @@ return
 
 CMTypeAdd:
     Gui, 1:+OwnDialogs
-    InputBox, CMTyped, Add color, Enter a hex color (for example 0xF1F1F1):, , 320, 130
+    InputBox, CMTyped, Add color, Enter a hex color (0xF1F1F1) or a gradient (0x606060-0x090909):, , 320, 130
     if (ErrorLevel)
         return
     CMTyped := Trim(CMTyped)
@@ -28787,6 +29788,8 @@ ColPresetList() {
 	out := "|Default"
 	if (SpecialRod = "Stellarwave Melody")
 		out .= "|Toothly Interstellar|Ominous Ouija|Kitty Keys"
+	for bnm, bv in ColPresetBuiltin(ColPresetKey())
+		out .= "|" . bnm
 	for i, p in StrSplit(Trim(v), ";;")
 		{
 		nm := StrSplit(p, "~")[1]
@@ -28798,8 +29801,54 @@ ColPresetList() {
 
 ; names a saved preset cannot have: Default and the Stellarwave skins
 ColPresetReserved(nm) {
-	return (nm = "Default" or {"Toothly Interstellar": 1, "Ominous Ouija": 1, "Kitty Keys": 1}.HasKey(nm))
+	return (nm = "Default" or {"Toothly Interstellar": 1, "Ominous Ouija": 1, "Kitty Keys": 1}.HasKey(nm)
+		or ColPresetBuiltin(ColPresetKey()).HasKey(nm))
 }
+
+; colour presets that come with the macro, per rod list (ColPresetKey): rods that play the normal minigame
+; each have their own colours; a gradient (0xAAAAAA-0xBBBBBB) covers every shade between its two ends
+ColPresetBuiltin(key) {
+	static p := ""
+	if (!IsObject(p))
+		{
+		p := {None: {}, Darkheart: {}, VerdantOath: {}, Noiseform: {}}
+		p.None["Apollo's Sunshot"] := "FishColor=0xBE703D|BarLeftColor=0xFF9447|BarRightColor=0xFFE664|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=0|ArrowColorTolerance=0"
+		p.None["Astraenus Serenade"] := "FishColor=0x98816E|BarLeftColor=0xD8C55B|BarRightColor=0x9E59FF|ArrowColor=0xD8C55B, 0x9E59FF|FishBarColorTolerance=20|BarColorTolerance=7|ArrowColorTolerance=3"
+		p.None["Blade Of Glorp"] := "FishColor=0x566A3C|BarLeftColor=0x9BD877|BarRightColor=0xDEFF70|ArrowColor=0x81A060|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=1"
+		p.None["Boglin Branch"] := "FishColor=0x5C3F59-0xC99BC3|BarLeftColor=0x5A315E-0x8C5A8E|BarRightColor=0x5A315E-0x8C5A8E|ArrowColor=0x3E3C44-0x8A8690|FishBarColorTolerance=14|BarColorTolerance=10|ArrowColorTolerance=14"
+		p.None["Cerebra"] := "FishColor=0xEA0092|BarLeftColor=0xFF129F|BarRightColor=0xFF129F|ArrowColor=0xFFFFFF|FishBarColorTolerance=0|BarColorTolerance=0|ArrowColorTolerance=0"
+		p.None["Chasm Stalker"] := "FishColor=0x7F3535, 0xAEC7EB|BarLeftColor=0xAA4747|BarRightColor=0xAC4848|ArrowColor=0x6C2D2D|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=4"
+		p.None["Chrysalis"] := "FishColor=0x000000|BarLeftColor=0xEAA9F6|BarRightColor=0xC1A6F6|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=4|ArrowColorTolerance=0"
+		p.None["Crowbar"] := "FishColor=0x919191|BarLeftColor=0x2B0000|BarRightColor=0x200000-0x0A0000|ArrowColor=|FishBarColorTolerance=2|BarColorTolerance=10|ArrowColorTolerance=0"
+		p.None["Cupid's Bow"] := "FishColor=0xF78CC3|BarLeftColor=0xFF8BBD|BarRightColor=0xFFFDE7|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=1|ArrowColorTolerance=0"
+		p.None["Duskwire"] := "FishColor=0xFFFFFF|BarLeftColor=0x606060-0x090909|BarRightColor=0x020202|ArrowColor=|FishBarColorTolerance=1|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Eldritch Rod"] := "FishColor=0x782595-0x5C207B|BarLeftColor=0x7D00A6|BarRightColor=0x7D00A6|ArrowColor=|FishBarColorTolerance=14|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Evil Pitchfork"] := "FishColor=0x671515|BarLeftColor=0xF1F1F1|BarRightColor=0xF1F1F1|ArrowColor=|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Fabulous Rod"] := "FishColor=0xE8C1D1|BarLeftColor=0xF6E8F7, 0xF5EAF7|BarRightColor=0xF7E8F6, 0xF5EAF7|ArrowColor=|FishBarColorTolerance=2|BarColorTolerance=16|ArrowColorTolerance=0"
+		p.None["Frostbane Rod"] := "FishColor=0xB7F5FF|BarLeftColor=0xF1F1F1|BarRightColor=0xFFFFFF|ArrowColor=|FishBarColorTolerance=3|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Lemonade Serenade"] := "FishColor=0x434B5B|BarLeftColor=0xFFDB5F|BarRightColor=0xFFD95E|ArrowColor=0xBAA046|FishBarColorTolerance=0|BarColorTolerance=1|ArrowColorTolerance=3"
+		p.None["Luminescent Oath"] := "FishColor=0x434B5B|BarLeftColor=0x8282F8, 0x0404FF|BarRightColor=0x8282F8, 0x0404FF|ArrowColor=0x848587|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Masterline Rod"] := "FishColor=0xFFFFFF|BarLeftColor=0xFFEBC2|BarRightColor=0xBFFBF9|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=5|ArrowColorTolerance=0"
+		p.None["Nates Blade"] := "FishColor=0xFFDF3E-0x714920|BarLeftColor=0x902021|BarRightColor=0x942121|ArrowColor=|FishBarColorTolerance=3|BarColorTolerance=4|ArrowColorTolerance=0"
+		p.None["Onirifalx"] := "FishColor=0x000000|BarLeftColor=0xBBE7FF|BarRightColor=0x6587B4|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=5|ArrowColorTolerance=0"
+		p.None["Polaris Serenade"] := "FishColor=0x497193|BarLeftColor=0x0B2734|BarRightColor=0x0B2734|ArrowColor=|FishBarColorTolerance=4|BarColorTolerance=4|ArrowColorTolerance=0"
+		p.None["Rainbow Cluster Rod"] := "FishColor=0xEAEAEA|BarLeftColor=0xF5C3C2|BarRightColor=0x9A85B7|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Random Rod"] := "FishColor=0xC2B8C1|BarLeftColor=0xFFFFFF|BarRightColor=0xFFFFFF|ArrowColor=0x000000|FishBarColorTolerance=2|BarColorTolerance=16|ArrowColorTolerance=0"
+		p.None["Rod of the Singularity"] := "FishColor=0x0E0A26|BarLeftColor=0x8C3486|BarRightColor=0xFECE5B|ArrowColor=0x000000|FishBarColorTolerance=3|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Ruinous Oath"] := "FishColor=0x434B5B|BarLeftColor=0xFD2D2D|BarRightColor=0xFD2D2D|ArrowColor=0x848587|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Sand Castle Caster"] := "FishColor=0xEFC054|BarLeftColor=0xAF9456|BarRightColor=0xB29655|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=0|ArrowColorTolerance=0"
+		p.None["Sanguine Spire"] := "FishColor=0x441010|BarLeftColor=0x540000|BarRightColor=0x200000|ArrowColor=0x290000|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Sword of Darkness"] := "FishColor=0x000000|BarLeftColor=0x020201|BarRightColor=0x020201|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=0|ArrowColorTolerance=0"
+		p.None["Thalassar's Ruin"] := "FishColor=0x22120F|BarLeftColor=0x6D352F|BarRightColor=0x311F16|ArrowColor=0x050201|FishBarColorTolerance=2|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.None["Tiki Rod"] := "FishColor=0x763718|BarLeftColor=0xDDB174|BarRightColor=0xDDB174|ArrowColor=|FishBarColorTolerance=0|BarColorTolerance=0|ArrowColorTolerance=0"
+		p.None["Webweaver"] := "FishColor=0x526A68-0x66827E, 0x524548|BarLeftColor=0xFA4248-0xDE1E24, 0xDE223A-0x76152C|BarRightColor=0xFA4248-0xDE1E24, 0xDE223A-0x76152C|ArrowColor=|FishBarColorTolerance=6|BarColorTolerance=10|ArrowColorTolerance=0"
+		p.Darkheart["Darkheart"] := "FishColor=0x111111|BarLeftColor=0x111111|BarRightColor=0x121212|ArrowColor=0xE8EAED|FishBarColorTolerance=1|BarColorTolerance=2|ArrowColorTolerance=0"
+		p.VerdantOath["Verdant Oath (green bar)"] := "FishColor=0x434B5B|BarLeftColor=0x368502|BarRightColor=0x368502|ArrowColor=0x848587|FishBarColorTolerance=3|BarColorTolerance=3|ArrowColorTolerance=0"
+		p.Noiseform["Noiseform (wide)"] := "FishColor=0x0C4125|BarLeftColor=0x33A95F|BarRightColor=0x33A95F|ArrowColor=0x000000|FishBarColorTolerance=16|BarColorTolerance=40|ArrowColorTolerance=3"
+		}
+	return p.HasKey(key) ? p[key] : {}
+}
+
 
 ; the note's text for the skin picked
 SkinWarnSet() {
@@ -28820,7 +29869,8 @@ ColPresetFields() {
 	return ["FishColor", "BarLeftColor", "BarRightColor", "ArrowColor", "NoteColor"
 		, "TryhardBarColors", "TryhardFishColors", "TryhardTrackColors"
 		, "CastboundBarColors", "CastboundFishColors", "CastboundTrackColors"
-		, "StellarBarColors", "StellarFishColors", "StellarHeadColors"]
+		, "StellarBarColors", "StellarFishColors", "StellarHeadColors"
+		, "FishBarColorTolerance", "BarColorTolerance", "ArrowColorTolerance"]
 }
 
 ColPresetKey() {
@@ -28882,7 +29932,12 @@ if (ColPresetPick = "Default" or ColPresetPick = "")
 	}
 else
 	{
-	IniRead, CpAll, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
+	; one that comes with the macro, else one of yours
+	CpBi := ColPresetBuiltin(ColPresetKey())
+	if (CpBi.HasKey(ColPresetPick))
+		CpAll := ColPresetPick . "~" . CpBi[ColPresetPick]
+	else
+		IniRead, CpAll, %SettingsFile%, ColorPresets, % ColPresetKey(), %A_Space%
 	for i, p in StrSplit(Trim(CpAll), ";;")
 		{
 		CpP := StrSplit(p, "~")
@@ -29198,7 +30253,7 @@ IpTextW(h, s) {
 	DllCall("GetTextExtentPoint32", "Ptr", hdc, "Str", s, "Int", StrLen(s), "Ptr", &sz)
 	DllCall("SelectObject", "Ptr", hdc, "Ptr", old)
 	DllCall("ReleaseDC", "Ptr", h, "Ptr", hdc)
-	return Ceil(NumGet(sz, 0, "Int") * 96 / A_ScreenDPI) + 3
+	return Ceil(NumGet(sz, 0, "Int") * 96 / A_ScreenDPI) + 8
 }
 
 ; a control of the profile card, with its place in the card (design coordinates, card top = 120)
@@ -30722,6 +31777,7 @@ return
 VxDebugTick() {
 	global DbgOn, DbgFps, DbgBar, MacroRunning, RobloxHwnd, VxScanN
 	global VxDbgFish, VxDbgFishT, VxDbgBarC, VxDbgBarW, VxDbgBarT, VxNatStats, NativeCapture
+	global VxDbgFish2, VxDbgFish2T, VxDbgBar2C, VxDbgBar2W, VxDbgBar2T
 	static fpsT := 0, fpsN := 0, fps := 0, natN := 0, bltN := 0, fast := ""
 	if (!DbgOn or !MacroRunning or !RobloxHwnd or !WinExist("ahk_id " . RobloxHwnd))
 		{
@@ -30763,7 +31819,13 @@ VxDebugTick() {
 		bl := VxDbgBarC - VxDbgBarW / 2, br := VxDbgBarC + VxDbgBarW / 2
 	if (VxDbgFishT and now - VxDbgFishT < 250)
 		fx := VxDbgFish
-	VxDbgBarsShow(bl, br, fx, cx, cy)
+	; a second bar (Bellona's Waraxe, right mouse)
+	bl2 := -1, br2 := -1, fx2 := -1
+	if (VxDbgBar2T and now - VxDbgBar2T < 250 and VxDbgBar2W > 0)
+		bl2 := VxDbgBar2C - VxDbgBar2W / 2, br2 := VxDbgBar2C + VxDbgBar2W / 2
+	if (VxDbgFish2T and now - VxDbgFish2T < 250)
+		fx2 := VxDbgFish2
+	VxDbgBarsShow(bl, br, fx, cx, cy, bl2, br2, fx2)
 }
 
 ; the scanning FPS, a small box at the top left of Roblox ("" hides it)
@@ -30802,13 +31864,15 @@ VxDbgFpsShow(t, x := 0, y := 0) {
 		}
 }
 
-; the LEFT / RIGHT / LINE markers (client x positions, -1 = not there); all -1 hides them
-VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0) {
+; the LEFT / RIGHT / LINE markers (client x positions, -1 = not there), for one bar or two (bl2 br2 fx2: Bellona's
+; second bar); all -1 hides them
+VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0, bl2 := -1, br2 := -1, fx2 := -1) {
 	global VxDbgBW, FishBarTop, TrackLeft, TrackRight
 	static dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, sw := 0, sh := 0, shown := false, lastKey := ""
 	static fam := 0, font := 0, fmt := 0
-	VxDbgMidShow((bl >= 0 and br >= 0) ? (bl + br) / 2 : -1, cx, cy)
-	if (bl < 0 and br < 0 and fx < 0)
+	VxDbgMidShow((bl >= 0 and br >= 0) ? (bl + br) / 2 : -1, cx, cy, 1)
+	VxDbgMidShow((bl2 >= 0 and br2 >= 0) ? (bl2 + br2) / 2 : -1, cx, cy, 2)
+	if (bl < 0 and br < 0 and fx < 0 and bl2 < 0 and br2 < 0 and fx2 < 0)
 		{
 		if (shown)
 			Gui, VxDbgB:Hide
@@ -30828,7 +31892,7 @@ VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0) {
 	ox := cx + Round(TrackLeft) - pad
 	; the band ends right where the macro's strip starts (18 px above the bar)
 	oy := cy + Round(FishBarTop) - 18 - H
-	key := Round(bl) . "|" . Round(br) . "|" . Round(fx) . "|" . ox . "|" . oy . "|" . W
+	key := Round(bl) . "|" . Round(br) . "|" . Round(fx) . "|" . Round(bl2) . "|" . Round(br2) . "|" . Round(fx2) . "|" . ox . "|" . oy . "|" . W
 	if (shown and key == lastKey)
 		return
 	lastKey := key
@@ -30863,7 +31927,8 @@ VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0) {
 		DllCall("gdiplus\GdipSetStringFormatLineAlign", "Ptr", fmt, "Int", 1)
 		}
 	DllCall("gdiplus\GdipGraphicsClear", "Ptr", g, "UInt", 0x00000000)
-	for i, mk in [[bl, "LEFT", 0xFF5AA9FF], [br, "RIGHT", 0xFF5AA9FF], [fx, "LINE", 0xFFFFFFFF]]
+	for i, mk in [[bl, "LEFT", 0xFF5AA9FF], [br, "RIGHT", 0xFF5AA9FF], [fx, "LINE", 0xFFFFFFFF]
+		, [bl2, "LEFT", 0xFF5AA9FF], [br2, "RIGHT", 0xFF5AA9FF], [fx2, "LINE", 0xFFFFFFFF]]
 		{
 		if (mk[1] < 0)
 			continue
@@ -30898,15 +31963,16 @@ VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0) {
 }
 
 ; the MID marker (client x, -1 hides it): a short line with its label just under the strip the macro reads, so it
-; never covers what is scanned. Drawn once - after that the window only moves.
-VxDbgMidShow(mx, cx := 0, cy := 0) {
-	global VxDbgMW, FishBarTop, CaptureH, CapExtra
-	static dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, W := 0, H := 0, shown := false, lastKey := ""
+; never covers what is scanned. Drawn once - after that the window only moves. k = which bar (a window each).
+VxDbgMidShow(mx, cx := 0, cy := 0, k := 1) {
+	global FishBarTop, CaptureH, CapExtra
+	static dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, W := 0, H := 0, shown := {}, lastKey := {}, hw := {}
+	gn := "VxDbgM" . k
 	if (mx < 0)
 		{
-		if (shown)
-			Gui, VxDbgM:Hide
-		shown := false, lastKey := ""
+		if (shown[k])
+			Gui, %gn%:Hide
+		shown[k] := false, lastKey[k] := ""
 		return
 		}
 	if (!HudGdipStart())
@@ -30946,24 +32012,25 @@ VxDbgMidShow(mx, cx := 0, cy := 0) {
 	; under the strip the macro reads (from 18 px above the bar, CaptureH + 38 rows)
 	oy := cy + Round(FishBarTop) + CaptureH + 20 + CapExtra + Round(2 * s)
 	key := ox . "|" . oy
-	if (shown and key == lastKey)
+	if (shown[k] and key == lastKey[k])
 		return
-	lastKey := key
-	if (!VxDbgMW)
+	lastKey[k] := key
+	if (!hw[k])
 		{
-		Gui, VxDbgM:New, +AlwaysOnTop -Caption +ToolWindow +E0x80020 +HwndVxDbgMW
+		Gui, %gn%:New, +AlwaysOnTop -Caption +ToolWindow +E0x80020 +HwndmwH
+		hw[k] := mwH
 		Gui, 1:Default
 		}
-	if (!shown)
+	if (!shown[k])
 		{
-		Gui, VxDbgM:Show, NoActivate x%ox% y%oy% w%W% h%H%
-		shown := true
+		Gui, %gn%:Show, NoActivate x%ox% y%oy% w%W% h%H%
+		shown[k] := true
 		}
 	VarSetCapacity(sz, 8, 0), NumPut(W, sz, 0, "Int"), NumPut(H, sz, 4, "Int")
 	VarSetCapacity(pt, 8, 0), NumPut(ox, pt, 0, "Int"), NumPut(oy, pt, 4, "Int")
 	VarSetCapacity(src, 8, 0)
 	VarSetCapacity(bf, 4, 0), NumPut(0, bf, 0, "UChar"), NumPut(0, bf, 1, "UChar"), NumPut(255, bf, 2, "UChar"), NumPut(1, bf, 3, "UChar")
-	DllCall("UpdateLayeredWindow", "Ptr", VxDbgMW, "Ptr", 0, "Ptr", &pt, "Ptr", &sz, "Ptr", dc, "Ptr", &src, "UInt", 0, "Ptr", &bf, "UInt", 2)
+	DllCall("UpdateLayeredWindow", "Ptr", hw[k], "Ptr", 0, "Ptr", &pt, "Ptr", &sz, "Ptr", dc, "Ptr", &src, "UInt", 0, "Ptr", &bf, "UInt", 2)
 }
 
 ; the Debug page (Extra > Debug > Open)
@@ -31318,7 +32385,7 @@ UiSwatch(h) {
 		{
 		lst := ColListToArray(%CMSel%)
 		n := SubStr(nm, 5) + 0
-		return (n >= 1 and n <= lst.MaxIndex()) ? Format("{:06X}", lst[n]) : ""
+		return (n >= 1 and n <= lst.MaxIndex()) ? ColItemSw(lst[n]) : ""
 		}
 	if (nm = "CastGreenSwatch")
 		var := "PerfectGreenColor"
@@ -31450,7 +32517,8 @@ UiStyle(h, v) {
 
 UiNavTitle(sec) {
 	static t := {Home: "Reel", Cast: "Cast", Utilities: "Tools", General: "Setup", Misc: "Extra", Changelog: "Changelog", ChangelogDetail: "Changelog", Debug: "Debug", Totem: "Auto Totem", Aquarium: "Auto Aquarium"
-		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry", Nuke: "Auto Nuke"}
+		, Keeper: "Keeperbound Recharge", Advanced: "Advanced timings", Guess: "Stellarwave Auto Retry", Nuke: "Auto Nuke"
+		, Webhook: "Discord Webhook", Reconnect: "Auto Reconnect"}
 	return t.HasKey(sec) ? t[sec] : sec
 }
 
@@ -31544,7 +32612,7 @@ return
 
 ; pages that are opened from another one light up that one in the sidebar
 UiNavSec(sec) {
-	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess" or sec = "Nuke")
+	if (sec = "Totem" or sec = "Aquarium" or sec = "Keeper" or sec = "Guess" or sec = "Nuke" or sec = "Webhook" or sec = "Reconnect")
 		return "Utilities"
 	if (sec = "Advanced")
 		return "General"
