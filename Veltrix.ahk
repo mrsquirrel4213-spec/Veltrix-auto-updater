@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 92
+VxBuild := 93
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -883,7 +883,10 @@ if (!MacroRunning)
 	goto Idle
 
 if (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
+	{
+	NukeAfter := false
 	goto SwPassiveWatch
+	}
 
 ; a nuke was just balanced: the rod was put away - take it out again (bag first when there is one, so the rod key
 ; is pressed once and the rod ends up in hand either way)
@@ -1040,6 +1043,9 @@ else
 CastHolding := false
 if (!MacroRunning)
 	goto Idle
+; a nuke came during the cast: the rod was put away - start over (re-equip, cast)
+if (NukeAfter)
+	goto RestartMacro
 VxTip(8, "Action: Waiting For Bobber (" . WaitForBobberDelay . "ms)")
 KbPreT0 := A_TickCount
 KbPreWait := Tm(WaitForBobberDelay)
@@ -1057,6 +1063,8 @@ if (KbPreLeft > 0)
 	Sleep, %KbPreLeft%
 if (!MacroRunning)
 	goto Idle
+if (NukeAfter)
+	goto RestartMacro
 
 if (ShakeMode == "Disabled")
 goto BarMinigame
@@ -1216,7 +1224,7 @@ NavigationShakeMode:
 NavigationShakeModeRedo:
     if (!MacroRunning)
         goto Idle
-    if (ForceReset = true) {
+    if (ForceReset = true or NukeAfter) {
         VxTip(10, "")
         goto RestartMacro
     }
@@ -1372,7 +1380,7 @@ BarMinigameRedo:
         goto Idle
     if (SpecialRod = "Splitbranch Twig")
         gosub TwigMaybePick
-    if (ForceReset = true) {
+    if (ForceReset = true or NukeAfter) {
         VxTip(10, "")
         goto RestartMacro
     }
@@ -1525,7 +1533,7 @@ BarMinigameSingle:
 BarMinigame2:
     if (!MacroRunning)
         goto Idle
-    if (ForceReset = true) {
+    if (ForceReset = true or NukeAfter) {
         MgOverWhy := "forcereset"
         goto BarMinigameOver
     }
@@ -3225,7 +3233,7 @@ PerfectCastRelease:
     ; falls through into PerfectCastLoop
 PerfectCastLoop:
     Loop {
-        if (!MacroRunning) {
+        if (!MacroRunning or NukeAfter) {
             VxTip(8, "")
             Gosub, HideCastHud
             return
