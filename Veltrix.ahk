@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 89
+VxBuild := 90
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
