@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 87
+VxBuild := 88
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -885,6 +885,30 @@ if (!MacroRunning)
 if (PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
 	goto SwPassiveWatch
 
+; a nuke was just balanced: the rod was put away - take it out again (bag first when there is one, so the rod key
+; is pressed once and the rod ends up in hand either way)
+if (NukeAfter)
+	{
+	NukeAfter := false
+	if (RodSlotKey != "")
+		{
+		VxTip(7, "Current Task: Re-equipping Rod (after the nuke)")
+		send {lbutton up}
+		Sleep, % Tm(TA("reeq1", 120))
+		if (BagSlotKey != "")
+			{
+			send {%BagSlotKey%}
+			Sleep, % Tm(TA("reeq2", 400))
+			}
+		send {%RodSlotKey%}
+		Sleep, % Tm(TA("reeq3", 600))
+		RodEquippedOnce := true
+		ForceReEquip := false
+		CastFailCount := 0
+		}
+	if (!MacroRunning)
+		goto Idle
+	}
 if (RodSlotKey != "" and !RodEquippedOnce)
 	ForceReEquip := true
 ; Lullaby mode switch first: the bag puts the rod away, so it is equipped again right below
@@ -9966,6 +9990,12 @@ Loop
 	}
 NukeSeen := false
 NukePrevT := 0
+; the nuke puts the rod away: end the fishing step that was going on, the rod comes out again before the next cast
+if (MacroRunning)
+	{
+	NukeAfter := true
+	ForceReset := true
+	}
 gosub, NukeTimerRefresh
 return
 
