@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 86
+VxBuild := 87
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -2988,6 +2988,13 @@ LoadSettingsFile:
     IniRead, StartStopKey, %SettingsFile%, Hotkeys, StartStop, F4
     IniRead, ReloadKey, %SettingsFile%, Hotkeys, Reload, F1
     IniRead, ExitKey, %SettingsFile%, Hotkeys, Exit, F8
+    for VxFkI, VxFkN in [["StartStopKey", "StartStop"], ["ReloadKey", "Reload"], ["ExitKey", "Exit"]]
+        {
+        VxFkV := VxFkN[1], VxFkOld := %VxFkV%
+        %VxFkV% := VxFixNavKey(VxFkOld)
+        if (%VxFkV% != VxFkOld)
+            IniWrite, % %VxFkV%, %SettingsFile%, Hotkeys, % VxFkN[2]
+        }
     IniRead, GuiAlwaysOnTop, %SettingsFile%, GUI, AlwaysOnTop, 0
     if (GuiAlwaysOnTop != 1)
         GuiAlwaysOnTop := 0
@@ -26745,6 +26752,22 @@ return
 
 ; waits up to 10 s for a key or mouse button (left click excluded) and returns its hotkey name with
 ; ^ ! + # for any Ctrl Alt Shift Win held with it, "" on Esc or time-out
+; the normal (not number-pad) name for the navigation keys' shared codes; any other key keeps its name
+VxNavKeyName(vk, name) {
+	static nav := {0x21: "PgUp", 0x22: "PgDn", 0x23: "End", 0x24: "Home", 0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down", 0x2D: "Insert", 0x2E: "Delete"}
+	return nav.HasKey(vk) ? nav[vk] : name
+}
+
+; a saved hotkey with a number-pad navigation name (from the old key catcher): the normal key it was meant to be
+VxFixNavKey(k) {
+	static fix := {NumpadUp: "Up", NumpadDown: "Down", NumpadLeft: "Left", NumpadRight: "Right", NumpadHome: "Home", NumpadEnd: "End"
+		, NumpadPgUp: "PgUp", NumpadPgDn: "PgDn", NumpadIns: "Insert", NumpadDel: "Delete"}
+	pre := ""
+	while (StrLen(k) > 1 and InStr("^!+#", SubStr(k, 1, 1)))
+		pre .= SubStr(k, 1, 1), k := SubStr(k, 2)
+	return pre . (fix.HasKey(k) ? fix[k] : k)
+}
+
 PogoCapture() {
 	; the click on Set is still down
 	KeyWait, LButton
@@ -26769,6 +26792,9 @@ PogoCapture() {
 			if (GetKeyState(kv, "P") or GetKeyState(kv))
 				{
 				name := GetKeyName(kv)
+				; the arrows and Home/End/PgUp/PgDn/Insert/Delete share their key code with the number pad's,
+				; and that code reads as the number-pad key - name them as the normal keys
+				name := VxNavKeyName(vk, name)
 				if (name != "")
 					{
 					pre := (GetKeyState("Ctrl") ? "^" : "") . (GetKeyState("Alt") ? "!" : "") . (GetKeyState("Shift") ? "+" : "") . ((GetKeyState("LWin") or GetKeyState("RWin")) ? "#" : "")
@@ -31071,20 +31097,23 @@ UiInitJson() {
 ; the controls the panel never shows: its own title, credit (it shows them itself), window buttons, the sidebar
 UiSkipped(h) {
 	global SbTrack, SbThumb, hLogoTile, hTitleText, hSubtitle, hShellMin, hShellClose, hDiv1, SIDEW, TOPH, HomeCtrls, CtrlBaseY
-	static homeTop := ""
+	static homeSet := "", homeN := 0
 	if (h = SbTrack or h = SbThumb or h = hLogoTile or h = hTitleText or h = hSubtitle or h = hShellMin or h = hShellClose or h = hDiv1)
 		return true
-	if (!IsObject(homeTop) and IsObject(HomeCtrls) and HomeCtrls.Length())
+	; the Reel page's own status / statistics area (the panel shows those in its top bar): by where it sits,
+	; looked at each time (its place may not be known yet the first time)
+	if (IsObject(HomeCtrls) and HomeCtrls.Length() != homeN)
 		{
-		homeTop := {}
+		homeSet := {}, homeN := HomeCtrls.Length()
 		for i, c in HomeCtrls
-			{
-			if (CtrlBaseY.HasKey(c) and CtrlBaseY[c] < 290)
-				homeTop[c] := 1
-			}
+			homeSet[c] := 1
 		}
-	if (IsObject(homeTop) and homeTop.HasKey(h))
-		return true
+	if (IsObject(homeSet) and homeSet.HasKey(h))
+		{
+		UiPos(h, hx, hy, hw, hh)
+		if (hy < 290)
+			return true
+		}
 	CtrlSnapPos(h, x, y, w, ht)
 	; the sidebar, and lines across the whole window (the panel has its own)
 	return (x < SIDEW or ht > 400 or (y < TOPH and (w <= 3 or ht <= 3)))
@@ -31883,6 +31912,8 @@ ui3 =
             }
             home.its.Add(it);
         }
+        // a card with nothing in it (its contents hidden or not drawn here) would only leave a gap
+        cards.RemoveAll(b => b.its.Count == 0);
         foreach (var b in cards) {
             b.top = 0; b.bottom = b.h;
             foreach (var it in b.its) { b.top = Math.Min(b.top, N(it, "y") - b.y); b.bottom = Math.Max(b.bottom, N(it, "y") - b.y + N(it, "ht")); }
