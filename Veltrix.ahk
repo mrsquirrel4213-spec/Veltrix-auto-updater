@@ -16,7 +16,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 101
+VxBuild := 102
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -291,6 +291,9 @@ DbgBar := (iniVal == "0") ? 0 : 1
 
 gosub LoadActiveProfile
 gosub NukeTimerRefresh
+; Oppressor's old colours (before they were measured live): the new ones
+if (SpecialRod = "Oppressor" && (InStr(BarLeftColor, "0x5E7080") || BarLeftColor = "0x5C6C78"))
+    gosub ApplyOppressorPreset
 
 ; Leftover backup from an update
 FileDelete, %A_ScriptFullPath%.bak
@@ -782,7 +785,7 @@ if (SwPreK)
 MgInPlay := false
 ; Doomsekkar learns its bar width again each fight
 DoomReset := true
-OppMkOn := false, OppCandN := 0, OppReset := true, OppParryT := 0, OppBallOn := false, OppLastT := 0, OppFishT := 0
+OppMkOn := false, OppCandN := 0, OppParryNo := 0, OppReset := true, OppParryT := 0, OppBallOn := false, OppLastT := 0, OppFishT := 0
 if (OppRUp)
 	{
 	Send, {RButton up}
@@ -2107,7 +2110,20 @@ BarPrecisionControl:
     }
 
     ; ---- decision cascade ----
-    if (BpcCast && CastStatic && RunLeft > FishBarLeft + 2 && RunLeft + RunWidth < FishBarRight - 2
+    if (SpecialRod = "Oppressor" && OppChase) {
+        ; going for a ball / marker / the waiting spot: straight there, with a short look ahead for the bar's speed
+        ; where the bar would stop if it braked now (let go brakes it going right, held brakes it going left)
+        OcSc := Max(1, CaptureW) / 1805
+        OcBrake := ((BarVel > 0) ? TA("oppaccL", 650) : TA("oppaccR", 1200)) * OcSc
+        OcStop := BarX + BarVel * Abs(BarVel) / (2 * OcBrake) + BarVel * TA("oppchaselook", 60) / 1000
+        OcDead := Max(4, 0.03 * RunWidth)
+        if (OcStop < FishX - OcDead)
+            WantDown := true
+        else if (OcStop > FishX + OcDead)
+            WantDown := false
+        else
+            WantDown := (BarVel < 0)
+    } else if (BpcCast && CastStatic && RunLeft > FishBarLeft + 2 && RunLeft + RunWidth < FishBarRight - 2
         && Abs(PosError) <= 0.5 * RunWidth) {
         WantDown := DutyWant(NoteAcc, 0.5)
     } else if (FishX < MinReach) {
@@ -2214,6 +2230,8 @@ BarPrecisionControl:
     }
     ; falls through into PrecisionApply
 PrecisionApply:
+    if (DbgOn && SpecialRod = "Oppressor")
+        OppLogDecision()
     if (SpecialRod = "Noiseform") {
         if (WantDown && !PrecisionDown && NoiseFoundStreak < NoiseN6)
             WantDown := false
@@ -6233,8 +6251,14 @@ AdvRegistry() {
 	r.Push(["Aquarium", "L", "aqtap", 55, "ms|Click: hover before clicking"])
 	r.Push(["Minigame", "L", "predlead", 90, "ms|Prediction: how far ahead the bar aims (screen to bar delay)"])
 	r.Push(["Minigame", "L", "oppland", 1185, "ms|Oppressor: the ball lands this long after the marker starts closing"])
-	r.Push(["Minigame", "L", "opplead", 45, "ms|Oppressor: right mouse goes down this long before the ball lands"])
-	r.Push(["Minigame", "L", "opptap", 90, "ms|Oppressor: right mouse held for the parry"])
+	r.Push(["Minigame", "L", "opplead", 120, "ms|Oppressor: right mouse goes down this long before the ball lands"])
+	r.Push(["Minigame", "L", "opptap", 180, "ms|Oppressor: right mouse held for the parry"])
+	r.Push(["Minigame", "L", "oppaccR", 1200, "px/s2|Oppressor: how fast the bar speeds up held (4K) - when to leave for the marker"])
+	r.Push(["Minigame", "L", "oppaccL", 650, "px/s2|Oppressor: how fast the bar speeds up let go (4K)"])
+	r.Push(["Minigame", "L", "oppsettle", 200, "ms|Oppressor: extra time to settle under the marker"])
+	r.Push(["Minigame", "L", "oppbounce", 1450, "ms|Oppressor: the ball comes back down this long after a parry"])
+	r.Push(["Minigame", "L", "oppprior", 38, "%|Oppressor: where the bar heads after a parry until the bounce is predicted (across the strip)"])
+	r.Push(["Minigame", "L", "oppwait", 29, "%|Oppressor: where the bar waits for the ball to come back (across the strip)"])
 	r.Push(["Reconnect", "L", "rcgone", 8, "s|Roblox gone this long counts as closed"])
 	r.Push(["Reconnect", "L", "rchung", 30, "s|Roblox not responding this long counts as frozen"])
 	r.Push(["Reconnect", "L", "rcwin", 60, "s|Wait for the Roblox window (max)"])
@@ -13297,7 +13321,7 @@ BarPresentBase() {
     global SwSkin, SwStarsValid, SwFound, SwBarL, SwBarW, SwFishX, WindowHeight, FishBarLeft, FishBarRight
     global BarLeftColor, BarRightColor, RelLock, BarScanRow, CastBarL, CastBarW, NoiseBarL, NoiseBarW
     global RemBarL, RemBarW, MiguBarL, MiguBarW, HaliBarL, HaliBarW, VgBarL, VgBarW, TryBarL, TryBarW
-    global PinFishX, BarWidthTrusted, RunLeft, RunWidth
+    global PinFishX, BarWidthTrusted, RunLeft, RunWidth, OppBarL, OppBarW, DoomBarL, DoomBarW
     BarWidthTrusted := true
 
     if (SpecialRod = "Stellarwave Melody") {
@@ -14388,7 +14412,7 @@ RemTrackEnds(y) {
 OppScan() {
     global pCaptureBits, pCaptureOwn, CaptureW, CaptureH, FishBarLeft, WindowHeight, VxNatO2
     global OppScanned, OppFound, OppBarL, OppBarW, OppFishX, OppMarkX, OppMarkW, OppReset, OppFlags, OppLastT
-    global OppFishT, OppFishLast
+    global OppFishT, OppFishLast, OppFishJump
     if (OppScanned)
         return OppFound
     OppScanned := true
@@ -14408,7 +14432,15 @@ OppScan() {
     now := A_TickCount
     if (NumGet(res, 8, "Int") >= 0) {
         OppFishX := FishBarLeft + NumGet(res, 48, "Int") / 16
-        OppFishLast := OppFishX, OppFishT := now
+        if (OppFishT && now - OppFishT <= 250 && Abs(OppFishX - OppFishLast) > 0.12 * CaptureW
+            && !(OppFishJump >= 0 && Abs(OppFishX - OppFishJump) < 0.02 * CaptureW)) {
+            ; a big jump: believed when the next look agrees
+            OppFishJump := OppFishX
+            OppFishX := OppFishLast
+        } else {
+            OppFishJump := -1
+            OppFishLast := OppFishX, OppFishT := now
+        }
     } else if (OppFishT && now - OppFishT <= 250)
         OppFishX := OppFishLast
     if (NumGet(res, 12, "Int") >= 0) {
@@ -14429,12 +14461,12 @@ OppScan() {
 ; the area above the track, while the ball may be coming back after a parry: reset = take this picture as the one
 ; without the ball. OppBallX = where the ball is (window x), -1 = not there
 OppBallScan(reset) {
-    global VxNatOB, VxBlt, hCaptureScreenDC, RobloxHwnd, CaptureW, FishBarLeft, WindowHeight, OppBallX
+    global VxNatOB, VxBlt, hCaptureScreenDC, RobloxHwnd, CaptureW, FishBarLeft, WindowHeight, OppBallX, OppBallY, OppBallH
     static dc := 0, bm := 0, old := 0, bits := 0, w := 0, h := 0
-    OppBallX := -1
+    OppBallX := -1, OppBallY := -1
     if (!VxNatOB || !hCaptureScreenDC || CaptureW < 40 || WindowHeight < 100)
         return false
-    y0 := Round(0.42 * WindowHeight)
+    y0 := Round(0.28 * WindowHeight)
     bw := CaptureW, bh := Round(0.74 * WindowHeight) - y0
     if (bw != w || bh != h || !dc) {
         if (dc) {
@@ -14456,9 +14488,52 @@ OppBallScan(reset) {
     DllCall(VxBlt, "Ptr", dc, "Int", 0, "Int", 0, "Int", bw, "Int", bh, "Ptr", hCaptureScreenDC, "Int", cwx + Round(FishBarLeft), "Int", cwy + y0, "UInt", 0x00CC0020)
     VarSetCapacity(res, 16, 0)
     rc := DllCall(VxNatOB, "Ptr", bits, "Int", bw, "Int", bh, "Double", WindowHeight / 1080, "Int", reset ? 1 : 0, "Ptr", &res, "Int")
+    OppBallH := bh
     if (rc = 1)
-        OppBallX := FishBarLeft + NumGet(res, 0, "Int")
+        OppBallX := FishBarLeft + NumGet(res, 0, "Int"), OppBallY := NumGet(res, 4, "Int")
+    OppBallDump(dc, bw, bh, reset, rc, rc = 1 ? NumGet(res, 0, "Int") : -1, rc = 1 ? NumGet(res, 4, "Int") : -1)
     return rc = 1
+}
+
+; Debug: the watched area (a quarter size) and, near the landing, the track strip - saved to Veltrix\caps
+OppBallDump(src, bw, bh, isRef, rc, bx, by) {
+    global DbgOn, OppParryT, pCaptureBits, pCaptureOwn, CaptureW, CaptureH
+    static n := 0, sdc := 0, sbm := 0, sold := 0, sbits := 0, sw := 0, sh := 0
+    if (!DbgOn || n >= 400)
+        return
+    n += 1
+    t := A_TickCount - OppParryT
+    dir := A_ScriptDir . "\caps"
+    FileCreateDir, %dir%
+    w := bw // 4, h := bh // 4
+    if (w != sw || h != sh || !sdc) {
+        if (sdc)
+            DllCall("SelectObject", "Ptr", sdc, "Ptr", sold), DllCall("DeleteObject", "Ptr", sbm), DllCall("DeleteDC", "Ptr", sdc)
+        sdc := DllCall("CreateCompatibleDC", "Ptr", 0, "Ptr")
+        VarSetCapacity(bi, 40, 0)
+        NumPut(40, bi, 0, "UInt"), NumPut(w, bi, 4, "Int"), NumPut(-h, bi, 8, "Int"), NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+        sbm := DllCall("CreateDIBSection", "Ptr", sdc, "Ptr", &bi, "UInt", 0, "Ptr*", sbits, "Ptr", 0, "UInt", 0, "Ptr")
+        sold := DllCall("SelectObject", "Ptr", sdc, "Ptr", sbm, "Ptr")
+        DllCall("SetStretchBltMode", "Ptr", sdc, "Int", 4)
+        sw := w, sh := h
+    }
+    DllCall("StretchBlt", "Ptr", sdc, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", src, "Int", 0, "Int", 0, "Int", bw, "Int", bh, "UInt", 0x00CC0020)
+    OppBmpSave(dir . "all_" . t . (isRef ? "_REF" : "_rc" . rc . "_x" . bx . "_y" . by) . ".bmp", sbits, w, h)
+    if (t >= 1200 && pCaptureBits = pCaptureOwn)
+        OppBmpSave(dir . "strip_" . t . ".bmp", pCaptureBits - 18 * CaptureW * 4, CaptureW, CaptureH + 38)
+}
+
+OppBmpSave(f, p, w, h) {
+    sz := w * h * 4
+    VarSetCapacity(hd, 54, 0)
+    NumPut(0x4D42, hd, 0, "UShort"), NumPut(54 + sz, hd, 2, "UInt"), NumPut(54, hd, 10, "UInt")
+    NumPut(40, hd, 14, "UInt"), NumPut(w, hd, 18, "Int"), NumPut(-h, hd, 22, "Int"), NumPut(1, hd, 26, "UShort"), NumPut(32, hd, 28, "UShort")
+    fh := FileOpen(f, "w")
+    if (!IsObject(fh))
+        return
+    fh.RawWrite(hd, 54)
+    fh.RawWrite(p + 0, sz)
+    fh.Close()
 }
 
 ; right mouse for a parry (let go OppRUp ms later, from OppTarget / the fight's end)
@@ -14466,15 +14541,22 @@ OppParry(t, why) {
     global
     local again
     Send, {RButton down}
-    OppRUp := A_TickCount + TA("opptap", 90)
+    OppParryNo += 1
+    OppRUp := A_TickCount + TA("opptap", 180)
     OppMkDone := true, OppMkOn := false
     VxTip(13, "Oppressor: parry (" . why . ")")
     if (why = "marker") {
-        OppParryT := t, OppBallOn := true, OppBallRef := false, OppBallN := 0, OppBlind := true
+        OppParryT := t, OppBallOn := true, OppBallRef := false, OppBallN := 0, OppBallReal := false, OppBlind := true, OppBounceN := 0
+        OppBallPts := []
+        OppUpOn := OppUpRef, OppUpPts := [], OppLaunchX := OppMkX, OppPredX := ""
     } else {
-        ; the ball was seen coming: it may come back once more
-        again := (OppBallN >= 2)
-        OppParryT := t, OppBallRef := false, OppBallN := 0, OppBlind := false, OppBallOn := again
+        ; the ball was seen coming: it may come back once more (once - not on and on)
+        OppBounceN += 1
+        again := (OppBallReal && OppBounceN < 2)
+        OppParryT := t, OppBallRef := false, OppBallN := 0, OppBallReal := false, OppBlind := false, OppBallOn := again
+        ; that landing is done: no more aiming at it
+        OppPredX := "", OppUpOn := false, OppDbgPathT := 0
+        OppBallPts := []
     }
 }
 
@@ -14485,10 +14567,11 @@ OppParry(t, why) {
 ; watched for it, the bar goes under it and right mouse goes down as it lands.
 OppTarget() {
     global
-    local now, n, fish, tc, w, half, full, t, tgt
+    local now, n, fish, tc, w, half, full, t, tgt, far, go, sxy, sxx, i, p, wx
     OppScan()
     now := A_TickCount
     n := CaptureW
+    OppChase := false
     if (OppRUp && now >= OppRUp) {
         Send, {RButton up}
         OppRUp := 0
@@ -14506,7 +14589,7 @@ OppTarget() {
             OppCandX := OppMarkX
             if (OppCandN >= 2 && now - OppParryT > 600) {
                 OppMkOn := true, OppMkX := OppMarkX, OppMkW0 := OppMarkW, OppMkT0 := OppCandT, OppMkC := 0
-                OppMkDone := false, OppMkSeen := now, OppMkMinW := OppMarkW, OppBallOn := false
+                OppMkDone := false, OppMkSeen := now, OppMkMinW := OppMarkW, OppBallOn := false, OppMkTc := 0, OppUpRef := false
             }
         } else if (Abs(OppMarkX - OppMkX) < 0.03 * n) {
             OppMkSeen := now, OppMkX := OppMarkX
@@ -14526,47 +14609,316 @@ OppTarget() {
             ; closed all the way and gone (not just a frame's blink while it sits closed): the ball is landing
             if (OppMarkX < 0 && OppMkMinW <= 0.075 * n && now - OppMkSeen >= 25 && tc - now <= 150 && OppMkSeen + 40 < tc)
                 tc := OppMkSeen + 40
-            if (now >= tc - TA("opplead", 45))
+            ; closed all the way and gone two looks running: it is landing now, whatever the timer says
+            if (OppMarkX < 0 && OppMkMinW <= 0.07 * n && now - OppMkSeen >= 40 && tc > now)
+                tc := now
+            OppMkTc := tc
+            if (!OppUpRef && tc - now <= 700 && tc - now >= 250) {
+                OppBallScan(true)
+                OppUpRef := true
+            }
+            if (now >= tc - TA("opplead", 120))
                 OppParry(tc, "marker")
             else if (now - OppMkSeen > 500)
                 OppMkOn := false
         }
     }
+    ; the ball on its way up after the parry: its sideways speed from the hit spot gives where it comes down
+    if (OppUpOn && !OppMkOn) {
+        t := now - OppParryT
+        if (t > 700)
+            OppUpOn := false
+        else if (t >= 120 && OppBallScan(false) && Abs(OppBallX - OppLaunchX) <= 0.3 * n) {
+            OppUpPts.Push([t / 1000, OppBallX - OppLaunchX])
+            OppBallPts.Push([OppBallX, Round(0.28 * WindowHeight) + OppBallY])
+            sxy := 0, sxx := 0
+            for i, p in OppUpPts
+                sxy += p[1] * p[2], sxx += p[1] * p[1]
+            if (OppUpPts.Length() >= 3 && t >= 250 && sxx > 0)
+                OppPredX := Max(FishBarLeft + 0.06 * n, Min(FishBarLeft + 0.92 * n, OppLaunchX + sxy / sxx * TA("oppbounce", 1450) / 1000))
+            OppDbgLandX := OppPredX, OppDbgPathT := now
+        }
+    }
     if (OppBallOn && !OppMkOn) {
         t := now - OppParryT
-        if (t > 1800) {
+        if (t > 1800 || (t > TA("oppbounce", 1450) + 300 && !OppBallReal)) {
+            OppPredX := "", OppDbgPathT := 0
             OppBallOn := false
         } else if (t >= 850) {
             if (!OppBallRef) {
                 OppBallScan(true)
                 OppBallRef := true
             } else if (OppBallScan(false)) {
-                OppBallN += 1, OppBallSeen := now, OppBallTX := OppBallX
-                if (OppBallN >= 2 && t >= 1440)
+                ; the ball falls: lower at each look. Something dark that just sits there is not it
+                if (OppBallN = 0 || OppBallY < OppBallYLast - 0.03 * OppBallH)
+                    OppBallN := 1, OppBallY0 := OppBallY
+                else
+                    OppBallN += 1
+                ; its spot, smoothed: a reading far off the last one counts only when the next one agrees
+                if (OppBallN = 1 || OppBallTX = "")
+                    OppBallTX := OppBallX, OppBallOdd := -1, OppBallV := 0, OppBallVT := now, OppBallVX := OppBallX
+                else if (Abs(OppBallX - OppBallTX) <= 0.08 * CaptureW)
+                    OppBallTX := 0.5 * OppBallTX + 0.5 * OppBallX, OppBallOdd := -1
+                else if (OppBallOdd >= 0 && Abs(OppBallX - OppBallOdd) <= 0.08 * CaptureW)
+                    OppBallTX := OppBallX, OppBallOdd := -1
+                else
+                    OppBallOdd := OppBallX
+                ; its sideways drift (px/s), over at least 60 ms
+                if (OppBallN > 1 && now - OppBallVT >= 60) {
+                    OppBallV := 0.5 * OppBallV + 0.5 * (OppBallTX - OppBallVX) * 1000 / (now - OppBallVT)
+                    OppBallVT := now, OppBallVX := OppBallTX
+                }
+                OppBallYLast := OppBallY, OppBallSeen := now
+                if (!IsObject(OppBallPts) || OppBallN = 1)
+                    OppBallPts := []
+                OppBallPts.Push([OppBallX, Round(0.28 * WindowHeight) + OppBallY])
+                if (OppBallN >= 2 && OppBallY - OppBallY0 >= 0.06 * OppBallH)
+                    OppBallReal := true
+                if (OppBallReal && t >= TA("oppbounce", 1450) - TA("opplead", 120))
                     OppParry(now, "bounce")
-            } else if (OppBallN >= 2 && now - OppBallSeen < 150 && t >= 1150) {
+            } else if (OppBallReal && now - OppBallSeen < 150 && t >= 1150) {
                 ; it came down and has just left the area above the track: it lands now
                 OppParry(now, "bounce")
             }
-            if (OppBallOn && OppBlind && OppBallN < 2 && t >= 1560)
+            if (OppBallOn && OppBlind && !OppBallReal && t >= TA("oppbounce", 1450) - TA("opplead", 120)
+                && (OppPredX != "" || t >= 1560))
                 OppParry(now, "bounce")
         }
     }
     tgt := fish
-    if (OppMkOn && !OppMkDone)
+    if (OppMkOn && !OppMkDone) {
+        ; leave the line for the marker only when it is time: how far the bar has to go (from where it is, or from
+        ; the line it is following) at about oppspeed px a second, plus a moment to settle
+        far := 0, go := 99999
+        if (OppBarW > 0) {
+            ; how far (to get the marker well inside the bar), which way, how fast the bar goes that way already
+            far := Abs(OppMkX - (OppBarL + OppBarW / 2))
+            if (fish >= 0 && Abs(OppMkX - fish) > far)
+                far := Abs(OppMkX - fish)
+            far := Max(0, far - 0.3 * OppBarW)
+            go := OppTravelMs(far, OppMkX > OppBarL + OppBarW / 2) + TA("oppsettle", 200)
+        }
+        if (OppMkTc)
+            OppDbgBall(OppMkX, "BALL " . Format("{:.1f}", Max(0, OppMkTc - now) / 1000) . "s  go " . Format("{:.1f}", Max(0, OppMkTc - go - now) / 1000) . "s  #" . (OppParryNo + 1))
+        else
+            OppDbgBall(OppMkX, "BALL  #" . (OppParryNo + 1))
+        if (fish >= 0 && OppMkTc && now < OppMkTc - go)
+            return OppLog(fish, fish, "fish (marker in " . Round(OppMkTc - now) . " ms)")
         tgt := OppMkX
-    else if (OppBallOn && OppBallN >= 2 && now - OppBallSeen < 300)
-        tgt := OppBallTX
-    else
-        return fish
+    } else if (OppBallOn && OppBallReal && now - OppBallSeen < 600) {
+        ; where it lands: its spot plus its drift for the time left (about 1.45 s after the parry)
+        tgt := OppBallLand()
+        if (tgt = "" && OppPredX != "")
+            tgt := OppPredX
+        if (tgt = "")
+            tgt := OppBallTX + Max(-0.25 * n, Min(0.25 * n, OppBallV * Max(0, OppParryT + 1450 - now) / 1000))
+        tgt := Max(FishBarLeft + 0.06 * n, Min(FishBarLeft + 0.92 * n, tgt))
+        OppDbgLandX := tgt, OppDbgPathT := now
+        OppDbgBall(tgt, "BALL ~" . Format("{:.1f}", Max(0, OppParryT + 1450 - now) / 1000) . "s  #" . (OppParryNo + 1))
+    }
+    else if (OppBallOn && (OppPredX != "" || (OppBounceN = 0 && now - OppParryT < TA("oppbounce", 1450) + 300))) {
+        ; right after the marker's parry: toward where bounces come down until the prediction is in
+        ; waiting for the ball to come back: where it lands is not known until it shows, so wait near the middle
+        ; of where it does land
+        wx := (OppPredX != "") ? OppPredX : FishBarLeft + TA("oppprior", 38) / 100 * n
+        OppDbgBall(wx, ((OppPredX != "") ? "BOUNCE ~" : "WAIT ~") . Format("{:.1f}", Max(0, OppParryT + 1450 - now) / 1000) . "s  #" . (OppParryNo + 1))
+        OppChase := true
+        return OppLog(wx, fish, (OppPredX != "") ? "bounce predicted" : "wait for ball")
+    } else
+        return OppLog(fish, fish, "fish")
     ; the spot has to be well inside the bar; inside that, as near the line as it gets
+    OppChase := true
     if (fish < 0)
-        return tgt
+        return OppLog(tgt, fish, OppMkOn ? "marker" : "ball")
     w := (OppBarW > 0) ? OppBarW : 0.3 * n
-    half := 0.5 * w - Max(0.035 * n, 0.4 * w)
+    half := 0.5 * w - Max(0.035 * n, 0.45 * w)
     if (half < 0)
         half := 0
-    return Max(tgt - half, Min(tgt + half, fish))
+    return OppLog(Max(tgt - half, Min(tgt + half, fish)), fish, OppMkOn ? "marker" : "ball")
+}
+
+; where the falling ball meets the track: x as a curve of the height through the last dots (a parabola from 4 dots on,
+; a straight line before), carried down to the track's top. "" = not enough dots. OppBallFit = its coefficients
+; (x = a + b*u + c*u*u, u = (y - track) / 100) for the debug drawing
+OppBallLand() {
+    global OppBallPts, FishBarTop, CaptureW, OppBallFit, WindowHeight
+    if (!IsObject(OppBallPts) || OppBallPts.Length() < 2)
+        return ""
+    n := OppBallPts.Length(), st := Max(1, n - 7)
+    s0 := s1 := s2 := s3 := s4 := t0 := t1 := t2 := 0
+    Loop % n - st + 1 {
+        p := OppBallPts[st + A_Index - 1]
+        u := (p[2] - FishBarTop) / 100, x := p[1]
+        ylo := (A_Index = 1 || p[2] < ylo) ? p[2] : ylo, yhi := (A_Index = 1 || p[2] > yhi) ? p[2] : yhi
+        s0 += 1, s1 += u, s2 += u * u, s3 += u * u * u, s4 += u * u * u * u
+        t0 += x, t1 += x * u, t2 += x * u * u
+    }
+    ; the dots have to cover some height for a curve to say anything (the height read is rough)
+    if (yhi - ylo < 0.08 * WindowHeight)
+        return ""
+    a := "", b := 0, c := 0
+    if (s0 >= 4) {
+        ; least squares for a, b, c (Cramer's rule)
+        d := s0 * (s2 * s4 - s3 * s3) - s1 * (s1 * s4 - s3 * s2) + s2 * (s1 * s3 - s2 * s2)
+        if (Abs(d) > 0.000001) {
+            a := (t0 * (s2 * s4 - s3 * s3) - s1 * (t1 * s4 - s3 * t2) + s2 * (t1 * s3 - s2 * t2)) / d
+            b := (s0 * (t1 * s4 - t2 * s3) - t0 * (s1 * s4 - s3 * s2) + s2 * (s1 * t2 - t1 * s2)) / d
+            c := (s0 * (s2 * t2 - s3 * t1) - s1 * (s1 * t2 - t1 * s2) + t0 * (s1 * s3 - s2 * s2)) / d
+        }
+    }
+    if (a = "") {
+        dd := s0 * s2 - s1 * s1
+        if (Abs(dd) < 0.000001)
+            return ""
+        b := (s0 * t1 - s1 * t0) / dd, a := (t0 - b * s1) / s0, c := 0
+    }
+    ; never far from the last dot (a wild curve from a few rough dots): on the recordings the ball lands within
+    ; about a tenth of the strip of where it was last seen
+    last := OppBallPts[n][1]
+    a := Max(last - 0.12 * CaptureW, Min(last + 0.12 * CaptureW, a))
+    OppBallFit := [a, b, c]
+    return a
+}
+
+; Debug: the ball's dots, the curve on down to the track and where it lands, over the game (all in window x / y)
+VxDbgPathShow(on, cx := 0, cy := 0) {
+    global OppBallPts, OppBallFit, OppDbgLandX, FishBarTop, TrackLeft, TrackRight, WindowHeight
+    static gw := 0, dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, sw := 0, sh := 0, shown := false, lastKey := ""
+    if (!on || !IsObject(OppBallPts) || OppBallPts.Length() < 1) {
+        if (shown)
+            Gui, VxDbgP:Hide
+        shown := false, lastKey := ""
+        return
+    }
+    if (!HudGdipStart())
+        return
+    s := A_ScreenDPI / 96
+    pad := Round(60 * s)
+    x0 := Round(TrackLeft) - pad, y0 := Round(0.25 * WindowHeight)
+    W := Round(TrackRight - TrackLeft) + 2 * pad, H := Round(FishBarTop) - y0
+    if (W < 40 || H < 40)
+        return
+    key := OppBallPts.Length() . "|" . Round(OppDbgLandX) . "|" . cx . "|" . cy
+    if (shown && key == lastKey)
+        return
+    lastKey := key
+    if (!gw) {
+        Gui, VxDbgP:New, +AlwaysOnTop -Caption +ToolWindow +E0x80020 +HwndgwH
+        gw := gwH
+        Gui, 1:Default
+    }
+    if (!g || sw != W || sh != H) {
+        if (g)
+            DllCall("gdiplus\GdipDeleteGraphics", "Ptr", g), DllCall("gdiplus\GdipDisposeImage", "Ptr", bmp)
+        if (dc)
+            DllCall("SelectObject", "Ptr", dc, "Ptr", obm), DllCall("DeleteObject", "Ptr", hbm), DllCall("DeleteDC", "Ptr", dc)
+        VarSetCapacity(bi, 40, 0)
+        NumPut(40, bi, 0, "UInt"), NumPut(W, bi, 4, "Int"), NumPut(-H, bi, 8, "Int"), NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+        dc := DllCall("CreateCompatibleDC", "Ptr", 0, "Ptr")
+        hbm := DllCall("CreateDIBSection", "Ptr", dc, "Ptr", &bi, "UInt", 0, "Ptr*", bits, "Ptr", 0, "UInt", 0, "Ptr")
+        obm := DllCall("SelectObject", "Ptr", dc, "Ptr", hbm, "Ptr")
+        DllCall("gdiplus\GdipCreateBitmapFromScan0", "Int", W, "Int", H, "Int", W * 4, "Int", 0xE200B, "Ptr", bits, "Ptr*", bmp)
+        DllCall("gdiplus\GdipGetImageGraphicsContext", "Ptr", bmp, "Ptr*", g)
+        DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", g, "Int", 4)
+        sw := W, sh := H
+    }
+    DllCall("gdiplus\GdipGraphicsClear", "Ptr", g, "UInt", 0x00000000)
+    ; the curve from the last dot down to the track
+    if (IsObject(OppBallFit)) {
+        DllCall("gdiplus\GdipCreatePen1", "UInt", 0xC0FFA040, "Float", 2.5 * s, "Int", 2, "Ptr*", pen)
+        lastY := OppBallPts[OppBallPts.Length()][2]
+        px := "", py := ""
+        Loop 21 {
+            y := lastY + (FishBarTop - lastY) * (A_Index - 1) / 20
+            u := (y - FishBarTop) / 100
+            x := OppBallFit[1] + OppBallFit[2] * u + OppBallFit[3] * u * u
+            if (px != "")
+                DllCall("gdiplus\GdipDrawLine", "Ptr", g, "Ptr", pen, "Float", px - x0, "Float", py - y0, "Float", x - x0, "Float", y - y0)
+            px := x, py := y
+        }
+        DllCall("gdiplus\GdipDeletePen", "Ptr", pen)
+    }
+    ; a dot on the ball at each look
+    DllCall("gdiplus\GdipCreateSolidFill", "UInt", 0xFFFFA040, "Ptr*", br)
+    r := 5 * s
+    for i, p in OppBallPts
+        DllCall("gdiplus\GdipFillEllipse", "Ptr", g, "Ptr", br, "Float", p[1] - x0 - r, "Float", p[2] - y0 - r, "Float", 2 * r, "Float", 2 * r)
+    DllCall("gdiplus\GdipDeleteBrush", "Ptr", br)
+    ; where it lands: a cross on the track's top
+    if (OppDbgLandX != "") {
+        DllCall("gdiplus\GdipCreatePen1", "UInt", 0xFFFF3B3B, "Float", 3 * s, "Int", 2, "Ptr*", pen)
+        lx := OppDbgLandX - x0, ly := H - 10 * s, k := 9 * s
+        DllCall("gdiplus\GdipDrawLine", "Ptr", g, "Ptr", pen, "Float", lx - k, "Float", ly - k, "Float", lx + k, "Float", ly + k)
+        DllCall("gdiplus\GdipDrawLine", "Ptr", g, "Ptr", pen, "Float", lx - k, "Float", ly + k, "Float", lx + k, "Float", ly - k)
+        DllCall("gdiplus\GdipDeletePen", "Ptr", pen)
+    }
+    DllCall("gdiplus\GdipFlush", "Ptr", g, "Int", 0)
+    ox := cx + x0, oy := cy + y0
+    if (!shown) {
+        Gui, VxDbgP:Show, NoActivate x%ox% y%oy% w%W% h%H%
+        shown := true
+    }
+    VarSetCapacity(sz, 8, 0), NumPut(W, sz, 0, "Int"), NumPut(H, sz, 4, "Int")
+    VarSetCapacity(pt, 8, 0), NumPut(ox, pt, 0, "Int"), NumPut(oy, pt, 4, "Int")
+    VarSetCapacity(src, 8, 0)
+    VarSetCapacity(bf, 4, 0), NumPut(0, bf, 0, "UChar"), NumPut(0, bf, 1, "UChar"), NumPut(255, bf, 2, "UChar"), NumPut(1, bf, 3, "UChar")
+    DllCall("UpdateLayeredWindow", "Ptr", gw, "Ptr", 0, "Ptr", &pt, "Ptr", &sz, "Ptr", dc, "Ptr", &src, "UInt", 0, "Ptr", &bf, "UInt", 2)
+}
+
+; how long the bar takes to go far px one way (right = held), starting at its present speed: it speeds up oppaccR
+; (held) / oppaccL (let go) px/s^2 on 4K, and needs about 40% more to slow down at the end
+OppTravelMs(far, right) {
+    global BarVel, CaptureW
+    sc := Max(1, CaptureW) / 1805
+    a := (right ? TA("oppaccR", 1200) : TA("oppaccL", 650)) * sc
+    v := right ? BarVel : -BarVel
+    if (far <= 0)
+        return 0
+    t := (-v + Sqrt(v * v + 2 * a * far)) / a
+    return Round(t * 1400)
+}
+
+; the BALL marker for the debug overlay (window x, its label)
+OppDbgBall(x, txt) {
+    global VxDbgBall, VxDbgBallT, VxDbgBallTxt
+    VxDbgBall := x, VxDbgBallT := A_TickCount, VxDbgBallTxt := txt
+}
+
+OppLogDecision() {
+    global
+    static last := 0
+    local f
+    if (A_TickCount - last < 30)
+        return
+    last := A_TickCount
+    f := A_ScriptDir . "\opp_log.txt"
+    FileAppend, % "   DECIDE line " . Round(FishX - FishBarLeft) . " bar " . Round(BarX - FishBarLeft) . " w " . Round(RunWidth)
+        . " found " . (FoundBar ? 1 : 0) . " minR " . Round(MinReach - FishBarLeft) . " maxR " . Round(MaxReach - FishBarLeft)
+        . " posErr " . Round(PosError) . " relVel " . Round(RelVel) . " stop " . Round(StopDist) . " ctr " . (CtrHold ? 1 : 0)
+        . " want " . (WantDown ? 1 : 0) . " held " . (PrecisionDown ? 1 : 0) . "`n", %f%
+}
+
+; Debug: a line every 30 ms in Veltrix\opp_log.txt - time, bar (left/width), line, marker (x/width), where the bar is sent,
+; why, the left and right mouse (held by the macro / held for real)
+OppLog(ret, fish, why) {
+    global DbgOn, OppBarL, OppBarW, OppFound, OppMarkX, OppMarkW, PrecisionDown, OppMkOn, OppMkC, OppFlags, FishBarLeft
+    static last := 0, f := ""
+    if (!DbgOn || A_TickCount - last < 30)
+        return ret
+    last := A_TickCount
+    if (f = "") {
+        f := A_ScriptDir . "\opp_log.txt"
+        FileGetSize, sz, %f%
+        if (!ErrorLevel && sz > 3000000)
+            FileDelete, %f%
+        FileAppend, % "---- " . A_Now . "  (x from the bar box's left edge)`n", %f%
+    }
+    o := FishBarLeft
+    FileAppend, % A_TickCount . " bar " . (OppFound ? Round(OppBarL - o) . "/" . OppBarW : "-") . " line " . (fish >= 0 ? Round(fish - o) : "-")
+        . " mark " . (OppMarkX >= 0 ? Round(OppMarkX - o) . "/" . OppMarkW : "-") . " to " . (ret >= 0 ? Round(ret - o) : "-") . " " . why
+        . " fl" . OppFlags . " L" . (PrecisionDown ? 1 : 0) . GetKeyState("LButton") . GetKeyState("LButton", "P")
+        . " R" . GetKeyState("RButton") . GetKeyState("RButton", "P") . "`n", %f%
+    return ret
 }
 
 ; Doomsekkar (VeltrixNative's vx_doom): the bar by the thin green line along its top, the fish by its black stalk
@@ -29812,8 +30164,8 @@ return
 ; Oppressor: its own reader finds the bar, the spike and the parry marker; these are the colours it looks for (the
 ; pale spike, the metallic bar - bright and dim - and the red after a missed parry), shown in the colour boxes
 ApplyOppressorPreset:
-FishColor := "0xC0D2E0"
-BarLeftColor := "0x5E7080-0x687A88-0xA0B2C0, 0x17291F-0x304140, 0xB43C3C"
+FishColor := "0xA8BECF, 0xC7534B"
+BarLeftColor := "0x404951-0x5D6F7E-0x778C9C, 0x161916-0x232924-0x373F3E, 0x170B0D-0x281314-0x431D1E"
 BarRightColor := BarLeftColor
 ArrowColor := ""
 FishBarColorTolerance := 12
@@ -31739,11 +32091,11 @@ nd1 =
 (Join
 TVp4AAEAAAAEAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 eAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuJAAA
-UEUAAGSGBACHouxqAAAAAAAAAADwACIgCwIOAABUAQAAJgAAAAAAAOD2AAAAEAAAAAAAgAEAAAAAEAAA
+UEUAAGSGBAAurexqAAAAAAAAAADwACIgCwIOAABUAQAAJgAAAAAAAOD2AAAAEAAAAAAAgAEAAAAAEAAA
 AAIAAAYAAAAAAAAABgAAAAAAAAAAMB8AAAQAAAAAAAACAGABAAAQAAAAAAAAEAAAAAAAAAAAEAAAAAAA
 ABAAAAAAAAAAAAAAEAAAAIh+AQB4AwAAAIIBAIwAAAAAAAAAAAAAAAAgHwBMAgAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKiDAQAYAQAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAAC2UgEAABAAAABUAQAABAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALnRleHQAAAA2UwEAABAAAABUAQAABAAAAAAAAAAAAAAAAAAA
 IAAAYC5yZGF0YQAALB4AAABwAQAAIAAAAFgBAAAAAAAAAAAAAAAAAEAAAEAuZGF0YQAAAGCMHQAAkAEA
 AAIAAAB4AQAAAAAAAAAAAAAAAABAAADALnBkYXRhAABMAgAAACAfAAAEAAAAegEAAAAAAAAAAAAAAAAA
 QAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -31757,21 +32109,21 @@ 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
-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
+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
-OWXQfAyLRRQ5RdR8BEiJTfBIjQ2MTwEASI1V4P8VEnIBAIN9+AB0LkiDBVx+AQAB6ZUCAAD/FYFyAQAr
-BSO+HgA90QcAAA+MfgIAAOizQQEA6XQCAABBg39MAHVeQYN/UAZ8GP8VUnIBAEE7R1QPiFYCAABBx0dQ
-AAAAAIuFgAAAAIlEJCiJdCQgx0QkMAUAAABMiflIi5WIAAAARYnoRIuNmAAAAOgJRAEAhcAPhNgAAABJ
-x0dMAQAAAEyJ+egRRwEAhcAPhP8BAAD/FetxAQBBK0dgg/g9fA1IgwWyfQEAAenjAQAA/xXPcQEAQStH
+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
-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
+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
-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
+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
@@ -32919,343 +33271,343 @@ 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
-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
+AGYPf73QAQAAZg9/tcABAABJictIi4XYAgAAZg92wPMPfwDzD39AIPMPf0AwgfoAEAAAuQAQAAAPTMpm
+DygFnWMAAGYPEUAQg73QAgAAAHR3McBMjQ3WdRUAZg9XwGaQZkEPKQTBZkEPKUTBEGZBDylEwSBmQQ8p
+RMEwZkEPKUTBQGZBDylEwVBmQQ8pRMFgZkEPKUTBcEiDwBBIPQAQAAB1vccFg/UVAAAAAADHBX31FQAA
+AAAASLgAAAAAAADwv0iJBSh4AAAxwIP6KA+MOQQAAEGD+BQPjC8EAABmD1fSZg8u0w+DIQQAAEUPV//y
+RA8q+fIPEAX0YgAA8kEPWcdmDy7CcxTyDxAV6WIAAPIPXNDyDyzC99jrDPIPWAXVYgAA8g8swImNvAEA
+APIPEAXLYgAA8kEPWcdmD1fSZg8uwnMU8g8QFaxiAADyD1zQ8g8syvfZ6wzyD1gFmGIAAPIPLMjyDxAF
+nGIAAPIPWcNmD1fSZg8uwnMW8g8QFXZiAADyD1zQ8kQPLMpB99nrDfIPWAVgYgAA8kQPLMhEiY1oAQAA
+QYH4ABAAAEG6ABAAAESJhaQBAABFD0LQQYnASGPwSGP5iZV0AQAAQYnRSYn2SffWSQH+TIm1qAEAAEnR
+7kmDxgFEifCD4Ae6CAAAAEgPRdBJKdZKjQR2SImFgAEAAEiJtbABAABNjSSzSYPEIEyJjbgAAABKjRyN
+AAAAAEUx7Q8oJeZhAABmD28F7mEAAGYPby32YQAASI0177YdAEyJnYgBAABIiZ14AQAARImFmAEAAOsf
+Dx+EAAAAAABCiQSuSYPFAUkB3EkB20051Q+EfwEAALgAAAAAQTnIfd9FMf9Ii5WwAQAASIO9qAEAABAP
 gvEAAABmD+//McBmD+/2Zg9X0mYPH4QAAAAAAEUPEETE4EUPEEzE8EUPxsGIRQ8QDMRFDxBUxBBFD8bK
 iEUPKNBED1TURQ8o2UQPVNxFDyjgZkEPctQIRQ8o6WZBD3LVCGZED9vkZkUP/uJmRA/b7GZFD/7rZkEP
 ctAQZkEPctEQZkQP28RmRQ/+xGZED9vMZkUP/s1mRA9mwGZBD/rwZkQPZshmQQ/60WYP/v1Ig8AISTnG
 D4Vi////ZkQPcMfuZkQP/sdmQQ9w+FVmQQ/++GZBD37/Zg/+1mYPcPLuZg/+8mYPcNZVZg/+1mYPftBI
-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
+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
-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
+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
 )
 nd16 =
 (Join
-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
+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
 )
 nd17 =
 (Join
-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
+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
 )
 nd18 =
 (Join
-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
+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
 )
 nd19 =
 (Join
-dCRIicL/FXUmAABIiQU2LxIAiR24ch0ARIk1tXIdAL4BAAAA60pIhcB0EEiJwf8VNCYAAEiLDQUvEgBI
-hcl0Bv8VGiYAAEjHBe8uEgAAAAAASMcF9C4SAAAAAADHBW5yHQAAAAAAxwVgch0AAAAAAInwSIPEYFtf
-XkFeXcMPHwBVQVdBVkFVQVRWV1NIgey4AAAASI2sJIAAAABEic5FicZBiddIictEi6WgAAAATI1pKEiL
-UShIhdJ0HDlzMHwGRDljNH14SIsCSInR/1AQScdFAAAAAABIjVX4uSwAAAAxwEiJ1/Oqi0MwOcYPT8aJ
-RfiLQzRBOcRBD0/EiUX8Zg9vBfkeAADzD39FAMdFFAMAAADHRRwAAAIASItLCEiLAUUxwE2J6f9QKIXA
-D4ijAgAASItF+EiJQzBIi1MoRCt7OESJffhEK3M8RIl1/MdFAAAAAABBAfdEiX0ERQHmRIl1CMdFDAEA
-AABIi0sQSItDIEyLEUyNRfhMiUQkQEiJRCQwx0QkOAAAAADHRCQoAAAAAMdEJCAAAAAARTH2RTHARTHJ
-Qf+ScAEAAEiLSxBIi1MoSIsBTI1FyEyJRCQox0QkIAAAAABFMcBBuQEAAAD/UHCFwA+IBQIAAEiJXShF
-heQPjtABAABMi72wAAAATIu1qAAAAEiLfchEi0XQSItFKEyNSFhEieFBifNIiU3YSIPB/0yJ+kgPr9FM
-AfJKjRSaSQ+vyEgB+UqNDJlMjVBcSTnOD5LBSDnXD5LDIMtNOdYPksFJOdEPksIgyk2F/w+YwAjQCNiI
-RTdEidgl+P//f0iJRehJjUP/SIlF4EGJ9EHB7ANBgeT///8PScHkBU2NbhBIjU8QZg9vBYAdAABJjVYE
-RTH/Qb7///8ASIl98OsuZi4PH4QAAAAAAA8fAEmDxwFIi4WwAAAASQHFTAHBSAHCTAHHTDt92A+E5wAA
-AIX2ftuD/ghBD5LCRApVN0H2wgF0CkUx0utZDx9EAABmQQ9uCWYPcMkARTHSDx8A80IPb1QR8PNCD28c
-EWYP29BmD9vYZg/r0WYP69nzQw9/VBXw80MPf1wVAEmDwiBNOdR1zEiLRehJicJEOdgPhGz///9MidNB
-9sMBdDJMiftJD6/YSANd8EiLhbAAAABJD6/HQosck0Qh80ELGUgDhagAAABCiRyQTInTSIPLAUw7VeAP
-hCf///8PH4AAAAAAiwSfRCHwQQsBiUSa/ItEnwREIfBBCwGJBJpIg8MCSTnbdd3p+P7//0iLRShIi0gQ
-SItQKEiLAUUxwP9QeEG+AQAAAOsLScdFAAAAAABFMfZEifBIgcS4AAAAW19eQVxBXUFeQV9dw2YPH4QA
-AAAAAFVBVlZXU0iD7FBIjWwkUEg7ShAPhPcAAABIic9Iidb/FbMiAAC7AQAAAIXAD4TgAAAASIn5/xWV
-IgAAhcAPhc8AAACDPWYuAAAAdCfHReQAAAAASI1V5EiJ+f8VYCIAAESLdeT/FZ4iAABBOcYPhJ8AAABI
-ifm67P////8VLyIAAKkAAAgAD4SGAAAASI1V5EiJ+f8VHyIAAIXAdHVIjU3USI1V5EmJ8P8VGiIAAIXA
-dGDGRf//x0X0AAAAAMdF+AAAAABMjUX/TI1N9EiJ+THS/xXRIQAAhcB0DPZF9AJ0BoB9/wB0K0yNRfhI
-ifm6DgAAAEG5BAAAAP8V+SEAAIXAeAaDffgAdQnHRhgBAAAAMduJ2EiDxFBbX15BXl3DzP8lAiEAAMzM
-zMzMzMzMzMz/JQIhAADMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
-zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
-zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
+uSwAAAAxwPOqx0XUKAAAAIld2ESJ8PfYiUXcx0XgAQAgADHJ/xUmJgAASIkFDy8SAEiFwA+EjAAAAMdE
+JCgAAAAASMdEJCAAAAAATI0NdnIdAEiNVdRIicFFMcD/FfYlAABIiQXnLhIASIsN0C4SAEiFyQ+VwkiF
+wEEPlcBEhMJ0JEiJwv8V9SUAAEiJBbYuEgCJHThyHQBEiTU1ch0AvgEAAADrSkiFwHQQSInB/xW0JQAA
+SIsNhS4SAEiFyXQG/xWaJQAASMcFby4SAAAAAABIxwV0LhIAAAAAAMcF7nEdAAAAAADHBeBxHQAAAAAA
+ifBIg8RgW19eQV5dww8fAFVBV0FWQVVBVFZXU0iB7LgAAABIjawkgAAAAESJzkWJxkGJ10iJy0SLpaAA
+AABMjWkoSItRKEiF0nQcOXMwfAZEOWM0fXhIiwJIidH/UBBJx0UAAAAAAEiNVfi5LAAAADHASInX86qL
+QzA5xg9PxolF+ItDNEE5xEEPT8SJRfxmD28FeR4AAPMPf0UAx0UUAwAAAMdFHAAAAgBIi0sISIsBRTHA
+TYnp/1AohcAPiKMCAABIi0X4SIlDMEiLUyhEK3s4RIl9+EQrczxEiXX8x0UAAAAAAEEB90SJfQRFAeZE
+iXUIx0UMAQAAAEiLSxBIi0MgTIsRTI1F+EyJRCRASIlEJDDHRCQ4AAAAAMdEJCgAAAAAx0QkIAAAAABF
+MfZFMcBFMclB/5JwAQAASItLEEiLUyhIiwFMjUXITIlEJCjHRCQgAAAAAEUxwEG5AQAAAP9QcIXAD4gF
+AgAASIldKEWF5A+O0AEAAEyLvbAAAABMi7WoAAAASIt9yESLRdBIi0UoTI1IWESJ4UGJ80iJTdhIg8H/
+TIn6SA+v0UwB8kqNFJpJD6/ISAH5So0MmUyNUFxJOc4PksFIOdcPksMgy0051g+SwUk50Q+SwiDKTYX/
+D5jACNAI2IhFN0SJ2CX4//9/SIlF6EmNQ/9IiUXgQYn0QcHsA0GB5P///w9JweQFTY1uEEiNTxBmD28F
+AB0AAEmNVgRFMf9Bvv///wBIiX3w6y5mLg8fhAAAAAAADx8ASYPHAUiLhbAAAABJAcVMAcFIAcJMAcdM
+O33YD4TnAAAAhfZ+24P+CEEPksJEClU3QfbCAXQKRTHS61kPH0QAAGZBD24JZg9wyQBFMdIPHwDzQg9v
+VBHw80IPbxwRZg/b0GYP29hmD+vRZg/r2fNDD39UFfDzQw9/XBUASYPCIE051HXMSItF6EmJwkQ52A+E
+bP///0yJ00H2wwF0MkyJ+0kPr9hIA13wSIuFsAAAAEkPr8dCixyTRCHzQQsZSAOFqAAAAEKJHJBMidNI
+g8sBTDtV4A+EJ////w8fgAAAAACLBJ9EIfBBCwGJRJr8i0SfBEQh8EELAYkEmkiDwwJJOdt13en4/v//
+SItFKEiLSBBIi1AoSIsBRTHA/1B4Qb4BAAAA6wtJx0UAAAAAAEUx9kSJ8EiBxLgAAABbX15BXEFdQV5B
+X13DZg8fhAAAAAAAVUFWVldTSIPsUEiNbCRQSDtKEA+E9wAAAEiJz0iJ1v8VMyIAALsBAAAAhcAPhOAA
+AABIifn/FRUiAACFwA+FzwAAAIM95i0AAAB0J8dF5AAAAABIjVXkSIn5/xXgIQAARIt15P8VHiIAAEE5
+xg+EnwAAAEiJ+brs/////xWvIQAAqQAACAAPhIYAAABIjVXkSIn5/xWfIQAAhcB0dUiNTdRIjVXkSYnw
+/xWaIQAAhcB0YMZF///HRfQAAAAAx0X4AAAAAEyNRf9MjU30SIn5MdL/FVEhAACFwHQM9kX0AnQGgH3/
+AHQrTI1F+EiJ+boOAAAAQbkEAAAA/xV5IQAAhcB4BoN9+AB1CcdGGAEAAAAx24nYSIPEUFtfXkFeXcPM
+/yWCIAAAzMzMzMzMzMzMzP8lgiAAAMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
 zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
 zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM
 zMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMz/AAAA/wAAAP8AAAD/AAAA
@@ -33326,7 +33678,7 @@ mpmZmZmZ2T8zMzMzMzPTPzMzMzMzM9M/eK4Kd2/yuk2oKSU8g9Gzh/KqFW8I0olOmrRIlTXTT5yo3s0A
 m5ODS6NApoUiZmbM//////////8AAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAAAAAAACwfgEA
 AQAAACcAAAAnAAAAxn4BAGJ/AQD+fwEAVmVsdHJpeE5hdGl2ZV9uZXcuZGxsAEBaAAAgEAAAgE8AAHAV
 AABgFwAAgE0AADD4AABQIAAAwBgAAEBLAAAQIwAAUNoAAOBvAAAAEAAAwHQAAJB7AADg0gAA8NYAAKDf
-AADQlAAAsJgAAECPAAAgngAA0KQAAMAFAQDQFgEAYE0BAFBkAACgZgAAoGoAAFA6AADgGwAAkLEAAHDA
+AADQlAAAsJgAAECPAAAgngAA0KQAAMAFAQDQFgEA4E0BAFBkAACgZgAAoGoAAFA6AADgGwAAkLEAAHDA
 AACguwAA4K0AAHAgAADgQwAAkKsAAEyAAQBXgAEAXoABAGqAAQB1gAEAf4ABAIyAAQCUgAEAnoABAKqA
 AQC3gAEAwoABAM+AAQDagAEA6IABAPOAAQD/gAEADYEBAByBAQApgQEANYEBAECBAQBMgQEAV4EBAGaB
 AQBtgQEAdYEBAICBAQCLgQEAlYEBAKCBAQCrgQEAtYEBAL+BAQDKgQEA1YEBAOGBAQDqgQEA9YEBAAAA
@@ -33418,8 +33770,8 @@ kHsAADiPAAAAigEAQI8AAMmUAAA8igEA0JQAAKGYAABUigEAsJgAABSeAABsigEAIJ4AAMqkAACIigEA
 0KQAAISrAACgigEAkKsAANitAAC4igEA4K0AAIexAADsigEAkLEAAJi7AAAoiwEAoLsAAGnAAABAiwEA
 cMAAAN3SAABYiwEA4NIAAPDWAACciwEA8NYAAEjaAADIiwEAUNoAAJTfAADgiwEAoN8AANr2AAAkjAEA
 4PYAADz3AABojAEAQPcAAC34AAB0jAEAMPgAAAQEAQCEjAEAEAQBALoFAQDEjAEAwAUBAMcWAQDgjAEA
-0BYBAF1NAQAgjQEAYE0BANNTAQBkjQEA4FMBAI1WAQCYjQEAkFYBAKZZAQC0jQEAsFkBAEVcAQDUjQEA
-UFwBAP1dAQDojQEAAF4BAHdhAQD8jQEAgGEBAJ9iAQAYjgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+0BYBANVNAQAgjQEA4E0BAFNUAQBkjQEAYFQBAA1XAQCYjQEAEFcBACZaAQC0jQEAMFoBAMVcAQDUjQEA
+0FwBAH1eAQDojQEAgF4BAPdhAQD8jQEAAGIBAB9jAQAYjgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -33475,13 +33827,15 @@ return
 VxDebugTick() {
 	global DbgOn, DbgFps, DbgBar, MacroRunning, RobloxHwnd, VxScanN
 	global VxDbgFish, VxDbgFishT, VxDbgBarC, VxDbgBarW, VxDbgBarT, VxNatStats, NativeCapture
-	global VxDbgFish2, VxDbgFish2T, VxDbgBar2C, VxDbgBar2W, VxDbgBar2T
+	global VxDbgFish2, VxDbgFish2T, VxDbgBar2C, VxDbgBar2W, VxDbgBar2T, VxDbgBall, VxDbgBallT, VxDbgBallTxt
+	global SpecialRod, OppDbgPathT
 	static fpsT := 0, fpsN := 0, fps := 0, natN := 0, bltN := 0, fast := ""
 	OppDump()
 	if (!DbgOn or !MacroRunning or !RobloxHwnd or !WinExist("ahk_id " . RobloxHwnd))
 		{
 		VxDbgFpsShow("")
 		VxDbgBarsShow(-1, -1, -1)
+		VxDbgPathShow(false)
 		fpsT := 0, fps := 0
 		return
 		}
@@ -33524,7 +33878,9 @@ VxDebugTick() {
 		bl2 := VxDbgBar2C - VxDbgBar2W / 2, br2 := VxDbgBar2C + VxDbgBar2W / 2
 	if (VxDbgFish2T and now - VxDbgFish2T < 250)
 		fx2 := VxDbgFish2
-	VxDbgBarsShow(bl, br, fx, cx, cy, bl2, br2, fx2)
+	bx := (VxDbgBallT and now - VxDbgBallT < 250) ? VxDbgBall : -1
+	VxDbgPathShow(SpecialRod = "Oppressor" and OppDbgPathT and now - OppDbgPathT < 1500, cx, cy)
+	VxDbgBarsShow(bl, br, fx, cx, cy, bl2, br2, fx2, bx, VxDbgBallTxt)
 }
 
 ; Debug + Oppressor: the strip the macro reads, saved to Veltrix\caps every 1.5 s (at most 60 a session), with what the
@@ -33599,13 +33955,13 @@ VxDbgFpsShow(t, x := 0, y := 0) {
 
 ; the LEFT / RIGHT / LINE markers (client x positions, -1 = not there), for one bar or two (bl2 br2 fx2: Bellona's
 ; second bar); all -1 hides them
-VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0, bl2 := -1, br2 := -1, fx2 := -1) {
+VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0, bl2 := -1, br2 := -1, fx2 := -1, bx := -1, btxt := "") {
 	global VxDbgBW, FishBarTop, TrackLeft, TrackRight
 	static dc := 0, hbm := 0, obm := 0, bits := 0, g := 0, bmp := 0, sw := 0, sh := 0, shown := false, lastKey := ""
 	static fam := 0, font := 0, fmt := 0
 	VxDbgMidShow((bl >= 0 and br >= 0) ? (bl + br) / 2 : -1, cx, cy, 1)
 	VxDbgMidShow((bl2 >= 0 and br2 >= 0) ? (bl2 + br2) / 2 : -1, cx, cy, 2)
-	if (bl < 0 and br < 0 and fx < 0 and bl2 < 0 and br2 < 0 and fx2 < 0)
+	if (bl < 0 and br < 0 and fx < 0 and bl2 < 0 and br2 < 0 and fx2 < 0 and bx < 0)
 		{
 		if (shown)
 			Gui, VxDbgB:Hide
@@ -33626,6 +33982,7 @@ VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0, bl2 := -1, br2 := -1, fx2 := -1) {
 	; the band ends right where the macro's strip starts (18 px above the bar)
 	oy := cy + Round(FishBarTop) - 18 - H
 	key := Round(bl) . "|" . Round(br) . "|" . Round(fx) . "|" . Round(bl2) . "|" . Round(br2) . "|" . Round(fx2) . "|" . ox . "|" . oy . "|" . W
+		. "|" . Round(bx) . "|" . btxt
 	if (shown and key == lastKey)
 		return
 	lastKey := key
@@ -33661,7 +34018,7 @@ VxDbgBarsShow(bl, br, fx, cx := 0, cy := 0, bl2 := -1, br2 := -1, fx2 := -1) {
 		}
 	DllCall("gdiplus\GdipGraphicsClear", "Ptr", g, "UInt", 0x00000000)
 	for i, mk in [[bl, "LEFT", 0xFF5AA9FF], [br, "RIGHT", 0xFF5AA9FF], [fx, "LINE", 0xFFFFFFFF]
-		, [bl2, "LEFT", 0xFF5AA9FF], [br2, "RIGHT", 0xFF5AA9FF], [fx2, "LINE", 0xFFFFFFFF]]
+		, [bl2, "LEFT", 0xFF5AA9FF], [br2, "RIGHT", 0xFF5AA9FF], [fx2, "LINE", 0xFFFFFFFF], [bx, btxt, 0xFFFFA040]]
 		{
 		if (mk[1] < 0)
 			continue
