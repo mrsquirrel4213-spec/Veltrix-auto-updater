@@ -1,6 +1,10 @@
 ﻿#SingleInstance, Force
 #MaxThreadsPerHotkey 2
 
+; per-monitor DPI aware (V2): window sizes, screen reads and clicks in real pixels on any monitor, also after the
+; Windows scaling was changed without signing out (fails quietly before Windows 10 1703)
+DllCall("SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")
+
 ; Screen grab method; switched to the native DLL grab by VxNativeInit when it loads
 global VxBlt := "BitBlt"
 
@@ -17,7 +21,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 104
+VxBuild := 105
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -9727,771 +9731,1189 @@ TotemListsRefresh() {
     }
 }
 TotemReadState() {
-    global TotemTime, TotemWeather, TotemEvents, TotemEvtSigs, TotemDbg
-    kOk := TotemReadStateAt(0)
-    if (kOk && TotemTime != "")
-        return true
-    if !kOk
-        return false
-    ; time of day missing: retry with fixed thresholds, keeping everything else from the first read
-    kWeather := TotemWeather, kEvents := TotemEvents, kSigs := TotemEvtSigs, kDbg := TotemDbg
-    kTime := ""
-    for _, thr in [215, 190] {
-        if TotemReadStateAt(thr) {
-            kOk := true
-            if (TotemTime != "") {
-                kTime := TotemTime
-                break
-            }
-        }
-    }
-    TotemTime := kTime, TotemWeather := kWeather, TotemEvents := kEvents
-    TotemEvtSigs := kSigs, TotemDbg := kDbg
-    return kOk
+	global TotemTime, TotemWeather, TotemEvents, TotemDbg, TotemEvtSigs
+	kOk := TotemReadStateAt(0)
+	if (kOk and TotemTime != "")
+		return true
+	if (!kOk)
+		return false
+	kWeather := TotemWeather
+	kEvents := TotemEvents
+	kSigs := TotemEvtSigs
+	kDbg := TotemDbg
+	kTime := ""
+	for kI, kThr in [215, 190]
+		{
+		if (TotemReadStateAt(kThr))
+			{
+			kOk := true
+			if (TotemTime != "")
+				{
+				kTime := TotemTime
+				break
+				}
+			}
+		}
+	TotemTime := kTime
+	TotemWeather := kWeather
+	TotemEvents := kEvents
+	TotemEvtSigs := kSigs
+	TotemDbg := kDbg
+	return kOk
 }
 TotemReadStateAt(thrOverride := 0) {
-    global pTotemBits, TotemW, TotemH, TotemTime, TotemWeather, TotemEvents, TotemEvtSigs, TotemDbg
-    TotemTime := "", TotemWeather := "", TotemEvents := "", TotemEvtSigs := "", TotemDbg := ""
-    if (!pTotemBits || TotemW < 24 || TotemH < 12)
-        return false
-    TotemSoftInit()
-    TotemEvtInit()
-    W := TotemW, H := TotemH
-
-    ; histograms: max channel (whole strip) and intensity per block
-    tbBw := Max(4, Round(0.5 * H))
-    tbN := Ceil(W / tbBw)
-    hmx := {}, hb := {}, hAll := {}
-    y := 0
-    while (y < H) {
-        x := 0
-        while (x < W) {
-            v := NumGet(pTotemBits + 0, (y * W + x) * 4, "UInt")
-            r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
-            pl := (r + g + b) // 3
-            hmx[Max(r, g, b)] += 1
-            hb[(x // tbBw) * 256 + pl] += 1
-            hAll[pl] += 1
-            x++
-        }
-        y++
-    }
-    tot := W * H
-    need50 := tot // 2
-    need97 := (tot * 97) // 100
-
-    p97 := 255, run := 0
-    Loop 256 {
-        run += hAll[A_Index - 1]
-        if (run >= need97) {
-            p97 := A_Index - 1
-            break
-        }
-    }
-    thrBase := Min(p97, 215)
-
-    ; per-block threshold from the median of a 5-block window
-    thrBlk := []
-    bi := 0
-    while (bi < tbN) {
-        if (thrOverride > 0) {
-            thrBlk[bi] := thrOverride
-        } else {
-            ba := Max(0, bi - 2), bb := Min(tbN - 1, bi + 2)
-            ltot := 0
-            j := ba
-            while (j <= bb) {
-                ltot += (j = tbN - 1 ? W - j * tbBw : tbBw) * H
-                j++
-            }
-            lneed := ltot // 2
-            p50l := 255, run := 0
-            Loop 256 {
-                L := A_Index - 1
-                j := ba
-                while (j <= bb) {
-                    run += hb[j * 256 + L]
-                    j++
-                }
-                if (run >= lneed) {
-                    p50l := L
-                    break
-                }
-            }
-            thr := Max(thrBase, p50l + 40)
-            thr := thr < 150 ? 150 : (thr > 250 ? 250 : thr)
-            thrBlk[bi] := thr
-        }
-        bi++
-    }
-
-    p50mx := 255, run := 0
-    Loop 256 {
-        run += hmx[A_Index - 1]
-        if (run >= need50) {
-            p50mx := A_Index - 1
-            break
-        }
-    }
-    colUp := p50mx + 40
-
-    ; mask of bright or strongly coloured pixels
-    tsGap := Max(2, Round(0.075 * H))
-    tsMinW := Max(6, Round(0.2 * H))
-    tsTrim := Max(2, Round(0.08 * H))
-    tsMask := {}, cnt := {}, ctop := {}, cbot := {}
-    y := 0
-    while (y < H) {
-        x := 0
-        while (x < W) {
-            v := NumGet(pTotemBits + 0, (y * W + x) * 4, "UInt")
-            r := (v >> 16) & 0xFF, g := (v >> 8) & 0xFF, b := v & 0xFF
-            pl := (r + g + b) // 3
-            qmx := Max(r, g, b), qmn := Min(r, g, b)
-            qs := qmx > 0 ? (100 * (qmx - qmn)) // qmx : 0
-            if (pl >= thrBlk[x // tbBw] || (qs >= 40 && qmx >= 160 && qmx >= colUp)) {
-                tsMask[y * W + x] := 1
-                cnt[x] += 1
-                ctop[x] := ctop.HasKey(x) ? Min(ctop[x], y) : y
-                cbot[x] := cbot.HasKey(x) ? Max(cbot[x], y) : y
-            }
-            x++
-        }
-        y++
-    }
-
-    ; runs of active columns, merged across small gaps
-    mS := [], mE := []
-    rs := -1
-    x := 0
-    while (x <= W) {
-        act := x < W && cnt[x] >= 2
-        if (act) {
-            if (rs < 0)
-                rs := x
-            re := x
-        } else if (rs >= 0) {
-            m := mS.Length()
-            if (m && rs - mE[m] - 1 <= tsGap)
-                mE[m] := re
-            else
-                mS.Push(rs), mE.Push(re)
-            rs := -1
-        }
-        x++
-    }
-
-    ; for each wide enough run find its strongest vertical band
-    tiles := []
-    for idx, a in mS {
-        b := mE[idx]
-        if (b - a + 1 < tsMinW)
-            continue
-        bS := -1, bE := -1, bN := 0
-        gS := -1, gE := -1, gN := 0
-        y := 0
-        while (y < H) {
-            rn := 0
-            x := a
-            while (x <= b) {
-                if tsMask.HasKey(y * W + x)
-                    rn++
-                x++
-            }
-            if (rn > 0) {
-                if (gS >= 0 && y - gE - 1 > tsTrim) {
-                    if (gN > bN)
-                        bN := gN, bS := gS, bE := gE
-                    gS := -1
-                }
-                if (gS < 0)
-                    gS := y, gN := 0
-                gE := y
-                gN += rn
-            }
-            y++
-        }
-        if (gS >= 0 && gN > bN)
-            bN := gN, bS := gS, bE := gE
-        if (bS >= 0 && bE - bS + 1 >= 0.35 * H)
-            tiles.Push({l: a, r: b, t: bS, b: bE})
-    }
-    nt := tiles.Length()
-    if (nt < 3)
-        return false
-
-    ; last three tiles: N (right), N-1 (time), N-2 (weather)
-    tN := tiles[nt], tT := tiles[nt - 1], tW := tiles[nt - 2]
-    hN := tN.b - tN.t + 1, hT := tT.b - tT.t + 1, hW := tW.b - tW.t + 1
-    arN := (tN.r - tN.l + 1) / hN
-    arT := (tT.r - tT.l + 1) / hT
-    arW := (tW.r - tW.l + 1) / hW
-    hx := Max(hN, hT, hW), hn := Min(hN, hT, hW)
-    if (arN < 0.75 || arN > 1.45 || arT < 0.5 || arT > 1.15 || arW < 0.8 || arW > 1.9 || hx > 2 * hn)
-        return false
-
-    timeList := ",Day,Night,", wxList := ",Clear,Foggy,Windy,Rain,Stormy,"
-    if TotemSoftDesc(tT.l, tT.r, tT.t, tT.b, g, ar) {
-        tsNm := TotemSoftBest(g, ar, timeList, tsD, tsNx)
-        TotemSoftBest(g, ar, wxList, tsWD, tsJunk)
-        TotemDbg .= tsNm "(" tsD "/" tsNx ") "
-        if (tsWD <= tsD)
-            return false
-        if (tsD <= 4000 && tsNx - tsD >= 300)
-            TotemTime := tsNm
-    }
-
-    TotemWeather := "Unknown"
-    if TotemSoftDesc(tW.l, tW.r, tW.t, tW.b, g, ar) {
-        tsNm := TotemSoftBest(g, ar, wxList, tsD, tsNx)
-        TotemSoftBest(g, ar, timeList, tsWD, tsJunk)
-        TotemDbg .= tsNm "(" tsD "/" tsNx ") "
-        if (tsD < tsWD && tsD <= 2800 && tsNx - tsD >= 300)
-            TotemWeather := tsNm
-    }
-
-    ; event slots, stepping left from the weather icon one pitch at a time
-    P := (tN.l + tN.r) - (tW.l + tW.r)
-    if (100 * P >= 240 * H && 100 * P <= 380 * H) {
-        ih := hT
-        ym := Max(1, Round(0.1 * H))
-        half := P // 8
-        ya := Max(0, Min(tT.t, tW.t) - ym)
-        yb := Min(H - 1, Max(tT.b, tW.b) + ym)
-        k := 0
-        Loop {
-            k++
-            q := (tW.l + tW.r) * 2 - k * P
-            cx := (q + 2) // 4
-            x0 := cx - half, x1 := cx + half
-            if (x0 < 0)
-                break
-            sl := TotemSlotRead(x0, x1, ya, yb, ih, tsGap, 60)
-            if (sl.st != "icon") {
-                TotemDbg .= "slot" k ":" sl.st
-                break
-            }
-            eNm := TotemEvtBest(sl.g, sl.ar, sl.hue, sl.sat, eD, eNx)
-            TotemDbg .= eNm "(" Round(eD) "/" Round(eNx) ") "
-            sg := ""
-            Loop 144 {
-                gv := sl.g[A_Index - 1]
-                if (gv > 999)
-                    gv := 999
-                sg .= SubStr("00" gv, -2)
-            }
-            TotemEvtSigs .= sl.hue "/" sl.sat "/" sl.ar "/" sg ","
-            if (eD <= 2800 && eNx - eD >= 500)
-                TotemEvents .= eNm ","
-            else
-                TotemEvents .= "?,"
-        }
-    }
-    return true
+	global pTotemBits, TotemW, TotemH
+	global TotemTime, TotemWeather, TotemEvents, TotemDbg, TotemEvtSigs
+	TotemTime := ""
+	TotemWeather := ""
+	TotemEvents := ""
+	TotemEvtSigs := ""
+	TotemDbg := ""
+	if (!pTotemBits or TotemW < 24 or TotemH < 12)
+		return false
+	TotemSoftInit()
+	TotemEvtInit()
+	hmx := []
+	hi := 0
+	while (hi < 256)
+		{
+		hmx[hi] := 0
+		hi++
+		}
+	tbBw := Round(TotemH * 0.5)
+	if (tbBw < 4)
+		tbBw := 4
+	tbN := (TotemW + tbBw - 1) // tbBw
+	hb := []
+	hi := 0
+	while (hi < tbN * 256)
+		{
+		hb[hi] := 0
+		hi++
+		}
+	tot := TotemW * TotemH
+	ty := 0
+	while (ty < TotemH)
+		{
+		roff := ty * TotemW * 4
+		boff := 0
+		nxt := tbBw
+		tx := 0
+		while (tx < TotemW)
+			{
+			if (tx >= nxt)
+				{
+				boff := boff + 256
+				nxt := nxt + tbBw
+				}
+			pv := NumGet(pTotemBits + 0, roff + (tx*4), "UInt")
+			qb := pv & 0xFF
+			qg := (pv >> 8) & 0xFF
+			qr := (pv >> 16) & 0xFF
+			pl := (qr + qg + qb) // 3
+			hb[boff + pl] := hb[boff + pl] + 1
+			qmx := (qr > qg) ? qr : qg
+			if (qb > qmx)
+				qmx := qb
+			hmx[qmx] := hmx[qmx] + 1
+			tx++
+			}
+		ty++
+		}
+	need50 := tot // 2
+	need97 := (tot * 97) // 100
+	acc := 0
+	p97 := -1
+	hi := 0
+	while (hi < 256)
+		{
+		bi := 0
+		while (bi < tbN)
+			{
+			acc := acc + hb[bi * 256 + hi]
+			bi++
+			}
+		if (acc >= need97)
+			{
+			p97 := hi
+			break
+			}
+		hi++
+		}
+	if (p97 < 0)
+		p97 := 255
+	thrBase := p97
+	if (thrBase > 215)
+		thrBase := 215
+	thrBlk := []
+	bi := 0
+	while (bi < tbN)
+		{
+		if (thrOverride > 0)
+			{
+			thrBlk[bi] := thrOverride
+			bi++
+			continue
+			}
+		ba := (bi < 2) ? 0 : bi - 2
+		bb := (bi + 2 > tbN - 1) ? tbN - 1 : bi + 2
+		ltot := 0
+		bj := ba
+		while (bj <= bb)
+			{
+			ltot := ltot + ((bj < tbN - 1) ? tbBw : (TotemW - bj * tbBw)) * TotemH
+			bj++
+			}
+		lneed := ltot // 2
+		lacc := 0
+		p50l := 255
+		hi := 0
+		while (hi < 256)
+			{
+			bj := ba
+			while (bj <= bb)
+				{
+				lacc := lacc + hb[bj * 256 + hi]
+				bj++
+				}
+			if (lacc >= lneed)
+				{
+				p50l := hi
+				break
+				}
+			hi++
+			}
+		thr := thrBase
+		if (thr < p50l + 40)
+			thr := p50l + 40
+		if (thr < 150)
+			thr := 150
+		if (thr > 250)
+			thr := 250
+		thrBlk[bi] := thr
+		bi++
+		}
+	acc := 0
+	p50mx := 255
+	hi := 0
+	while (hi < 256)
+		{
+		acc := acc + hmx[hi]
+		if (acc >= need50)
+			{
+			p50mx := hi
+			break
+			}
+		hi++
+		}
+	colUp := p50mx + 40
+	VarSetCapacity(tsMask, tot, 0)
+	tsGap := Round(TotemH * 0.075)
+	if (tsGap < 2)
+		tsGap := 2
+	tsMinW := Round(TotemH * 0.2)
+	if (tsMinW < 6)
+		tsMinW := 6
+	tsTrim := Round(TotemH * 0.08)
+	if (tsTrim < 2)
+		tsTrim := 2
+	cnt := []
+	ctop := []
+	cbot := []
+	tx := 0
+	while (tx < TotemW)
+		{
+		cnt[tx] := 0
+		ctop[tx] := 9999
+		cbot[tx] := -1
+		tx++
+		}
+	ty := 0
+	while (ty < TotemH)
+		{
+		roff := ty * TotemW * 4
+		bi := 0
+		thr := thrBlk[0]
+		nxt := tbBw
+		tx := 0
+		while (tx < TotemW)
+			{
+			if (tx >= nxt)
+				{
+				bi := bi + 1
+				thr := thrBlk[bi]
+				nxt := nxt + tbBw
+				}
+			pv := NumGet(pTotemBits + 0, roff + (tx*4), "UInt")
+			qb := pv & 0xFF
+			qg := (pv >> 8) & 0xFF
+			qr := (pv >> 16) & 0xFF
+			pl := (qr + qg + qb) // 3
+			qmx := (qr > qg) ? qr : qg
+			if (qb > qmx)
+				qmx := qb
+			qmn := (qr < qg) ? qr : qg
+			if (qb < qmn)
+				qmn := qb
+			qs := (qmx > 0) ? ((qmx - qmn) * 100) // qmx : 0
+			if (pl >= thr or (qs >= 40 and qmx >= 160 and qmx >= colUp))
+				{
+				NumPut(1, tsMask, ty * TotemW + tx, "UChar")
+				cnt[tx] := cnt[tx] + 1
+				if (ty < ctop[tx])
+					ctop[tx] := ty
+				if (ty > cbot[tx])
+					cbot[tx] := ty
+				}
+			tx++
+			}
+		ty++
+		}
+	rs := []
+	re := []
+	nr := 0
+	st := -1
+	tx := 0
+	while (tx < TotemW)
+		{
+		if (cnt[tx] >= 2)
+			{
+			if (st < 0)
+				st := tx
+			}
+		else if (st >= 0)
+			{
+			nr++
+			rs[nr] := st
+			re[nr] := tx - 1
+			st := -1
+			}
+		tx++
+		}
+	if (st >= 0)
+		{
+		nr++
+		rs[nr] := st
+		re[nr] := TotemW - 1
+		}
+	ms := []
+	me := []
+	nm := 0
+	ri := 1
+	while (ri <= nr)
+		{
+		if (nm > 0 and (rs[ri] - me[nm] - 1) <= tsGap)
+			me[nm] := re[ri]
+		else
+			{
+			nm++
+			ms[nm] := rs[ri]
+			me[nm] := re[ri]
+			}
+		ri++
+		}
+	keepS := []
+	keepE := []
+	nk := 0
+	mi := 1
+	while (mi <= nm)
+		{
+		if ((me[mi] - ms[mi] + 1) >= tsMinW)
+			{
+			nk++
+			keepS[nk] := ms[mi]
+			keepE[nk] := me[mi]
+			}
+		mi++
+		}
+	tsA := []
+	tsB := []
+	tsY0 := []
+	tsY1 := []
+	tsN := 0
+	ki := 1
+	while (ki <= nk)
+		{
+		a := keepS[ki]
+		b := keepE[ki]
+		gS := -1
+		gE := -1
+		gN := 0
+		bS := -1
+		bE := -1
+		bN := -1
+		ty := 0
+		while (ty < TotemH)
+			{
+			rn := 0
+			roff := ty * TotemW
+			tx := a
+			while (tx <= b)
+				{
+				rn := rn + NumGet(tsMask, roff + tx, "UChar")
+				tx++
+				}
+			if (rn > 0)
+				{
+				if (gS >= 0 and ty - gE - 1 > tsTrim)
+					{
+					if (gN > bN)
+						{
+						bS := gS
+						bE := gE
+						bN := gN
+						}
+					gS := -1
+					}
+				if (gS < 0)
+					{
+					gS := ty
+					gN := 0
+					}
+				gE := ty
+				gN := gN + rn
+				}
+			ty++
+			}
+		if (gS >= 0 and gN > bN)
+			{
+			bS := gS
+			bE := gE
+			bN := gN
+			}
+		if (bS >= 0 and (bE - bS + 1) >= TotemH * 0.35)
+			{
+			tsN++
+			tsA[tsN] := a
+			tsB[tsN] := b
+			tsY0[tsN] := bS
+			tsY1[tsN] := bE
+			}
+		ki++
+		}
+	if (tsN < 3)
+		return false
+	tsHS := tsY1[tsN] - tsY0[tsN] + 1
+	tsHT := tsY1[tsN - 1] - tsY0[tsN - 1] + 1
+	tsHW := tsY1[tsN - 2] - tsY0[tsN - 2] + 1
+	tsArS := (tsB[tsN] - tsA[tsN] + 1) / tsHS
+	tsArT := (tsB[tsN - 1] - tsA[tsN - 1] + 1) / tsHT
+	tsArW := (tsB[tsN - 2] - tsA[tsN - 2] + 1) / tsHW
+	tsHx := (tsHS > tsHT) ? tsHS : tsHT
+	if (tsHW > tsHx)
+		tsHx := tsHW
+	tsHn := (tsHS < tsHT) ? tsHS : tsHT
+	if (tsHW < tsHn)
+		tsHn := tsHW
+	if (tsArS < 0.75 or tsArS > 1.45 or tsArT < 0.5 or tsArT > 1.15 or tsArW < 0.8 or tsArW > 1.9 or tsHx > 2 * tsHn)
+		return false
+	if (TotemSoftDesc(tsA[tsN - 1], tsB[tsN - 1], tsY0[tsN - 1], tsY1[tsN - 1], tsG, tsAr))
+		{
+		tsNm := TotemSoftBest(tsG, tsAr, ",Day,Night,", tsD, tsNx)
+		TotemSoftBest(tsG, tsAr, ",Clear,Foggy,Windy,Rain,Stormy,", tsWD, tsWN)
+		TotemDbg .= tsNm . "(" . tsD . "/" . tsNx . ") "
+		if (tsWD <= tsD)
+			return false
+		if (tsD <= 4000 and tsNx - tsD >= 300)
+			TotemTime := tsNm
+		}
+	TotemWeather := "Unknown"
+	if (TotemSoftDesc(tsA[tsN - 2], tsB[tsN - 2], tsY0[tsN - 2], tsY1[tsN - 2], tsG, tsAr))
+		{
+		tsNm := TotemSoftBest(tsG, tsAr, ",Clear,Foggy,Windy,Rain,Stormy,", tsD, tsNx)
+		TotemSoftBest(tsG, tsAr, ",Day,Night,", tsWD, tsWN)
+		TotemDbg .= tsNm . "(" . tsD . "/" . tsNx . ") "
+		if (tsD < tsWD and tsD <= 2800 and tsNx - tsD >= 300)
+			TotemWeather := tsNm
+		}
+	p4 := (tsA[tsN] + tsB[tsN]) - (tsA[tsN - 2] + tsB[tsN - 2])
+	ih := tsY1[tsN - 1] - tsY0[tsN - 1] + 1
+	ym := Round(TotemH * 0.1)
+	if (ym < 1)
+		ym := 1
+	if (240 * TotemH <= 100 * p4 and 100 * p4 <= 380 * TotemH)
+		{
+		half := p4 // 8
+		ya := (tsY0[tsN - 1] < tsY0[tsN - 2]) ? tsY0[tsN - 1] : tsY0[tsN - 2]
+		ya := ya - ym
+		if (ya < 0)
+			ya := 0
+		yb := (tsY1[tsN - 1] > tsY1[tsN - 2]) ? tsY1[tsN - 1] : tsY1[tsN - 2]
+		yb := yb + ym
+		if (yb > TotemH - 1)
+			yb := TotemH - 1
+		k := 1
+		Loop
+			{
+			q := (tsA[tsN - 2] + tsB[tsN - 2]) * 2 - k * p4
+			cx := (q + 2) // 4
+			x0 := cx - half
+			x1 := cx + half
+			if (x0 < 0)
+				break
+			sl := TotemSlotRead(x0, x1, ya, yb, ih, tsGap, 60)
+			if (sl.st != "icon")
+				{
+				TotemDbg .= "slot" . k . ":" . sl.st . " "
+				break
+				}
+			eNm := TotemEvtBest(sl.g, sl.ar, sl.hue, sl.sat, eD, eNx)
+			TotemDbg .= eNm . "(" . Round(eD) . "/" . Round(eNx) . ") "
+			sg := ""
+			gi := 0
+			while (gi < 144)
+				{
+				gv := sl.g[gi]
+				if (gv > 999)
+					gv := 999
+				sg .= SubStr("00" . gv, -2)
+				gi++
+				}
+			TotemEvtSigs .= sl.hue . "/" . sl.sat . "/" . sl.ar . "/" . sg . ","
+			if (eD <= 2800 and eNx - eD >= 500)
+				TotemEvents .= eNm . ","
+			else
+				TotemEvents .= "?,"
+			k++
+			}
+		}
+	return true
 }
 TotemSoftInit() {
-    global TotemSoft
-    ; already loaded (even partially) -> leave it alone
-    if (IsObject(TotemSoft) && TotemSoft.Length() >= 14)
-        return
-    TotemSoft := []
-    ; @@DATA TotemSoft: the 288-char g grids must be copied verbatim from the original source (lines 11209-11229).
-    TotemSoft.Push({n: "Day",    g: "", a: 100})
-    TotemSoft.Push({n: "Night",  g: "", a: 73})
-    TotemSoft.Push({n: "Windy",  g: "", a: 121})
-    TotemSoft.Push({n: "Rain",   g: "", a: 160})
-    TotemSoft.Push({n: "Foggy",  g: "", a: 105})
-    TotemSoft.Push({n: "Clear",  g: "", a: 114})
-    TotemSoft.Push({n: "Stormy", g: "", a: 110})
-    TotemSoft.Push({n: "Stormy", g: "", a: 110})
-    TotemSoft.Push({n: "Rain",   g: "", a: 153})
-    TotemSoft.Push({n: "Night",  g: "", a: 68})
-    TotemSoft.Push({n: "Day",    g: "", a: 75})
-    TotemSoft.Push({n: "Foggy",  g: "", a: 100})
-    TotemSoft.Push({n: "Clear",  g: "", a: 114})
-    TotemSoft.Push({n: "Windy",  g: "", a: 116})
+	global TotemSoft
+	if (TotemSoft.MaxIndex() >= 14)
+		return
+	TotemSoft := []
+	TotemSoft.Push({n: "Day", g: "342009070625510605050706131135080514310504271704041373140313140403613102010105126588867622030000000000547927104578050000233700813215120679152237233700792308091481142236000000477012145377030000000000055686877620020000000467060005070000572600000025000009260000181000000000000013430000000000", a: 100})
+	TotemSoft.Push({n: "Night", g: "000000000014313842383210000000174255484648656430000133563610000039542000033653110000001756120000236026000000014841000000356615000000036331000000346615000000056230000000266222000000025336000000054649030000002652050000000546482103000046501500000003305352332838656225000000000116273236363013", a: 73})
+	TotemSoft.Push({n: "Windy", g: "242216161816113313080706232116121212444753110401181819181312280434290500161820181814091042220100446565656465656553010000162020191919181805000000416363636363636363571400000000000000000000005000345151515050200000004600081310090812500000184100000000002212470000110500000000001033120000000000", a: 121})
+	TotemSoft.Push({n: "Rain", g: "120703160015040216000000332509480137200747000000274202531031360452090000105407373011520339280000004527155000461916500000003040045409303406530800001454024321164900462100000248192144024912244300000028390254082734055407000013520242211549004521000003531027370352073234000000331708430034171041", a: 160})
+	TotemSoft.Push({n: "Foggy", g: "161413110846602100040602161412115865506836030300140934715102060866110000063070220400010140592000006813050401000008297011007303030302000000003036004824000203000000003435001170322627272525307109000009374441424343400900000007464847474808300000000000151414161600000000000000320060626363150000", a: 105})
+	TotemSoft.Push({n: "Clear", g: "191501010100010000000000305408043551462501000000033752102722245537010000010251520500001057130000012566694000000043230000225738245723000034451000512400001757210013425711561100000018581900003431512200000000315704003034315621090707105942013219012850535353525359390100000000000000000002422100", a: 114})
+	TotemSoft.Push({n: "Stormy", g: "030202010214160101030201030202105751496323020201030534621101000357060000034657170301010134330000255603000002030219565003562800000357693700002637503300001785861600000347185705005084420000002433001856578386796850504601000000256285670400000000000000013265130000000000000000015210000000000000", a: 110})
+	TotemSoft.Push({n: "Stormy", g: "050504030458754801000202040403127344305165000000040555791202000036350000025349010202020006791100027301000100030200446724185700020047614300000070027400010467651700000067005935023170480701002556010142647366635356574600060200050767520000000000050401001657000000000000020404023806000000000000", a: 110})
+	TotemSoft.Push({n: "Rain", g: "210501150013040115000000562307490037190847000000474000521030340452090000175306342910520239270000004424144900451916500000002940015408293305520900001354014220154900462100000149182144024912234300000029380254072733055507000013520143201448004620000002541027380250063235000000321807430033171041", a: 153})
+	TotemSoft.Push({n: "Night", g: "000000000005173138383523000000083750494240475850000014463314030020504911023254250000000752481000205340030000002254210000325926000000003150060000336026000000003150060000255637010000002552130000054156180000001155390400000530481905000028554407000000174851412927415846000000000210182833343322", a: 68})
+	TotemSoft.Push({n: "Day", g: "000000000044520000000000262300000027330000012723445303001017170900086340000206507570707250100301000557681703012073540100051786300000000023760315031482350000000131730309000240743915134282410000020701296575766329031003566103000002020000096950100800000040480000000909000000000030370000000000", a: 75})
+	TotemSoft.Push({n: "Foggy", g: "000100010645533502000000000001116051425552030000000135622900000147350000004548150100000019663702136202000000000004194841146201000000000000000961006017000000000000001857002562393635353636376028000011323435343434341700000028666667676739361100000000170723232322140000000000351445454545290000", a: 100})
+	TotemSoft.Push({n: "Clear", g: "102900000000000000000000135920002652523708000000001858191922173854060000000033641900000143330000002059635906000022450000135936164745020011622502373600000347440202285336402900000003464302001256314700000000065829001355115943272424245063171330000933383838383840581700000000000000000000173700", a: 114})
+	TotemSoft.Push({n: "Windy", g: "010101000000001342120000010100000000135743560500000000000000323701471600051515151515141417551200176464646564646463480000062322212121212121080300155454545454545354535724000000000000000000001553166363636363602800001252000000000000235500005433000000003439395000002302000000000329300800000000", a: 116})
 }
 TotemSoftDesc(a, b, y0, y1, ByRef tsG, ByRef tsAr) {
-    global pTotemBits, TotemW, TotemH
-    ; pad the box by one pixel where the frame allows it
-    if (a > 0)
-        a -= 1
-    if (b < TotemW - 1)
-        b += 1
-    if (y0 > 0)
-        y0 -= 1
-    if (y1 < TotemH - 1)
-        y1 += 1
-    bw := b - a + 1
-    bh := y1 - y0 + 1
-    sn := bw * bh
-
-    hist := []
-    Loop 256
-        hist[A_Index - 1] := 0
-    yy := y0
-    while (yy <= y1) {
-        xx := a
-        while (xx <= b) {
-            px := NumGet(pTotemBits + 0, (yy * TotemW + xx) * 4, "UInt")
-            cB := px & 0xFF, cG := (px >> 8) & 0xFF, cR := (px >> 16) & 0xFF
-            mx := cB > cG ? cB : cG
-            if (cR > mx)
-                mx := cR
-            hist[mx] += 1
-            xx++
-        }
-        yy++
-    }
-
-    bg := "", pk := ""
-    acc := 0
-    Loop 256 {
-        lvl := A_Index - 1
-        acc += hist[lvl]
-        if (bg = "" && acc * 100 >= 40 * sn)
-            bg := lvl
-        if (acc * 100 >= 98 * sn) {
-            pk := lvl
-            break
-        }
-    }
-    if (bg = "" || pk - bg < 20)
-        return false
-    rng := pk - bg
-
-    tsG := []
-    gsum := 0
-    Loop 12 {
-        gi := A_Index - 1
-        ry0 := Floor(bh * gi / 12), ry1 := Floor(bh * (gi + 1) / 12)
-        if (ry1 <= ry0)
-            ry1 := ry0 + 1
-        Loop 12 {
-            gj := A_Index - 1
-            rx0 := Floor(bw * gj / 12), rx1 := Floor(bw * (gj + 1) / 12)
-            if (rx1 <= rx0)
-                rx1 := rx0 + 1
-            ct := 0, cn := 0
-            py := ry0
-            while (py < ry1) {
-                px0 := rx0
-                while (px0 < rx1) {
-                    px := NumGet(pTotemBits + 0, ((y0 + py) * TotemW + a + px0) * 4, "UInt")
-                    cB := px & 0xFF, cG := (px >> 8) & 0xFF, cR := (px >> 16) & 0xFF
-                    mx := cB > cG ? cB : cG
-                    if (cR > mx)
-                        mx := cR
-                    f := (mx - bg) / rng
-                    if (f > 1)
-                        f := 1
-                    if (f > 0)
-                        ct += f
-                    cn++
-                    px0++
-                }
-                py++
-            }
-            cell := Floor(ct / cn * 100)
-            tsG[gi * 12 + gj] := cell
-            gsum += cell
-        }
-    }
-    if (gsum < 1)
-        return false
-    gmean := gsum / 144
-    Loop 144 {
-        k := A_Index - 1
-        tsG[k] := Round(tsG[k] / gmean * 20)
-    }
-    tsAr := bw / bh
-    return true
+	global pTotemBits, TotemW, TotemH
+	if (a > 0)
+		a := a - 1
+	if (b < TotemW - 1)
+		b := b + 1
+	if (y0 > 0)
+		y0 := y0 - 1
+	if (y1 < TotemH - 1)
+		y1 := y1 + 1
+	bw := b - a + 1
+	bh := y1 - y0 + 1
+	sh := []
+	hi := 0
+	while (hi < 256)
+		{
+		sh[hi] := 0
+		hi++
+		}
+	yy := y0
+	while (yy <= y1)
+		{
+		xx := a
+		while (xx <= b)
+			{
+			pv := NumGet(pTotemBits + 0, (yy * TotemW + xx) * 4, "UInt")
+			v := pv & 0xFF
+			if (((pv >> 8) & 0xFF) > v)
+				v := (pv >> 8) & 0xFF
+			if (((pv >> 16) & 0xFF) > v)
+				v := (pv >> 16) & 0xFF
+			sh[v] := sh[v] + 1
+			xx++
+			}
+		yy++
+		}
+	sn := bw * bh
+	acc := 0
+	bg := -1
+	pk := 255
+	hi := 0
+	while (hi < 256)
+		{
+		acc := acc + sh[hi]
+		if (bg < 0 and acc * 100 >= 40 * sn)
+			bg := hi
+		if (acc * 100 >= 98 * sn)
+			{
+			pk := hi
+			break
+			}
+		hi++
+		}
+	if (bg < 0 or pk - bg < 20)
+		return false
+	rng := pk - bg
+	tsG := []
+	gsum := 0
+	gi := 0
+	while (gi < 12)
+		{
+		gj := 0
+		while (gj < 12)
+			{
+			sy0 := (bh * gi) // 12
+			sy1 := (bh * (gi + 1)) // 12
+			if (sy1 <= sy0)
+				sy1 := sy0 + 1
+			sx0 := (bw * gj) // 12
+			sx1 := (bw * (gj + 1)) // 12
+			if (sx1 <= sx0)
+				sx1 := sx0 + 1
+			ct := 0.0
+			cn := 0
+			yy := sy0
+			while (yy < sy1)
+				{
+				xx := sx0
+				while (xx < sx1)
+					{
+					pv := NumGet(pTotemBits + 0, ((y0 + yy) * TotemW + a + xx) * 4, "UInt")
+					v := pv & 0xFF
+					if (((pv >> 8) & 0xFF) > v)
+						v := (pv >> 8) & 0xFF
+					if (((pv >> 16) & 0xFF) > v)
+						v := (pv >> 16) & 0xFF
+					fv := (v - bg) / rng
+					if (fv > 1)
+						fv := 1
+					if (fv > 0)
+						ct := ct + fv
+					cn++
+					xx++
+					}
+				yy++
+				}
+			gv := Floor(ct / cn * 100)
+			tsG[gi * 12 + gj] := gv
+			gsum := gsum + gv
+			gj++
+			}
+		gi++
+		}
+	if (gsum < 1)
+		return false
+	gmean := gsum / 144
+	gi := 0
+	while (gi < 144)
+		{
+		tsG[gi] := Round(tsG[gi] / gmean * 20)
+		gi++
+		}
+	tsAr := bw / bh
+	return true
 }
 TotemSoftBest(tsG, tsAr, names, ByRef bD, ByRef nD) {
-    global TotemSoft
-    order := []
-    best := {}
-    arPct := Round(tsAr * 100)
-    for _, rec in TotemSoft {
-        nm := rec.n
-        if !InStr(names, "," nm ",")
-            continue
-        if (StrLen(rec.g) < 288)
-            continue
-        dist := 0
-        Loop 144 {
-            k := A_Index - 1
-            dist += Abs(tsG[k] - SubStr(rec.g, 2 * k + 1, 2))
-        }
-        dist += 8 * Abs(arPct - rec.a)
-        if !best.HasKey(nm) {
-            best[nm] := dist
-            order.Push(nm)
-        } else if (dist < best[nm]) {
-            best[nm] := dist
-        }
-    }
-    bD := 999999, nD := 999999
-    winner := ""
-    for _, nm in order {
-        pd := best[nm]
-        if (pd < bD) {
-            nD := bD
-            bD := pd
-            winner := nm
-        } else if (pd < nD) {
-            nD := pd
-        }
-    }
-    return winner
+	global TotemSoft
+	per := {}
+	for sI, st in TotemSoft
+		{
+		if (!InStr(names, "," . st.n . ","))
+			continue
+		d := 0
+		gi := 0
+		while (gi < 144)
+			{
+			dv := tsG[gi] - (SubStr(st.g, gi * 2 + 1, 2) + 0)
+			d := d + ((dv < 0) ? 0 - dv : dv)
+			gi++
+			}
+		d := d + Abs(Round(tsAr * 100) - st.a) * 8
+		if (!per.HasKey(st.n) or d < per[st.n])
+			per[st.n] := d
+		}
+	bN := ""
+	bD := 999999
+	nD := 999999
+	for pn, pd in per
+		{
+		if (pd < bD)
+			{
+			nD := bD
+			bD := pd
+			bN := pn
+			}
+		else if (pd < nD)
+			nD := pd
+		}
+	return bN
 }
 TotemHue(r, g, b) {
-    hi := r > g ? r : g
-    if (b > hi)
-        hi := b
-    lo := r < g ? r : g
-    if (b < lo)
-        lo := b
-    chroma := hi - lo
-    if (chroma < 1)
-        return -1
-    if (hi = r)
-        h := 60 * ((g - b) / chroma)
-    else if (hi = g)
-        h := 60 * ((b - r) / chroma + 2)
-    else
-        h := 60 * ((r - g) / chroma + 4)
-    h := Round(h)
-    if (h < 0)
-        h += 360
-    if (h >= 360)
-        h -= 360
-    return h
+	mx := (r > g) ? r : g
+	if (b > mx)
+		mx := b
+	mn := (r < g) ? r : g
+	if (b < mn)
+		mn := b
+	dl := mx - mn
+	if (dl < 1)
+		return -1
+	if (mx = r)
+		h := 60 * (((g - b) / dl) + 0)
+	else if (mx = g)
+		h := 60 * (((b - r) / dl) + 2)
+	else
+		h := 60 * (((r - g) / dl) + 4)
+	h := Round(h)
+	if (h < 0)
+		h := h + 360
+	if (h >= 360)
+		h := h - 360
+	return h
 }
 TotemEvtInit() {
-    global TotemEvt
-    if (IsObject(TotemEvt) && TotemEvt.Length() >= 99)
-        return
-    TotemEvt := []
-    ; @@DATA TotemEvt: the 99 records ({n, g (432 chars), a, h, s}) must be copied verbatim
-    ; from the original source lines 11411-11509, pushed onto TotemEvt in table order.
+	global TotemEvt
+	if (TotemEvt.MaxIndex() >= 99)
+		return
+	TotemEvt := []
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000003000000000004000000000000000003056049000006062099057004000000027076062004000063093044104054000033104075000000014070013000025086067082039003000000000000000000000014061006000000000000000000000000000000000000000000000000000051093019000000000000000000000000019067033089035000000001037053053023000000000040105032000042101047000000000000000000040088057085024000000000000000000000000018056006000000000000", a: 105, h: 146, s: 38})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000000000000000000000000000000000003005000000000000000000000000000000019028016000004007000000000050063054016058063024000000000000041063063063050014059059008000000012063063064064063038041063053000002018063064065065064051040064058000005001059064065065063019050064030000000000014054063059026038063039000000000000000000000000037057028000000000000000000000000000000000000000000005000000000000000000001003000000000000000", a: 100, h: 29, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000001024000000000000000000000000000000025069000000000000000000000000000000065088020000000000000000000000000018066038052000000000000015036051059073036006067061061049025000054089012000000000000003059083015000000049054000000000000000075010000000000004079001000000000074045000000000000000070000014031001058040000000000000002087085081067085087043000000000000022085056014000041081067000000000000013011000000000000000028001000", a: 105, h: 128, s: 28})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000019000000000000000000000000000000026067000000000000000000000000000000057082014000000000000000000000000012072054041000000000000017041042052076047009073061041042026000033080028005000000001009074066010000000041058000000000000031079001000000000002069020000000009080027000000000000000065031020034019080023000000000000003080076077070074083036000000000000007081062019002046080052000000000000014018000000000000004028000000", a: 105, h: 46, s: 41})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000000027062053000000000000000000004043068055056102035000000000000009066029000034068010000000000000000068011000000067000000000000000000012064000000036022000000000000021095054046096017062000000000000000020066071045058019049000000000000000017051000000075022028000000000000034092006000000027097028000000000000002072100009031097082036000000000000000000020092076008000000000000000000000000000031028000000000000000000000", a: 100, h: 293, s: 23})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000011000000008014000000000000000002035073000017072084025000000000004049082033050079052042075024000015067066018000070021000000035084061080048003000000001000000000000037076028000000000000000019010000000000000000000000000000051086074008000000000000000000000000066033053072014000000000015042044043000000002054072005000018080054018016000000000002052071047074036001000000000000000000001036058014000000000000", a: 94, h: 147, s: 40})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000009000000000000000000000000000000000007000000000000000000000000000000016021006000012017000000015038049034020044055035003000000020056057057057053012052056030000000050057057057057057038037057046000000053057057058057057046036057050000009035057057057057057024046057038000000004032054057052024025056051010000000000000001010001030048031002006002000000000000000000000000000000001006000000000000000000000012000000000000000", a: 94, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000027027000000000000000000000000000002062062002000000000000000000000000022074074021000000000000000000000002052032042052002000000000033042065071059002002059070066057033056074053004000000000000011057074045001017058026000000000000019056017001000000029069000000000000069029000000000000028050003023023003049028000000000000036070063054053063069036000000000000053066026000000026066055000000000000021005000000000000005026002000", a: 94, h: 131, s: 30})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000011036000000000000000000000000000000053069012000000000000000000000000008070070031000000000000000000000002036056036054007000000000040041041058066020000056065045041039037065062018014000000008016051070049000007053045003000000000020060023000000000011069013000000000053033000000000000011068017020030008051033000000000000028070062060051062065049000000000000033066038005000023058058002000000000023010000000000000002023006000", a: 94, h: 46, s: 41})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000003030062062026000000000000000009045062045042090048000000000000010084029000004068007000000000000005064011000003069018000000000000000048037000000034035000000000000044072035037083030057001000000000000041059057027083014050000000000000000049035000002088022022000000000000076064004000000016079025000000000000043073084006046082065036000000000000000000025075060002000000000000000000000000000044015000000000000000000000", a: 94, h: 285, s: 26})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000022000000002010000000000000000008060070000017067088038000000000022072061013030088055024084035001035086046000000058038000000027088074079027000000000000000000000000028060013000000000000000010017000000000000000000000000000025081087016000000000000000000000000060047038085023000000001033053053038000000000030086014000044084027005003000000000000043084067082013000000000000000000000000039056010000000000000", a: 103, h: 148, s: 41})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000006007000000000000000000000000000000003004000000000000000000000000006000019027015000018003000000014052060053023051059034000000000007056060060060054021059059013000000033060061061061060026053060034000006035060061061061061030052061036000009016059061061061059018059061020000000000023051060054028044059039000000000000000000004000024035019000015001000000000000000000000000000000001000000000000000000000006007000000000000000", a: 100, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000028029000000000000000000000000000000060060000000000000000000000000000019078078019000000000000000000000002053026037053002001000000036046069069058006006058071073057031025072068004000000000000011070072019000001056048000000000000036055001000000000017075005000000005075017000000000000016063004028027003062015000000000000027079076047047075079027000000000000041073026000000026073044000000000000019010000000000000009027000000", a: 103, h: 130, s: 30})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000015033000000000000000000000000000000055068008000000000000000000000000007073073025000000000000000000000003042054036055007000000000042051051061070017003062066051051042014047074017007000000005012068063020000000044061004000000000041058004000000000003071018000000001070018000000000000003072025027033014067019000000000000017075070055044069073033000000000000022073039000000023068045000000000000020015000000000000007026000000", a: 103, h: 47, s: 41})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000016056070064021000000000000000012058069038048087026000000000000028064021000037050002000000000000015069000000023058000000000000001000063021001000057006000000000000053083045056092023055000000000000000043050056016074042026000000000000000052032000011082033010000000000000079064010000003036083013000000000000025052074011065060048015000000000000000000026085053000000000000000000000000000000054011000000000000000000000", a: 103, h: 285, s: 26})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000004029000000012019000000000000000016069057001033083087034000000001031081053005047081039031083033007048080037000000051015000000024085082064013000000000000000000000000025048001000000000000000022014000000000000000000000000000050086083018000000000000000000000000062025043080018000000003045064064043000000000042080016003059070019006004000000000000041082080064006000000000000000000000000036039004000000000000", a: 102, h: 148, s: 42})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000001011000000000000000000000000000000001008000000000000000000000000000000016023008000016007000000009039051042023048057031000000000004051059059059055022057058020000000029059059059059059033048059042000002033059059059059059039046059047000017013058059059059059025054059030000000000025056059058033033058050003000000000000004014006022045029003010001000000000000000000000000000000001002000000000000000000002014000000000000000", a: 100, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000028028000000000000000000000000000000059059000000000000000000000000000015079079015000000000000000000007010057031040057010008003000042059072059048005005048065076066037017072067004000000000000007068072014000003057050000000000000040056003000000000015074002000000002073015000000000000015059002033033002059015000000000000032080075046045074079031000000000000048065019000000018065054000000000000019004000000000000004025000000", a: 102, h: 130, s: 31})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000025025000000000000000000000000000000063062000000000000000000000000000013073072013000000000000000000000010052046045050009000000000055062061064064010010062064061061046012055067005000000000000012070059012000004055051002000000002050053004000000000007071008000000007070006000000000000012070018037036016068010000000000000031073068047046067073028000000000000040063023000000022061046000000000000024006000000000000005023000000", a: 102, h: 47, s: 42})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000023059068067025000000000000000023068055025048075018000000000000029065011000043051000000000000000022072003000024055000000000000013007057015017002065006000000000000063091044065093036052000000000000000052041047012070050018000000000000006067019000004075038003000000000000082053013000004029085011000000000000022046076017066058042011000000000000000000022092048000000000000000000000000000000039005000000000000000000000", a: 102, h: 283, s: 27})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000001000000000015002000000000000001049044000002042097071003000000011084076000000063075044073060001032080059008000029061000000000076090098029000000000000000000000000015063010000000000000000000000000000000000000000000000000010065097050000000000000000000000000036082012095037000000000021046046021000001000020098047000042088045029014000000000000000096088109023000000000000000000000000022062013000000000000", a: 106, h: 145, s: 33})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000000000000000009000000000006015001000027035021000000000000023036036036028009037037032000000022036036036037037014032037038012000036037037037037037021015037039018006037037037037037037029007038039019005036036036036037037029006037038019000036036036037037037022014037038018000022037037037038038014034038039011000000022037038037029009038039033000000000000005012000000028037022000000000000000000000000000000000000000008", a: 125, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000001020000000000000000000000000000000022063000000000000000000000000000000051087016000000000000000000000002015058042066008000000000014043065076085037001073089079069028003061091032000000000000008067093022000000031068000000000000019089017000000000000058015000000000057032000000000000000053000000008000047019000000000000000072067063056068084055000000000000000091059000000007085097000000000000000023000000000000008038008000", a: 106, h: 126, s: 25})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000016000000000000000000000000000000025063000000000000000000000000000000044084003000000000000000000000000015060045055007000000000025060062065082049007081080060060036000042085046010004000005018083076013000000025069000000000000032083008000000000000048044000000000069007000000000000000045042000012000068000000000000000000064080071059075087031000000000000000070069009000021086063000000000000000027000000000000010038000000", a: 106, h: 45, s: 39})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000000000058067030000000000000000000024053055048083069000000000000000062084004000052033000000000000000050041000000030046000000000000000000064000000000095000000000000000085060052074095046028000000000000000075023052016080051000000000000000013062000000031083030000000000000041106023000000000025063000000000000032053057065018072050049000000000000000000000085089000000000000000000000000000000007043000000000000000000000", a: 94, h: 296, s: 20})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000018000000000009000000000000000008067056000000039093038000000000006071073008008063071037077037000031081043000000033050004000014098091085012000000000000000000000000024082014000000000000000000000000000000000000000000000000016066092034000000000000000000000000041064027097033000000000038062063037000000000021092013000038101033016008000000000000047093056098017000000000000000000000000044075018000000000000", a: 107, h: 147, s: 36})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000010000000000000000000000000000000000000000000000001000000000000004000012036023003000009000000029048050045013026052046008000000028051051051051051009045052041000000048051051052052052028025053052004000048051051051051052035024053052011000041051051052052053021034053051000000010049052053053038008052053024000000000005023027020008045052025000000000000000000000000004011000000000010000000000000000000000007000000000000", a: 92, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000016022000000000000000000000000000000040059000000000000000000000000000000068083017000000000000000000000000013058057053000000000000003011031041069031012078050036027006020075082021013001000009027085092039000005053036000000000000020072017000000000009080011000000000066012000000000000001081007000000000063000000000000000003083028062074035070004000000000000021091087033018079096036000000000000029046008000000000040060000000", a: 108, h: 128, s: 27})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000010031000000000000000000000000000000045071007000000000000000000000000002072078023000000000000000000000001029059031051004000000000031061063064073017000061073063066039003039079019000000000000005073075010000000040057003000000000026063004000000000001060024000000000079013000000000000000060027023039008077011000000000000003076074070053076084024000000000000006080055004000035084038000000000000012026001000000000010025000000", a: 107, h: 47, s: 39})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000009051067065021000000000000000006053079039042092029000000000000000065032002021066007000000000000006068022000005054000000000000000010047040006000056018000000000000023091040034091021075000000000000000019073073049055038038000000000000000031046000000059037011000000000000059086001000000013088012000000000000027064081012032082061024000000000000000000016079080004000000000000000000000000000047027000000000000000000000", a: 104, h: 289, s: 22})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000012037000000009046005000000000000041085028000026076081061003000004058081023000026084042007068063013067065008000000021020000000007076097051002000000000000000000000000008034001000000000000000015037002000000000000000000000000032091091050000000000000000000000000036038010082032000000004065080082045000000000018092030002071069004000000000000000000028096090071001000000000000000000000000024051003000000000000", a: 108, h: 148, s: 37})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000016000000000000000000000000000000000004000000000000000000000000000000014025016000001013000000012042053042014035056047005000000011054056056057054011041058040000000044057056057057057041023059057003000047056056056056057047020058057006007023057057057057058023034059049000000000029056058057028017057058016000000000000006016006018046036011000005000000000000000000000000000000000004000000000000000000000016000000000000000", a: 97, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000020023000000000000000000000000000000045056000000000000000000000000000002067076013000000000000000000000000025042038051001000000000026047063061060016007056071072063035012067079012000000000000008068081022000004047048000000000000023065013000000000001072021000000000081022000000000000000071007012015000065021000000000000004079058065066063081031000000000000022083053005001038088057000000000000024023000000000000013049001000", a: 106, h: 130, s: 29})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000012028000000000000000000000000000000052068004000000000000000000000000005072077018000000000000000000000002036055034046002000000000030055057061074021005069068056059036005047080025003000000000018082072009000000035054002000000001052057004000000000000062018000000013082004000000000000000058014013023012082000000000000000000075068073067074088016000000000000001081053006001047088032000000000000012023000000000000016028000000", a: 105, h: 46, s: 40})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000021060071068027000000000000000015068064032041083023000000000000007066012000034058002000000000000003074014000017065001000000000003008035047005000064013000000000000039096048038090027057000000000000000031071050037054044022000000000000000038054000000065037005000000000000052077002000000020076003000000000000040073077023024076070018000000000000000000007082075004000000000000000000000000000041031000000000000000000000", a: 103, h: 288, s: 22})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000013029000000006034004000000000000033080030000014071085059001000001043083023000013079051014071052010060073017000000024028000000007083099061004000000000000000000000000014041000000000000000000008025000000000000000000000000000021083092048000000000000000000000000034049019087033000000003060083083040000000000020089027003069075018013006000000000000028095090076004000000000000000000000000033052004000000000000", a: 109, h: 149, s: 40})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000002011000000000000000000000000000000000001000000000000000000000001004000018029016000009004000000019049055046013040058039001000000019056057057057055014054059023000000043057057057058058030041060041000002044057057057057058033039060042000012026058058058059058016052060029000000001032057059057023032060052003000000000000006015004021043030004007001000000000000000000000000000000001002000000000000000000002012000000000000000", a: 100, h: 28, s: 74})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000014023000000000000000000000000000000040055000000000000000000000000000004070077010000000000000000000000000031049045041000000000000020038053054064018008065062058049026011074077007000000000000013074084023000012062025000000000000012069021000000000010074005000000005077027000000000000000069002000003003074017000000000000004077043065069049080023000000000000027085062013007062092050000000000000034035002000000002035060000000", a: 108, h: 130, s: 29})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000010019000000000000000000000000000000048061000000000000000000000000000003068076010000000000000000000000003031053041044005000000000031059059061073024010073069062064038004043077027009000000007024081059009000000038059003000000001050052001000000000002063025000000012076003000000000000000060020016023010074000000000000000004074067068065070084013000000000000008080052005001045086028000000000000020031000000000000021033000000", a: 109, h: 47, s: 40})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000015056068060018000000000000000018060065036053079024000000000000012077014000040056000000000000000008075009000018058000000000000002003049037002000062010000000000000038090046046092022060000000000000000029062048024067042029000000000000000046042000000080034010000000000000058079009000000026087013000000000000024060081016048076058020000000000000000000016087066000000000000000000000000000000042018000000000000000000000", a: 102, h: 285, s: 24})
+	TotemEvt.Push({n: "Aurora", g: "000000000003000000000000000002081029000005051088046003000000020067051000000054080034098045000027097062000000014063010000020076060073032001000000000000000000000023091011000000000000000000000000000000009000000000000000000020072002000000000000000000000000013080078055000000000000000000000000012033000083062000000003066098097038000000000018085052010065068020000000000000000000000087088068000000000000000000000000000018053006000000000000", a: 117, h: 121, s: 24})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000000000000007000000000000000000004035033002000000000000010035046046032011048045017000000000041048049049049020034050050003000000048049049049050028009050051018000009050051051051051040004051052023000000051052052052052033012052053019000000044053053053053023037053053003000000011039053053037015054050019000000000000000000000005046040003000000000000000000000000000000000000000005000000000000000000000000000000000000000", a: 119, h: 28, s: 75})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000017039000000000000000000000000000000048055016000000000000000000000000014049021045000000000000015034047053067028001062057057046025000071084014000000000000003066088028000015066030000000000000000061041000000000009077000000000000064051000000000000000076002000000000075039000000000000000071000027049004056043000000000000010093091055028083094057000000000000026087024000000013079077000000000000014011000000000000000029001000", a: 117, h: 102, s: 27})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000023045000000000000000000000000000000042052010000000000000000000000000008056024034000000000000016038039047069039005067056040040025000056078028012000000002013075078017000003056039000000000000014070021000000000004072018000000006077033000000000000000060024000000009079017000000000000000069036038056026079028000000000000003083082055031076086041000000000000010083040000000020078061000000000000015018000000000000004028000000", a: 117, h: 40, s: 46})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000016081041000000042000000000000000038053012000011022000000000000000029057000000000032000000000000000006084014000000058012000000000018100032015042095028065000000000000021107072074057082054010000000000000000101000000035070050000000000000000061044000000013074043000000000000067088020005000006038091000000000000003035045064017074043037000000000000000000000064107029000000000000000000000000000016060000000000000000000000", a: 100, h: 330, s: 32})
+	TotemEvt.Push({n: "Aurora", g: "000000007010000000000000000004055058000013072073007000000000005058073009035075053055073015000018071061010000081024000000053075057087035000000000004000000000001047067014000000000000000000000000000000004000000000000000003039017000000000000000000000000000070079081026000000000000000000000000045004033082018000000000054082082063000000000038080023011059062016003000000000000000039080079068005000000000000000000000000036039004000000000000", a: 107, h: 133, s: 30})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000000000001004000000000000000000018030014000006002000000015042046034009038048029000000000015047048048048040009047049020000000043049050050050049020036051036000000047051051051051050026034052043000014045052052052052051021038052037000000016052054054054045011051053021000000000016048054040012046054033000000000000000000000000024038018000007000000000000000000000000000000000000004000000000000000000005008000000000000000", a: 111, h: 28, s: 75})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000023038000000000000000000000000000000046053010000000000000000000000000022046034049003000000000015023047054066026007063059050043017043073072022011001000006018061076052000033074023000000000000002058053004000000029064001000000000033063003000000000000071004000000000049036000000000000000065000028039005038041000000000000022083079048033073081064000000000000043073019000000005054081007000000000025009000000000000003028011000", a: 107, h: 112, s: 26})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000038038000000000000000000000000000003050050002000000000000000000000001032041041031000000000000032032032052067020020067051033033031042067064025021001001019030067070034000031067018000000000000017067030000000002044059000000000000057041000000000000005069000000000000067002000000000000015069015042041013067012000000000000037076070041040068075034000000000000051067016000000016065057000000000001032008000000000000008031001000", a: 107, h: 41, s: 46})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000002044076034002014048000000000000000046051007000016040000000000000000044044000000023034000000000000000028075003000000053000000000000029056033020051044024039000000000000044081085077059036071016000000000000021051012008049026074000000000000021066025000000033061036000000000000097061018000000013063086002000000000021041062036032069040037003000000000000000012095091005000000000000000000000000000037034000000000000000000000", a: 97, h: 322, s: 30})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000001026062000000037048003000000000000040085034006053082083047000000003050079021000069062016011069047025063060014000000019002000000010078087036001000000000000000000000000011027000000000000000000023014000000000000000000000000000061084080023000000000000000000000000049011032084022000000003054078077055000000000040078010001055073014000000000000000000051080074073007000000000000000000000003046048007000000000000", a: 105, h: 136, s: 31})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000008000000000000000000000000000000000000000000002006000000000005016008016044032005006002000000018050053052027029054046003000000008052054054054054013049055027000000030056056056056056033033056047000007029057057058058058033035058046000000009056059059059058015052059027000000000019057060059030033060051002000000000000006018010021052038007005002000000000000000000000000000000002005000000000000000000001012000000000000000", a: 105, h: 28, s: 75})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000036058000000000000000000000000000001060068012000000000000000000000000018063062036000000000000003006022028054023009060031025018003051072068034020000000015033070075057006049063008000000000000000050060012000001041055002000000000027055005000000000011071011000000000062028000000000000011066009041051012045030000000000000025080077047035073078045000000000000039074030000000016066062000000000000018011000000000000005028002000", a: 105, h: 109, s: 27})
+	TotemEvt.Push({n: "Shiny", g: "000000000000001044044000000000000000000000000000007063064007000000000000000000000000023061061023000000000000013013013026055025024054025013013011054067064042033001001032046068070044003040061006000000000000007062043004000001046052002000000001050043000000000000010068007000000007067009000000000000017069023049049020067016000000000000032074071045044070073031000000000000038069025000000025068042000000000000024009000000000000007023000000", a: 105, h: 42, s: 45})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000020065067057090042000000000000002056058013003059024000000000000000048034000001061021000000000000000033049000000035030000000000000026029044014048007057000000000000000052088064067082033043000000000000000036043038013070042022000000000000016064021000007070043006000000000000094058021000009033089021000000000000019044071014067053040012000000000000000000025086050000000000000000000000000000001053011000000000000000000000", a: 105, h: 319, s: 30})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000000000000000000000000000000000000023056000000028073025000000000006054079023005061093062096016000012090071000000038073018000036100066089038002000000000000000000000024089015000000000000000000000000000000000000000000000000028070098038000000000000000000000000040066030100035000000000041070069037000000000015081036006056078025010006000000000000020111106079000000000000000000000000000021046002000000000000", a: 100, h: 150, s: 37})
+	TotemEvt.Push({n: "Eclipse", g: "000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000010003000000010000000000009035035013035064030000000000000028062067069068035049067046000000000058060063066066065028065067007000001062062065068068068033067070017010002046066069071072056039070062000000000002036064066046013066061012000000000000000001000000028024002000009000000000000000000000007000000000000000000000000000000000007000000000000000", a: 93, h: 28, s: 73})
+	TotemEvt.Push({n: "Mutation", g: "000000000000000003004000000000000000000000000000000035054000000000000000000000000000000064084012000000000000000000000000017066067062000000000000023042058061073025010071062067054030009074084005000000000000007090094028000005061043000000000000021081019000001000008092017000000000073014000000000000002084000024033002059005000000000000016090079051043076093030000000000000039082016000000002065072000000000000011001000000000000001020000000", a: 97, h: 132, s: 27})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000008000000000000000000000000000000031073001000000000000000000000000001074086023000000000000000000000000024078058052000000000000027048049055081034004076060049048032003043085024001000000000007083081013000000048069005000000000030074006000000000003072031000000001088019000000000000000068033029047011084015000000000000005081080053038074091034000000000000020086025000000007066054000000000000008007000000000000000010000000", a: 100, h: 45, s: 39})
+	TotemEvt.Push({n: "Starfall", g: "000000000000000000000000005021016000000000000000000000009059089073111054000000000000000049055023015063034000000000000000067036000000064000000000000000006046066005000049028000000000000022095035034099024082000000000000000018080080057064048048000000000000006035049000000071048016000000000000058091002000000018100016000000000000013040062033049060042016000000000000000000007105080000000000000000000000000000000025013000000000000000000000", a: 97, h: 285, s: 26})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000007028000000010029000000000000000030079034000011076088035000000000043085035000026078040025083027006056079016000000045028000000023078075072011000000000000000000000000033044001000000000000000000007000000000000000000000000000010070078007000000000000000000000000051050056073010000000000034063063032009000005064074007000039085061063032000000000005063059054085021000000000000000000000002055056007000000000000", a: 108, h: 140, s: 44})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000002020000000000000000000000000000000029054000000000000000000000000000000066079009000000000000000000000000021065051037000000000000026036042048076030005076052044044031023071073027025000000019031069077034000014065032000000000000024073031000000000005063018000000014078019000000000000000060003017031003079012000000000000003069042071071048076026000000000000025073052009001045075051000000000000029021000000000000019043000000", a: 100, h: 49, s: 39})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000019000000000005000000000000000000053063000008063091025000000000019074059006030085042019083019000038094032000000059038000000039082059085027000000000001000000000000038061011000000000000000000006000000000000000000000000000010071086000000000000000000000000000057044052073017000000000031066068045000000000052073011000040097056052034000000000000061062037091019000000000000000000000004056073012000000000000", a: 104, h: 139, s: 43})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000026000000000000000000000000000000032063000000000000000000000000000002076088016000000000000000000000000024069051046000000000000026032037042072021002072052040041028016079075015009000000009018071088030000010070021000000000000007073032000000000013078020000000003083031000000000000000074013001014000082019000000000000009080043073072048078033000000000000028083053000000034084058000000000000031019000000000000010034000000", a: 100, h: 50, s: 39})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000040000000017047006000000000000039074025000007092098062000000000051099029000005073028002067039000055066016000000015019000000000088092076000000000000000000000000000020045003000000000000000000005000000000000000000000000000000066085025000000000000000000000000027045038100031000000000042102102051000000000037079014000038079050051025000000000000033073061088001000000000000000000000000056066014000000000000", a: 111, h: 141, s: 45})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000044000000000000000000000000000000052081000000000000000000000000000001086086033000000000000000000000000034052036055000000000000000000000045077000000065056007000000070078059039034000000021042057081071000032059026000000000000003059038005000000028071005000000000086039000000000000023070000011027000048041000000000000038060029078077046038045000000000000043077049010003037075075000000000000037000000000000000000032000000", a: 89, h: 50, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000001050000000015053014000000000000013057052002027080069076015000002034073051000031073022002047063008054082026000000018007000000000046088062010000000000000000000000000005029002000000000000000014029003000000000000000000000000026080083049000000000000000000000000029018016075052002000000027089099098000000000019079041000041086047033033000000000000014074071078023000000000000000000000000021063010000000000000", a: 106, h: 130, s: 37})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000015005000000000000000000000000000000036024000000000000000000000000000000055048000000000000000000000000000018041046019000000000000027034032043062020026066045037033025029065058015017000000015019063069022000008067045000000000000048066011000000000007079020000000023084007000000000000014079004024015006086014000000000000029083049078082052083032000000000000054084059006010061086057000000000000047021000000000000020051000000", a: 100, h: 47, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000048000000014038006000000000000013047065000001077092050000000000008068077004036078027008064051003036080029000000019002000000000053093071009000000000000000000000000013045004000000000000000000001000000000000000000000000000024074083012000000000000000000000000034015021088035000000000025095105104000000000046087025000023082058052051000000000000044073038091042000000000000000000000000034072016000000000000", a: 104, h: 129, s: 36})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000005025000000000000000000000000000000026053000000000000000000000000000004059058015000000000000000000000000039035005041000000000000040041038055069006000058060042041042028064063002001000000001005046075034000002065038000000000000035080015000000000004075000000000003089024000000000000000062000023039003078031000000000000017082068072071074080058000000000000044088042000000037091089000000000000047016000000000000011047007000", a: 96, h: 47, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000033000000000038017000000000000000040062000000081098096014000000001066080000005072044008040074007036080048005000018022000000000032092096028000000000000000000000000000043011000000000000000000002000000000000000000000000000000063087050000000000000000000000000015038000083057000000000000076103102000000000018084055000018071066052051000000000000000082064100044000000000000000000000000013069029000000000000", a: 106, h: 130, s: 37})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000008000000000000000000000000000000024065000000000000000000000000000000068063019000000000000000000000000028039028042000000000000000000000035066000000057046000000000074075056039032000000018037055076066000031061024000000000000000061040004000000031089000000000000088045000000000000025085000007029000056047000000000000044091036087096064036051000000000000050093061014005047091091000000000000045000000000000000000039000000", a: 89, h: 47, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000005021000000008022000000000000000028075032000007069078029000000000039082035000025072037022078026005051076016000000044026000000022074074069009000000000000000000000000034044001000000000000000000006000000000000000000000000000009067073005000000000000000000000000054048059072007000000000040067069035009000005072076006000045093069069035000000000004074064060097022000000000000000000000002060060007000000000000", a: 108, h: 134, s: 38})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000011001000000000000000000000000000000036021000000000000000000000000000000056052000000000000000000000000000018050057018000000000000027036041046069020029070046038035020021076065023024000000025035076072015000017072024000000000000036070016000000000014082020000000020073005000000000000011085005026016005074000000000000000024082056083082051084003000000000000043088062008011066088026000000000000038022000000000000027035000000", a: 103, h: 47, s: 39})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000011040000000011032001000000000000021076036000009070083028000000000023078041000041072023010067035006048074020000000024000000000008076089053000000000000000000000000000018042001000000000000000000003000000000000000000000000000026070078011000000000000000000000000054014033090019000000000050107110073000000000053073010000046100057055036000000000000069065040098019000000000000000000000004061079011000000000000", a: 107, h: 134, s: 38})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000017000000000000000000000000000000023050000000000000000000000000000001059071012000000000000000000000000021061042038000000000000024032034038063017001063047034032024014081075013008000000008017065084025000013076024000000000000011075033000000000016082022000000003084031000000000000001083017001016000082017000000000000012092054080079055081038000000000000031096063000000042096062000000000000036027000000000000012041000000", a: 100, h: 46, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000035000000015039004000000000000034069023000003087091051000000000046095032000006072027002063039000050066015000000013017000000000085092074000000000000000000000000000019046003000000000000000000002000000000000000000000000000002060081021000000000000000000000000026040041094026000000000053109112056000000000044084013000044086056056028000000000000044081064098000000000000000000000000000062072013000000000000", a: 111, h: 135, s: 40})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000017000000000000000000000000000000020036000000000000000000000000000000039069000000000000000000000000000000059055025000000000000000000000021070040026079032000000000042084080039041012000042043077083041000021077050000000000000026086030000000000000080021000000000091005000000000000000078000006018000075000000000000000000092009087092035068021000000000000014096080034022065096087000000000000056026000000000000016049000000", a: 100, h: 48, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000023000000004023000000000000000012061054000007066080031000000000026076052005024075048020079034001043085037000000042028000000021078069072015000000000000000000000000022060004000000000000000000009000000000000000000000000000011063080019000000000000000000000000052049047073009000000000026062065049008000000059077009000029091065065048000000000004067072040087027000000000000000000000002049074016000000000000", a: 105, h: 134, s: 39})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000011000000000000000000000000000000000032017000000000000000000000000000000055046000000000000000000000000000016051059018000000000000027038039050070021032074046039040021024078064024026000000027034076075016000017069022000000000000035073016000000000015083019000000023074005000000000000009085005027017005075000000000000000023081051082082052083003000000000000044084061007011061083027000000000000038021000000000000028037000000", a: 103, h: 48, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000011040000000013036003000000000000023078041000008074087030000000000020079039000039078027009069036005049079022000000025002000000006079093052000000000000000000000000000020045000000000000000000000004000000000000000000000000000028072082011000000000000000000000000052018030089021000000000041097104068000000000052077010000040094055052034000000000000061065040094018000000000000000000000004058076012000000000000", a: 107, h: 133, s: 38})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000017000000000000000000000000000000012040000000000000000000000000000000037066016000000000000000000000000000058040058000000000000025032033042055038001069051031031031016083073011010000000007013052083054000011073019000000000000005069064004000000015083033000000000062046000000000000000083025001014000057027000000000000010090044072077063066053000000000000031091073011000022083091000000000000035027000000000000007049010000", a: 97, h: 48, s: 41})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000032000000014041007000000000000032074026000002089092055000000000039101029000008075030003063039000053068019000000025023000000000089093072000000000000000000000000000022046000000000000000000000007000000000000000000000000000000062083024000000000000000000000000027048037101028000000000042104104052000000000041085013000037080050052026000000000000034081060095000000000000000000000000000057074014000000000000", a: 111, h: 134, s: 40})
+	TotemEvt.Push({n: "Shiny", g: "000000000000000000027000000000000000000000000000000028061000000000000000000000000000000071061022000000000000000000000000029045031048000000000000000000000042068000000064046008000000076079054039033000000020040050074065000035062026000000000000006059042005000000033081005000000000088042000000000000025086000014027000055043000000000000041082036085084059037047000000000000049083056013004043083079000000000000045003000000000000000036000000", a: 89, h: 48, s: 41})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000006026000000009026000000000000000026076031000015072078028000000000045080032000030078039026083022004055076015000000049023000000025075074068008000000000000000000000000035042000000000000000000001007000000000000000000000000000011070071005000000000000000000000000058048056073007000000000037065066033010000005070075004000044087066066033000000000004071059058090019000000000000000000000003058059008000000000000", a: 108, h: 142, s: 45})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000017000000000005000000000000000000050059000010061081020000000000021072053005036086040019082012000038090032000000068032000000041078052082021000000000003000000000000038060010000000000000000000005000000000000000000000000000012074075000000000000000000000000000065040052075012000000000033071072048000000000057077004000044100054053036000000000000071063040097016000000000000000000000005061078012000000000000", a: 104, h: 142, s: 45})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000041000000018044003000000000000037069021000011088087050000000000058091027000012075024000068030000058062008000000031013000000000088095067000000000000000000000000000021042000000000000000000000001000000000000000000000000000004067078021000000000000000000000000028039047096022000000000049107110055000000000043082009000045080054055027000000000000044073065098000000000000000000000000000062067014000000000000", a: 111, h: 142, s: 47})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000007025000000008025000000000000000026073030000016068077027000000000043080032000025075037026079020004054073015000000048022000000023072074069010000000000000000000000000036042000000000000000000002009000000000000000000000000000013073069006000000000000000000000000060047059074009000000000040064066032011000006076070005000044090066067033000000000005073062060090022000000000000000000000003061061009000000000000", a: 108, h: 135, s: 38})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000016000000000007000000000000000000048058000011056077019000000000019071054005031082037020078012000036088030000000063031000000038073054081021000000000004000000000000037058010000000000000000000007000000000000000000000000000014076074000000000000000000000000000069038056078013000000000034071073048000000000062075005000045102058055036000000000000073067042098020000000000000000000000005064084012000000000000", a: 104, h: 134, s: 38})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000040000000017041002000000000000037070021000012080082047000000000051091028000009069021001063028000056061009000000029014000000000084092070000000000000000000000000000021038001000000000000000000002000000000000000000000000000009067079019000000000000000000000000036040046097026000000000052108110056000000000047081010000046087054056028000000000000046078067098000000000000000000000000000064074014000000000000", a: 111, h: 135, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000007025000000007024000000000000000026076030000012070075029000000000044080031000027073035024077022005057073014000000046022000000022073072066008000000000000000000000000035042000000000000000000000008000000000000000000000000000012070072006000000000000000000000000060048060077008000000000038065067033011000006076078004000043092066068034000000000004075066060094022000000000000000000000003062061008000000000000", a: 108, h: 137, s: 39})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000018000000000003000000000000000000052057000009058077021000000000021071053005034080035018076015000039088030000000061030000000035075050078020000000000002000000000000038058010000000000000000000007000000000000000000000000000012072076000000000000000000000000000069039055079013000000000034069072048000000000062080007000045103056055036000000000000076071043101019000000000000000000000005066081013000000000000", a: 104, h: 136, s: 39})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000040000000017041004000000000000035070020000010084080050000000000056090023000012067022000061030001056061008000000027015000000000086085065000000000000000000000000000021040001000000000000000000001000000000000000000000000000007066079022000000000000000000000000039039046098023000000000049105108055000000000048086010000046084053054028000000000000048081070102000000000000000000000000000067070017000000000000", a: 111, h: 136, s: 40})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000033000000002027000000000000000012067053000017071086031000000000036083053003032082050024084028000048083032000000050024000000024081064070010000000000000000000000000018044004000000000000000017036000000000000000000000000000033082082035000000000000000000000000049021023083023000000000056087087068000000000033082019000056077030028022000000000000039081061065006000000000000000000000000023045004000000000000", a: 103, h: 148, s: 47})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000021000000000005000000000000000002056062000008057090036000000000024078058007012085059022093036000043095032000000039051000000022084055086022000000000005000000000000028061010000000000000000000013000000000000000000000000000000063090013000000000000000000000000035054041081016000000000033065066044000000000038093014000042096052049032000000000000051075041089017000000000000000000000000045071013000000000000", a: 107, h: 147, s: 48})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000000000000000000000000000000000000035044000000040096006000000000000079091000000049077052078003000016080062014000052086000000051055004092038000000000025008000000000069088035000000000000000000004000000000000000000000000000000047067000000000000000000000000000038067070074012000000000023049049025012000000089074000000013100100099049000000000000064048032081026000000000000000000000000059064015000000000000", a: 105, h: 147, s: 49})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000001034000000003028000000000000000013066054000017073086030000000000036084054003032085049024084029000048082033000000049024000000024081066071010000000000000000000000000018045004000000000000000015036000000000000000000000000000033084082035000000000000000000000000049020021081022000000000055086085065000000000033082019000056076030028021000000000000040081062064005000000000000000000000000023047004000000000000", a: 103, h: 149, s: 46})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000022000000000005000000000000000003055062000007059091036000000000024079059008012087058023093036000044094034000000038051000000024083057086023000000000005000000000000029063010000000000000000000012000000000000000000000000000000061091014000000000000000000000000034053041078016000000000033064064043001000000039092015000043095051048032000000000000052075041088017000000000000000000000000044073013000000000000", a: 107, h: 148, s: 47})
+	TotemEvt.Push({n: "Aurora", g: "000000000000000000000000000000000000000000000000000000000000000000035045000000041097007000000000000083090002000050075052077004000016079063015000050085000000050055008092037000000000024009000000001070090035000000000000000000004000000000000000000000000000000045068000000000000000000000000000038068069072012000000000024048048024015000000089073000000014099097097048000000000000065048032080028000000000000000000000000059066015000000000000", a: 105, h: 148, s: 48})
 }
 TotemMedSmall(vals, n) {
-    i := 2
-    while (i <= n) {
-        cur := vals[i]
-        j := i - 1
-        while (j >= 1 && vals[j] > cur) {
-            vals[j + 1] := vals[j]
-            j--
-        }
-        vals[j + 1] := cur
-        i++
-    }
-    return vals[(n + 1) // 2]
+	i := 2
+	while (i <= n)
+		{
+		v := vals[i]
+		j := i - 1
+		while (j >= 1 and vals[j] > v)
+			{
+			vals[j + 1] := vals[j]
+			j--
+			}
+		vals[j + 1] := v
+		i++
+		}
+	return vals[(n + 1) // 2]
 }
 TotemSlotRead(x0, x1, y0, y1, ih, gap, D) {
-    global pTotemBits, TotemW, TotemH
-    bw := x1 - x0 + 1
-    bh := y1 - y0 + 1
-    m := Round(bw * 0.12)
-    if (m < 2)
-        m := 2
-    if (bw < 3 * m || bh < 3 * m)
-        return {st: "junk", n: 0}
-
-    ; per-row left/right and per-column top/bottom border medians
-    LB := [], LG := [], LR := [], RB := [], RG := [], RR := []
-    TB := [], TG := [], TR := [], BB := [], BG := [], BR := []
-    Loop % bh {
-        y := A_Index - 1
-        sB := [], sG := [], sR := [], eB := [], eG := [], eR := []
-        Loop % m {
-            k := A_Index - 1
-            px := NumGet(pTotemBits + 0, ((y0 + y) * TotemW + x0 + k) * 4, "UInt")
-            sB[A_Index] := px & 0xFF, sG[A_Index] := (px >> 8) & 0xFF, sR[A_Index] := (px >> 16) & 0xFF
-            px := NumGet(pTotemBits + 0, ((y0 + y) * TotemW + x0 + bw - m + k) * 4, "UInt")
-            eB[A_Index] := px & 0xFF, eG[A_Index] := (px >> 8) & 0xFF, eR[A_Index] := (px >> 16) & 0xFF
-        }
-        LB[y] := TotemMedSmall(sB, m), LG[y] := TotemMedSmall(sG, m), LR[y] := TotemMedSmall(sR, m)
-        RB[y] := TotemMedSmall(eB, m), RG[y] := TotemMedSmall(eG, m), RR[y] := TotemMedSmall(eR, m)
-    }
-    Loop % bw {
-        x := A_Index - 1
-        sB := [], sG := [], sR := [], eB := [], eG := [], eR := []
-        Loop % m {
-            k := A_Index - 1
-            px := NumGet(pTotemBits + 0, ((y0 + k) * TotemW + x0 + x) * 4, "UInt")
-            sB[A_Index] := px & 0xFF, sG[A_Index] := (px >> 8) & 0xFF, sR[A_Index] := (px >> 16) & 0xFF
-            px := NumGet(pTotemBits + 0, ((y0 + bh - m + k) * TotemW + x0 + x) * 4, "UInt")
-            eB[A_Index] := px & 0xFF, eG[A_Index] := (px >> 8) & 0xFF, eR[A_Index] := (px >> 16) & 0xFF
-        }
-        TB[x] := TotemMedSmall(sB, m), TG[x] := TotemMedSmall(sG, m), TR[x] := TotemMedSmall(sR, m)
-        BB[x] := TotemMedSmall(eB, m), BG[x] := TotemMedSmall(eG, m), BR[x] := TotemMedSmall(eR, m)
-    }
-
-    ; distance of every pixel from the interpolated background
-    VarSetCapacity(dist, bw * bh * 2, 0)
-    cnt := []
-    Loop % bw
-        cnt[A_Index - 1] := 0
-    n := 0
-    Loop % bh {
-        y := A_Index - 1
-        Loop % bw {
-            x := A_Index - 1
-            px := NumGet(pTotemBits + 0, ((y0 + y) * TotemW + x0 + x) * 4, "UInt")
-            qB := px & 0xFF, qG := (px >> 8) & 0xFF, qR := (px >> 16) & 0xFF
-            hB := LB[y] + Floor((RB[y] - LB[y]) * x / (bw - 1))
-            hG := LG[y] + Floor((RG[y] - LG[y]) * x / (bw - 1))
-            hR := LR[y] + Floor((RR[y] - LR[y]) * x / (bw - 1))
-            vB := TB[x] + Floor((BB[x] - TB[x]) * y / (bh - 1))
-            vG := TG[x] + Floor((BG[x] - TG[x]) * y / (bh - 1))
-            vR := TR[x] + Floor((BR[x] - TR[x]) * y / (bh - 1))
-            gB := Floor((hB + vB) / 2), gG := Floor((hG + vG) / 2), gR := Floor((hR + vR) / 2)
-            dv := Abs(qB - gB) + Abs(qG - gG) + Abs(qR - gR)
-            NumPut(dv, dist, (y * bw + x) * 2, "UShort")
-            if (dv >= D && x >= m && x < bw - m && y >= m && y < bh - m) {
-                n++
-                cnt[x] += 1
-            }
-        }
-    }
-    area := (bh - 2 * m) * (bw - 2 * m)
-    if (n * 100 < 5 * area)
-        return {st: "empty", n: n}
-
-    ; runs of active columns
-    runS := [], runE := []
-    open := false
-    Loop % bw {
-        x := A_Index - 1
-        if (cnt[x] >= 2) {
-            if !open {
-                open := true
-                rs := x
-            }
-        } else if open {
-            runS.Push(rs), runE.Push(x - 1)
-            open := false
-        }
-    }
-    if open
-        runS.Push(rs), runE.Push(bw - 1)
-    if (runS.Length() < 1)
-        return {st: "empty", n: n}
-
-    ; merge runs separated by at most gap columns
-    segS := [runS[1]], segE := [runE[1]]
-    Loop % runS.Length() - 1 {
-        k := A_Index + 1
-        last := segE.Length()
-        if (runS[k] - segE[last] - 1 <= gap)
-            segE[last] := runE[k]
-        else
-            segS.Push(runS[k]), segE.Push(runE[k])
-    }
-    bestSum := -1
-    for k, sx in segS {
-        tot := 0
-        c := sx
-        while (c <= segE[k]) {
-            tot += cnt[c]
-            c++
-        }
-        if (tot > bestSum) {
-            bestSum := tot
-            a := sx
-            b := segE[k]
-        }
-    }
-
-    ; vertical grouping of hot rows inside the chosen columns
-    bS := -1, bE := -1, bN := 0
-    grpOpen := false
-    y := m
-    while (y <= bh - m - 1) {
-        rn := 0
-        x := a
-        while (x <= b) {
-            if (x >= m && x < bw - m && NumGet(dist, (y * bw + x) * 2, "UShort") >= D)
-                rn++
-            x++
-        }
-        if (rn > 0) {
-            if (grpOpen && y - gE - 1 > gap) {
-                if (gN > bN)
-                    bS := gS, bE := gE, bN := gN
-                grpOpen := false
-            }
-            if !grpOpen {
-                grpOpen := true
-                gS := y
-                gN := 0
-            }
-            gN += rn
-            gE := y
-        }
-        y++
-    }
-    if (grpOpen && gN > bN)
-        bS := gS, bE := gE, bN := gN
-    if (bS < 0)
-        return {st: "empty", n: n}
-
-    iw := b - a + 1
-    ihh := bE - bS + 1
-    ni := bN
-    if (iw * 100 < 45 * ih || iw * 100 > 170 * ih || ihh * 100 < 55 * ih || ihh * 100 > 135 * ih)
-        return {st: "junk", n: n}
-    if (ni * 100 < 10 * iw * ihh || ni * 100 > 92 * iw * ihh)
-        return {st: "junk", n: n}
-
-    ; 98th percentile of distance inside the icon box
-    dh := []
-    Loop 766
-        dh[A_Index - 1] := 0
-    y := bS
-    while (y <= bE) {
-        x := a
-        while (x <= b) {
-            dv := NumGet(dist, (y * bw + x) * 2, "UShort")
-            if (dv > 765)
-                dv := 765
-            dh[dv] += 1
-            x++
-        }
-        y++
-    }
-    tot := iw * ihh
-    acc := 0, pk := 765
-    Loop 766 {
-        lvl := A_Index - 1
-        acc += dh[lvl]
-        if (acc * 100 >= 98 * tot) {
-            pk := lvl
-            break
-        }
-    }
-    dn := Round(pk * 0.35)
-    if (dn < D)
-        dn := D
-    if (pk - dn < 20)
-        return {st: "junk", n: n}
-    span := pk - dn
-
-    g := []
-    gsum := 0
-    Loop 12 {
-        gi := A_Index - 1
-        ry0 := Floor(ihh * gi / 12), ry1 := Floor(ihh * (gi + 1) / 12)
-        if (ry1 <= ry0)
-            ry1 := ry0 + 1
-        Loop 12 {
-            gj := A_Index - 1
-            rx0 := Floor(iw * gj / 12), rx1 := Floor(iw * (gj + 1) / 12)
-            if (rx1 <= rx0)
-                rx1 := rx0 + 1
-            ct := 0, cn := 0
-            py := ry0
-            while (py < ry1) {
-                qx := rx0
-                while (qx < rx1) {
-                    dv := NumGet(dist, ((bS + py) * bw + a + qx) * 2, "UShort")
-                    f := (dv - dn) / span
-                    if (f > 1)
-                        f := 1
-                    if (f > 0)
-                        ct += f
-                    cn++
-                    qx++
-                }
-                py++
-            }
-            cell := Floor(ct / cn * 100)
-            g[gi * 12 + gj] := cell
-            gsum += cell
-        }
-    }
-    if (gsum < 1)
-        return {st: "junk", n: n}
-    gmean := gsum / 144
-    Loop 144 {
-        k := A_Index - 1
-        g[k] := Round(g[k] / gmean * 20)
-    }
-
-    ; average real colour of the strong pixels
-    sumB := 0, sumG := 0, sumR := 0, sc := 0
-    y := bS
-    while (y <= bE) {
-        x := a
-        while (x <= b) {
-            if (NumGet(dist, (y * bw + x) * 2, "UShort") >= dn) {
-                px := NumGet(pTotemBits + 0, ((y0 + y) * TotemW + x0 + x) * 4, "UInt")
-                sumB += px & 0xFF, sumG += (px >> 8) & 0xFF, sumR += (px >> 16) & 0xFF
-                sc++
-            }
-            x++
-        }
-        y++
-    }
-    if (sc < 4)
-        return {st: "junk", n: n}
-    ar2 := sumR // sc, ag2 := sumG // sc, ab2 := sumB // sc
-    cmx := ar2 > ag2 ? ar2 : ag2
-    if (ab2 > cmx)
-        cmx := ab2
-    cmn := ar2 < ag2 ? ar2 : ag2
-    if (ab2 < cmn)
-        cmn := ab2
-    isat := (cmx = 0) ? 0 : Floor((cmx - cmn) * 100 / cmx)
-    hue := (isat >= 12) ? TotemHue(ar2, ag2, ab2) : -1
-    return {st: "icon", n: n, g: g, ar: Round(iw * 100 / ihh), hue: hue, sat: isat
-        , x0: x0 + a, x1: x0 + b, y0: y0 + bS, y1: y0 + bE}
+	global pTotemBits, TotemW, TotemH
+	bw := x1 - x0 + 1
+	bh := y1 - y0 + 1
+	m := Round(bw * 0.12)
+	if (m < 2)
+		m := 2
+	if (bw < 3 * m or bh < 3 * m)
+		return {st: "junk", n: 0}
+	Lb := []
+	Lg := []
+	Lr := []
+	Rb := []
+	Rg := []
+	Rr := []
+	Tb := []
+	Tg := []
+	Tr := []
+	Bb := []
+	Bg := []
+	Br := []
+	vb := []
+	vg := []
+	vr := []
+	y := 0
+	while (y < bh)
+		{
+		roff := ((y0 + y) * TotemW + x0) * 4
+		i := 1
+		while (i <= m)
+			{
+			pv := NumGet(pTotemBits + 0, roff + ((i - 1) * 4), "UInt")
+			vb[i] := pv & 0xFF
+			vg[i] := (pv >> 8) & 0xFF
+			vr[i] := (pv >> 16) & 0xFF
+			i++
+			}
+		Lb[y] := TotemMedSmall(vb, m)
+		Lg[y] := TotemMedSmall(vg, m)
+		Lr[y] := TotemMedSmall(vr, m)
+		i := 1
+		while (i <= m)
+			{
+			pv := NumGet(pTotemBits + 0, roff + ((bw - m + i - 1) * 4), "UInt")
+			vb[i] := pv & 0xFF
+			vg[i] := (pv >> 8) & 0xFF
+			vr[i] := (pv >> 16) & 0xFF
+			i++
+			}
+		Rb[y] := TotemMedSmall(vb, m)
+		Rg[y] := TotemMedSmall(vg, m)
+		Rr[y] := TotemMedSmall(vr, m)
+		y++
+		}
+	x := 0
+	while (x < bw)
+		{
+		i := 1
+		while (i <= m)
+			{
+			pv := NumGet(pTotemBits + 0, ((y0 + i - 1) * TotemW + x0 + x) * 4, "UInt")
+			vb[i] := pv & 0xFF
+			vg[i] := (pv >> 8) & 0xFF
+			vr[i] := (pv >> 16) & 0xFF
+			i++
+			}
+		Tb[x] := TotemMedSmall(vb, m)
+		Tg[x] := TotemMedSmall(vg, m)
+		Tr[x] := TotemMedSmall(vr, m)
+		i := 1
+		while (i <= m)
+			{
+			pv := NumGet(pTotemBits + 0, ((y0 + bh - m + i - 1) * TotemW + x0 + x) * 4, "UInt")
+			vb[i] := pv & 0xFF
+			vg[i] := (pv >> 8) & 0xFF
+			vr[i] := (pv >> 16) & 0xFF
+			i++
+			}
+		Bb[x] := TotemMedSmall(vb, m)
+		Bg[x] := TotemMedSmall(vg, m)
+		Br[x] := TotemMedSmall(vr, m)
+		x++
+		}
+	VarSetCapacity(dd, bw * bh * 2, 0)
+	cnt := []
+	x := 0
+	while (x < bw)
+		{
+		cnt[x] := 0
+		x++
+		}
+	n := 0
+	y := 0
+	while (y < bh)
+		{
+		roff := ((y0 + y) * TotemW + x0) * 4
+		x := 0
+		while (x < bw)
+			{
+			pv := NumGet(pTotemBits + 0, roff + (x * 4), "UInt")
+			qb := pv & 0xFF
+			qg := (pv >> 8) & 0xFF
+			qr := (pv >> 16) & 0xFF
+			hb := Lb[y] + Floor((Rb[y] - Lb[y]) * x / (bw - 1))
+			hg := Lg[y] + Floor((Rg[y] - Lg[y]) * x / (bw - 1))
+			hr := Lr[y] + Floor((Rr[y] - Lr[y]) * x / (bw - 1))
+			ub := Tb[x] + Floor((Bb[x] - Tb[x]) * y / (bh - 1))
+			ug := Tg[x] + Floor((Bg[x] - Tg[x]) * y / (bh - 1))
+			ur := Tr[x] + Floor((Br[x] - Tr[x]) * y / (bh - 1))
+			bgb := (hb + ub) // 2
+			bgg := (hg + ug) // 2
+			bgr := (hr + ur) // 2
+			dv := ((qb > bgb) ? qb - bgb : bgb - qb) + ((qg > bgg) ? qg - bgg : bgg - qg) + ((qr > bgr) ? qr - bgr : bgr - qr)
+			NumPut(dv, dd, (y * bw + x) * 2, "UShort")
+			if (dv >= D and x >= m and x < bw - m and y >= m and y < bh - m)
+				{
+				n++
+				cnt[x] := cnt[x] + 1
+				}
+			x++
+			}
+		y++
+		}
+	area := (bh - 2 * m) * (bw - 2 * m)
+	if (n * 100 < 5 * area)
+		return {st: "empty", n: n}
+	rs := []
+	re := []
+	nr := 0
+	st := -1
+	x := 0
+	while (x < bw)
+		{
+		if (cnt[x] >= 2)
+			{
+			if (st < 0)
+				st := x
+			}
+		else if (st >= 0)
+			{
+			nr++
+			rs[nr] := st
+			re[nr] := x - 1
+			st := -1
+			}
+		x++
+		}
+	if (st >= 0)
+		{
+		nr++
+		rs[nr] := st
+		re[nr] := bw - 1
+		}
+	if (nr < 1)
+		return {st: "empty", n: n}
+	ms := []
+	me := []
+	nm := 0
+	ri := 1
+	while (ri <= nr)
+		{
+		if (nm > 0 and (rs[ri] - me[nm] - 1) <= gap)
+			me[nm] := re[ri]
+		else
+			{
+			nm++
+			ms[nm] := rs[ri]
+			me[nm] := re[ri]
+			}
+		ri++
+		}
+	bestN := -1
+	a := 0
+	b := 0
+	mi := 1
+	while (mi <= nm)
+		{
+		cs := 0
+		x := ms[mi]
+		while (x <= me[mi])
+			{
+			cs := cs + cnt[x]
+			x++
+			}
+		if (cs > bestN)
+			{
+			bestN := cs
+			a := ms[mi]
+			b := me[mi]
+			}
+		mi++
+		}
+	gS := -1
+	gE := -1
+	gN := 0
+	bS := -1
+	bE := -1
+	bN := -1
+	y := m
+	while (y < bh - m)
+		{
+		rn := 0
+		x := a
+		while (x <= b)
+			{
+			if (x >= m and x < bw - m and NumGet(dd, (y * bw + x) * 2, "UShort") >= D)
+				rn++
+			x++
+			}
+		if (rn > 0)
+			{
+			if (gS >= 0 and y - gE - 1 > gap)
+				{
+				if (gN > bN)
+					{
+					bS := gS
+					bE := gE
+					bN := gN
+					}
+				gS := -1
+				}
+			if (gS < 0)
+				{
+				gS := y
+				gN := 0
+				}
+			gE := y
+			gN := gN + rn
+			}
+		y++
+		}
+	if (gS >= 0 and gN > bN)
+		{
+		bS := gS
+		bE := gE
+		bN := gN
+		}
+	if (bS < 0)
+		return {st: "empty", n: n}
+	iw := b - a + 1
+	ihh := bE - bS + 1
+	ni := bN
+	if (iw * 100 < 45 * ih or iw * 100 > 170 * ih or ihh * 100 < 55 * ih or ihh * 100 > 135 * ih)
+		return {st: "junk", n: n}
+	if (ni * 100 < 10 * iw * ihh or ni * 100 > 92 * iw * ihh)
+		return {st: "junk", n: n}
+	hd := []
+	hi := 0
+	while (hi <= 765)
+		{
+		hd[hi] := 0
+		hi++
+		}
+	y := bS
+	while (y <= bE)
+		{
+		x := a
+		while (x <= b)
+			{
+			dv := NumGet(dd, (y * bw + x) * 2, "UShort")
+			if (dv > 765)
+				dv := 765
+			hd[dv] := hd[dv] + 1
+			x++
+			}
+		y++
+		}
+	tn := iw * ihh
+	acc := 0
+	pk := 765
+	hi := 0
+	while (hi <= 765)
+		{
+		acc := acc + hd[hi]
+		if (acc * 100 >= 98 * tn)
+			{
+			pk := hi
+			break
+			}
+		hi++
+		}
+	dn := Round(pk * 0.35)
+	if (dn < D)
+		dn := D
+	if (pk - dn < 20)
+		return {st: "junk", n: n}
+	grid := []
+	gsum := 0
+	gi := 0
+	while (gi < 12)
+		{
+		gj := 0
+		while (gj < 12)
+			{
+			sy0 := (ihh * gi) // 12
+			sy1 := (ihh * (gi + 1)) // 12
+			if (sy1 <= sy0)
+				sy1 := sy0 + 1
+			sx0 := (iw * gj) // 12
+			sx1 := (iw * (gj + 1)) // 12
+			if (sx1 <= sx0)
+				sx1 := sx0 + 1
+			ct := 0.0
+			cn := 0
+			yy := sy0
+			while (yy < sy1)
+				{
+				xx := sx0
+				while (xx < sx1)
+					{
+					dv := NumGet(dd, ((bS + yy) * bw + a + xx) * 2, "UShort")
+					if (dv > 765)
+						dv := 765
+					fv := (dv - dn) / (pk - dn)
+					if (fv > 1)
+						fv := 1
+					if (fv > 0)
+						ct := ct + fv
+					cn++
+					xx++
+					}
+				yy++
+				}
+			gv := Floor(ct / cn * 100)
+			grid[gi * 12 + gj] := gv
+			gsum := gsum + gv
+			gj++
+			}
+		gi++
+		}
+	if (gsum < 1)
+		return {st: "junk", n: n}
+	gmean := gsum / 144
+	gi := 0
+	while (gi < 144)
+		{
+		grid[gi] := Round(grid[gi] / gmean * 20)
+		gi++
+		}
+	sr := 0
+	sg := 0
+	sb := 0
+	sc := 0
+	y := bS
+	while (y <= bE)
+		{
+		roff := ((y0 + y) * TotemW + x0) * 4
+		x := a
+		while (x <= b)
+			{
+			dv := NumGet(dd, (y * bw + x) * 2, "UShort")
+			if (dv > 765)
+				dv := 765
+			if (dv >= dn)
+				{
+				pv := NumGet(pTotemBits + 0, roff + (x * 4), "UInt")
+				sb := sb + (pv & 0xFF)
+				sg := sg + ((pv >> 8) & 0xFF)
+				sr := sr + ((pv >> 16) & 0xFF)
+				sc++
+				}
+			x++
+			}
+		y++
+		}
+	if (sc < 4)
+		return {st: "junk", n: n}
+	ar2 := sr // sc
+	ag2 := sg // sc
+	ab2 := sb // sc
+	mx2 := (ar2 > ag2) ? ar2 : ag2
+	if (ab2 > mx2)
+		mx2 := ab2
+	mn2 := (ar2 < ag2) ? ar2 : ag2
+	if (ab2 < mn2)
+		mn2 := ab2
+	isat := (mx2 > 0) ? ((mx2 - mn2) * 100) // mx2 : 0
+	ihue := (isat >= 12) ? TotemHue(ar2, ag2, ab2) : -1
+	return {st: "icon", n: n, g: grid, ar: Round(iw * 100 / ihh), hue: ihue, sat: isat, x0: x0 + a, x1: x0 + b, y0: y0 + bS, y1: y0 + bE}
 }
 TotemEvtBest(grid, ar100, hue, sat, ByRef bD, ByRef nD) {
-    global TotemEvt
-    order := []
-    best := {}
-    for _, rec in TotemEvt {
-        if (StrLen(rec.g) < 432)
-            continue
-        dist := 0
-        Loop 144 {
-            k := A_Index - 1
-            dist += Abs(grid[k] - SubStr(rec.g, 3 * k + 1, 3))
-        }
-        dist += 8 * Abs(ar100 - rec.a)
-        if (rec.h >= 0 && hue >= 0) {
-            hd := Abs(rec.h - hue)
-            if (hd > 180)
-                hd := 360 - hd
-            dist += 20 * hd + 15 * Abs(sat - rec.s)
-        } else {
-            dist += 2000
-        }
-        nm := rec.n
-        if !best.HasKey(nm) {
-            best[nm] := dist
-            order.Push(nm)
-        } else if (dist < best[nm]) {
-            best[nm] := dist
-        }
-    }
-    bD := 999999, nD := 999999
-    winner := ""
-    for _, nm in order {
-        pd := best[nm]
-        if (pd < bD) {
-            nD := bD
-            bD := pd
-            winner := nm
-        } else if (pd < nD) {
-            nD := pd
-        }
-    }
-    return winner
+	global TotemEvt
+	per := {}
+	for eI, et in TotemEvt
+		{
+		d := 0
+		gi := 0
+		while (gi < 144)
+			{
+			dv := grid[gi] - (SubStr(et.g, gi * 3 + 1, 3) + 0)
+			d := d + ((dv < 0) ? 0 - dv : dv)
+			gi++
+			}
+		d := d + Abs(ar100 - et.a) * 8
+		if (et.h >= 0 and hue >= 0)
+			{
+			hd := Abs(et.h - hue)
+			if (hd > 180)
+				hd := 360 - hd
+			d := d + hd * 20 + Abs(sat - et.s) * 15
+			}
+		else
+			d := d + 2000
+		if (!per.HasKey(et.n) or d < per[et.n])
+			per[et.n] := d
+		}
+	bN := ""
+	bD := 999999
+	nD := 999999
+	for pn, pd in per
+		{
+		if (pd < bD)
+			{
+			nD := bD
+			bD := pd
+			bN := pn
+			}
+		else if (pd < nD)
+			nD := pd
+		}
+	return bN
 }
 TotemStripInit() {
     global WindowWidth, WindowHeight, TotemX0, TotemY0, TotemW, TotemH
@@ -10974,18 +11396,27 @@ KbAutoFind() {
 		base := pBits + y * w * 4
 		hits := 0
 		hx := -1
+		pfx := -1
 		Loop 9
 			{
 			x := Round(w * (0.30 + 0.05 * (A_Index - 1)))
 			px := NumGet(base + 0, x * 4, "UInt")
-			if (KbPixFill(px) or KbPixNavy(px))
+			f := KbPixFill(px)
+			if (f or KbPixNavy(px))
 				{
 				hits++
-				hx := x
+				if (hx < 0 or Abs(x - w / 2) < Abs(hx - w / 2))
+					hx := x
+				if (f and (pfx < 0 or Abs(x - w / 2) < Abs(pfx - w / 2)))
+					pfx := x
 				}
 			}
 		if (hits < 2)
 			continue
+		; measure from the purple nearest the middle - dark water beside the bar looks just like the empty navy
+		; track, and measuring from a sample out there found a stretch of water instead of the bar
+		if (pfx >= 0)
+			hx := pfx
 		L := hx
 		R := hx
 		good := 1
@@ -11791,7 +12222,7 @@ KbSpot(kind, ByRef fx, ByRef fy) {
 
 ; the built-in button positions on a 4K screen
 KbSpotDefault(kind) {
-    static d := {enchant: [1667, 1280], confirm: [2069, 1692], extra: [1757, 1224]}
+    static d := {enchant: [1666, 1273], confirm: [2054, 1685], extra: [1820, 1218]}
     return d.HasKey(kind) ? d[kind] : ""
 }
 KbAt(kind, ByRef fx, ByRef fy) {
