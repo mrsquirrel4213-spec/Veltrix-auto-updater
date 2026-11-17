@@ -42,7 +42,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 107
+VxBuild := 108
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -29452,7 +29452,7 @@ Gui, 1:Add, Text, x%CX% y226 w620 h18 BackgroundTrans hwndKpH, You MUST manually
 SpecialBrushes[KpH] := {brush: hBrushCard, text: 0x4BC2FF}
 KeeperCtrls.Push(KpH)
 ; settings card
-KpH := AddPanel(CARDX, 260, CARDW, 230)
+KpH := AddPanel(CARDX, 260, CARDW, 161)
 KeeperCtrls.Push(KpH), KeeperBodyCtrls.Push(KpH)
 Gui, 1:Font, s10 bold c%ColorText%
 Gui, 1:Add, Text, x%CX% y272 w240 h20 BackgroundTrans hwndKpH, Settings
@@ -29463,11 +29463,8 @@ Gui, 1:Add, Checkbox, x470 y272 w200 h20 vKeeperLaggy gQueueAutoSave hwndKpH%KpC
 KeeperCtrls.Push(KpH), KeeperBodyCtrls.Push(KpH)
 ; label, variable, numeric only, help text
 KpFields := [["Recharge wait (ms):", "KeeperPreDelay", 1, "Wait after a catch before the recharge begins.`n0 = start right away. Raise it if the catch popup or the game is still busy."]
-    , ["Every (catches):", "KeeperEveryCatches", 1, "Catches between recharges (when the power bar is not read).`nA Keeperbound rod loses about 0.2% power per catch, so 50 catches is roughly 10%."]
-    , ["Recharges per trip:", "KeeperRecharges", 1, "How many enchants to do each visit.`nEach one refills about 5% power, so 2 covers 50 catches."]
     , ["Relic hotbar key:", "KeeperRelicKey", 0, "The hotbar number your Enchant Relic sits on."]
     , ["Inventory key:", "KeeperInvKey", 0, "The key that opens your inventory (G in Fisch)."]
-    , ["Between relics (ms):", "KeeperBetweenDelay", 1, "Pause between enchants.`nKeep it around 2000 or the game only counts the first one."]
     , ["Step delay (ms):", "KeeperStepDelay", 1, "Pause after each click."]
     , ["Menu delay (ms):", "KeeperOpenDelay", 1, "Pause after the inventory opens or closes."]]
 KpY := 298
@@ -29540,7 +29537,7 @@ Gui, 1:Add, Text, x490 y%KpY% w16 h20 Center BackgroundTrans hwndKpH, ?
 IconTips[KpH] := "The macro finds the purple power bar above the hotbar (the one that shows a percentage) and reads how full it is.`n"
     . "It recharges once the reading drops below the percent you set.`n"
     . "Hold the Keeperbound rod so the bar is showing, then press Test.`n"
-    . "Off, or the bar can't be found: it recharges every X catches instead."
+    . "If it is off or the bar cannot be found, the saved catch interval is used instead."
 KeeperCtrls.Push(KpH), KeeperBodyCtrls.Push(KpH)
 KpBy := KpY - 2
 Gui, 1:Font, s9 bold c%ColorAccent%
@@ -29557,7 +29554,7 @@ Gui, 1:Add, Edit, x%IX% y%KpY% w%IW% h20 vKeeperAutoPct gQueueAutoSave hwndKpH, 
 KeeperCtrls.Push(KpH), KeeperBodyCtrls.Push(KpH)
 Gui, 1:Font, s9 bold c%ColorMuted%
 Gui, 1:Add, Text, x%QX% y%KpY% w16 h20 Center BackgroundTrans hwndKpH, ?
-IconTips[KpH] := "Recharge when the bar reads lower than this (15 = under 15%).`nEach recharge adds about 5%, so raise Recharges per trip if you set this low."
+IconTips[KpH] := "Recharge when the power bar reads below this percentage (for example, 15 means under 15%)."
 KeeperCtrls.Push(KpH), KeeperBodyCtrls.Push(KpH)
 KpY += 26
 ; how often the bar is read
