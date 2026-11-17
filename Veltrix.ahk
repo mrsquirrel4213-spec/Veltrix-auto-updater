@@ -42,7 +42,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 110
+VxBuild := 111
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -2693,17 +2693,26 @@ if (KbManual)
 		{
 		KbI++
 		VxTip(8, "Action: Enchant Rod")
-		KbTapSaved(KbEx, KbEy)
+		if (!KbTapSaved(KbEx, KbEy)) {
+			KbLastResult := "mouse did not reach the recharge button"
+			goto KeeperBail
+		}
 		Sleep, % Tm(KbDelay(KeeperStepDelay))
 		; the last click of a recharge waits on its button first
 		KbHasX := KbSpot("extra", KbXx, KbXy)
 		VxTip(8, "Action: Confirm")
-		KbTapSaved(KbCx, KbCy, KbHasX ? 0 : TA("kblast", 300))
+		if (!KbTapSaved(KbCx, KbCy, KbHasX ? 0 : TA("kblast", 300))) {
+			KbLastResult := "mouse did not reach the recharge button"
+			goto KeeperBail
+		}
 		Sleep, % Tm(KbDelay(KeeperStepDelay))
 		if (KbHasX)
 			{
 			VxTip(8, "Action: Extra Confirm")
-			KbTapSaved(KbXx, KbXy, TA("kblast", 300))
+			if (!KbTapSaved(KbXx, KbXy, TA("kblast", 300))) {
+				KbLastResult := "mouse did not reach the recharge button"
+				goto KeeperBail
+			}
 			Sleep, % Tm(KbDelay(KeeperStepDelay))
 			}
 		KbRecharged++
@@ -2746,7 +2755,10 @@ Loop
 	; one pixel instead of screen searches
 	if (KbOpenCol < 0)
 		KbOpenCol := KbSteadyCol(KbEx, KbEy)
-	KbTap(KbEx, KbEy)
+	if (!KbTap(KbEx, KbEy)) {
+		KbLastResult := "mouse did not reach the recharge button"
+		break
+	}
 	if (!KbWaitFor("confirm", KbCx, KbCy, TA("kbconfto", 3500)))
 		{
 		KbLastResult := "Enchant Rod did nothing - try setting the button positions"
@@ -2755,12 +2767,18 @@ Loop
 	Sleep, % Tm(KbDelay(TA("kbconfirm", 120)))
 	KbHasX := KbSpot("extra", KbXx, KbXy)
 	VxTip(8, "Action: Confirm")
-	KbTap(KbCx, KbCy, KbHasX ? 0 : TA("kblast", 300))
+	if (!KbTap(KbCx, KbCy, KbHasX ? 0 : TA("kblast", 300))) {
+		KbLastResult := "mouse did not reach the recharge button"
+		break
+	}
 	Sleep, % Tm(KbDelay(KeeperStepDelay))
 	if (KbHasX)
 		{
 		VxTip(8, "Action: Extra Confirm")
-		KbTapSaved(KbXx, KbXy, TA("kblast", 300))
+		if (!KbTapSaved(KbXx, KbXy, TA("kblast", 300))) {
+			KbLastResult := "mouse did not reach the recharge button"
+			break
+		}
 		Sleep, % Tm(KbDelay(KeeperStepDelay))
 		}
 	if (!KbGone("confirm", TA("kbgone", 3000)))
@@ -2885,9 +2903,10 @@ while (KbClr < 4 and KbFind("confirm", KbCx, KbCy))
 	if (KbClr = 0 and KbGone("confirm", TA("kbclearwait", 250)))
 		break
 	KbClr++
-	if (KbFind("confirm", KbRx, KbRy, "red"))
-		KbTap(KbRx, KbRy)
-	else
+	if (KbFind("confirm", KbRx, KbRy, "red")) {
+		if (!KbTap(KbRx, KbRy))
+			break
+	} else
 		break
 	KbGone("confirm", TA("kbclear", 900))
 	}
@@ -12684,33 +12703,47 @@ KbRodOn() {
     return hits >= 40
 }
 KbTap(x, y, wait := 0) {
-	MouseMove, %x%, %y%
-	Sleep, % Tm(KbDelay(TA("kbtap1", 50) + wait))
-	Click, Down
-	Sleep, % Tm(KbDelay(TA("kbtap2", 35)))
-	Click, Up
-	Sleep, % Tm(KbDelay(TA("kbtap3", 30)))
-	return
+    return KbTapSaved(x, y, wait)
 }
 
 KbTapSaved(x, y, wait := 0) {
     global RobloxHwnd
-    KbSx := x, KbSy := y
-    if (RobloxHwnd) {
-        VarSetCapacity(pt, 8, 0)
-        NumPut(x, pt, 0, "Int")
-        NumPut(y, pt, 4, "Int")
-        DllCall("user32\ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt)
-        KbSx := NumGet(pt, 0, "Int"), KbSy := NumGet(pt, 4, "Int")
-    }
+    if (!RobloxHwnd || !WinActive("ahk_id " . RobloxHwnd))
+        return false
+    VarSetCapacity(pt, 8, 0)
+    NumPut(x, pt, 0, "Int"), NumPut(y, pt, 4, "Int")
+    if (!DllCall("user32\ClientToScreen", "Ptr", RobloxHwnd, "Ptr", &pt))
+        return false
+    sx := NumGet(pt, 0, "Int"), sy := NumGet(pt, 4, "Int")
     CoordMode, Mouse, Screen
-    MouseMove, %KbSx%, %KbSy%, 0
-    Sleep % Tm(KbDelay(TA("kbtap1", 50) + wait))
-    Click, Down
-    Sleep % Tm(KbDelay(TA("kbtap2", 35)))
-    Click, Up
-    Sleep % Tm(KbDelay(TA("kbtap3", 30)))
+    MouseMove, %sx%, %sy%, 0
+    started := A_TickCount, arrived := false
+    Loop {
+        if (!WinActive("ahk_id " . RobloxHwnd))
+            break
+        if (DllCall("user32\GetCursorPos", "Ptr", &pt)
+            && Abs(NumGet(pt, 0, "Int") - sx) <= 2 && Abs(NumGet(pt, 4, "Int") - sy) <= 2) {
+            arrived := true
+            break
+        }
+        if (A_TickCount - started >= KbDelay(1000))
+            break
+        Sleep, 10
+    }
+    if (arrived) {
+        ; Always hover after arrival, even with timing offsets; laggy mode is 3x.
+        Sleep % Max(KbDelay(150), Tm(KbDelay(TA("kbtap1", 50) + wait)))
+        arrived := WinActive("ahk_id " . RobloxHwnd) && DllCall("user32\GetCursorPos", "Ptr", &pt)
+            && Abs(NumGet(pt, 0, "Int") - sx) <= 2 && Abs(NumGet(pt, 4, "Int") - sy) <= 2
+    }
+    if (arrived) {
+        Click, Down
+        Sleep % Tm(KbDelay(TA("kbtap2", 35)))
+        Click, Up
+        Sleep % Tm(KbDelay(TA("kbtap3", 30)))
+    }
     CoordMode, Mouse, Client
+    return arrived
 }
 AqRegion() {
     global WindowWidth, WindowHeight, AqX0, AqY0, AqW, AqH
