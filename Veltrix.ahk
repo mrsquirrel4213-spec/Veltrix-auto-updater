@@ -42,7 +42,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 106
+VxBuild := 107
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -106,6 +106,7 @@ ProfileFields.Push(["Cast", "CastMode", "Normal", "castmode"]
     , ["Cast", "PerfectWaitCycles", 1, "num"]
     , ["Cast", "SmartCast", "true", "bool"]
     , ["Cast", "SmartCastMs", 1000, "num"]
+    , ["Cast", "EndClickSpam", "false", "bool"]
     , ["Cast", "AdaptiveCast", "true", "bool"]
     , ["Cast", "AdaptiveCastMs", 0, "num"])
 ProfileFields.Push(["Shake", "ShakeMode", "Navigation", "shakemode"]
@@ -116,7 +117,7 @@ ProfileFields.Push(["Shake", "ShakeMode", "Navigation", "shakemode"]
     , ["Shake", "ShakeAreaBottomPct", 88, "num"]
     , ["Shake", "NavigationShakeFailsafe", 30, "num"]
     , ["Shake", "NavigationSpamDelay", 10, "num"])
-ProfileFields.Push(["Minigame", "ControlMode", "Lines", "controlmode"]
+ProfileFields.Push(["Minigame", "ControlMode", "Precision", "controlmode"]
     , ["Minigame", "BarCalculationFailsafe", 60, "num"]
     , ["Minigame", "FishColor", "0x434B5B", "str"]
     , ["Minigame", "BarLeftColor", "0xF1F1F1", "str"]
@@ -354,6 +355,7 @@ RunKeysArmed := false, HotkeysArmed := false
 PausedMs := 0, LastAutoStop := 0, AutoRefocus := true
 WhStartTick := 0, WhCatches := 0, WhLastCatchTick := 0, WhLastSummary := 0, WhStalled := false
 CastFailCount := 0, DarkHoldN := 0, DarkFlashing := false
+DarkScanned := false, DarkHeld := false, DarkBarL := -1, DarkBarW := 0, DarkFishX := -1
 PCLastGoodY := -1, TargetSection := ""
 KbCatches := 0, KbOcrCatches := 0, KbBusy := false, KbStatus := "idle", KbLastResult := ""
 if (RemembranceMode = "")
@@ -1491,8 +1493,11 @@ BarCalculationFailsafe:
     }
 return
 BarMinigame:
+    EndSpamAt := A_TickCount, EndSpamLast := 0, EndSpamReadAt := 0, EndSpamHigh := 0, EndSpamActive := 0, EndSpamUsed := false
     MgInPlay := true
+    DarkBarL := -1, DarkBarW := 0, DarkFishX := -1, DarkHoldN := 0, DarkFlashing := false
     BelFight := false
+    BelEntryW := [0, 0], BelEntryT := [0, 0], BelEntryF := [-1, -1]
     GradLive := true
     gosub SpeedCaps
     DbX0 := -1
@@ -1642,6 +1647,16 @@ BarMinigameSingle:
     BelObX := [0, 0], BelObV := [0, 0], BelObT := [0, 0], BelObM := [0, 0], BelCmd := [[], []]
     DllCall("QueryPerformanceCounter", "Int64*", BelOkT0)
     BelW0 := [0, 0], BelLastF := [-1, -1], BelLastFT := [0, 0], BelOkT := [BelOkT0, BelOkT0], BelGoneAt := 0, BelFight := true
+    ; Keep only complete bars read during this fight's recent calibration.
+    if (SpecialRod = "Bellona's Waraxe") {
+        Loop 2 {
+            if (BelEntryW[A_Index] > 0 && BelEntryT[A_Index] && A_TickCount - BelEntryT[A_Index] <= 500) {
+                BelW0[A_Index] := BelEntryW[A_Index]
+                if (BelEntryF[A_Index] >= 0 && A_TickCount - BelEntryT[A_Index] < 300)
+                    BelLastF[A_Index] := BelEntryF[A_Index], BelLastFT[A_Index] := BelEntryT[A_Index]
+            }
+        }
+    }
 
     HudFish2Tgt := -1, HudFish2Cur := -1, HudBar2Tgt := -1, HudBar2Cur := -1, HudBar2W := 0
 
@@ -1676,6 +1691,7 @@ BarMinigameSingle:
     NoiseEHist := [], NoiseBandT := -99, NoiseBandB := -99, NoiseRlW := 0, NoiseRlN := 0
     RelLock := 0
     DutyAvg := 0.5, DarkAcc := 0, NoteAcc := 0, DarkHoldN := 0, DarkFlashing := false
+    DarkBarL := -1, DarkBarW := 0, DarkFishX := -1
 
     NoteLockX := -1, NoteLockN := 0, NoteNextX := -1, NoteNextY := -1, NoteLockY := -1, NoteHoldX := -1
 
@@ -1690,9 +1706,11 @@ BarMinigameSingle:
     LullFrames := 0, LullCalN := 0, LullR := 0, LullLitOk := "", LullSecN := 0
     LullCalLt := [], LullCalDk := [], LullCalLs := [], LullBg := [], LullSecA := [], LullSecB := []
     LullArmA := [], LullClrT := [], LullHitC := []
-    LullLastAct := 0, LullActive := false, LullSeen := false, LullGoneN := 0, LullClicks := 0
+    LullLastAct := 0, LullActive := false, LullSeen := false, LullGoneN := 0, LullClicks := 0, LullWhiteNow := false, LullWhitePrev := false, LullNeedPress := false
     LullBarSeen := false, LullFishC := -1, LullProg := -1, LullStall := false, LullStallSide := 0, LullProgOk := 0
     LullBarW0 := 0
+    LullPtrOk := false, LullPtrCalT := 0, LullPtrPy := "", LullPtrMvN := 0, LullPtrClsN := 0, LullPtrA := -1, LullPtrT := 0, LullPtrV := 0, LullPtrSusA := -1, LullPtrSusT := 0
+    LullPtrRef := "", LullPtrCls := "", LullPtrHist := "", LullPtrPk := 0, LullPtrRaw := -1, LullPtrPred := -1
 
     NoteAllN := 0
     LineBarW := -1, LineBarAge := 99
@@ -1762,11 +1780,16 @@ BarMinigame2:
     uiRod := (SpecialRod = "Tranquility" || SpecialRod = "Lullaby" || SpecialRod = "Stellarwave Melody" || SpecialRod = "Bellona's Waraxe")
     UiGoneNow := (!uiRod && UiEdgeTick() = "gone")
     if (UiGoneNow) {
+        if (EndClickSpam && SpecialRod = "None")
+            EndSpamTick(true, false)
         MgOverWhy := "uigone"
         goto BarMinigameOver
     }
     if (UiGoneT && !uiRod) {
         DllCall("QueryPerformanceCounter", "Int64*", UiFastNow)
+        if (EndClickSpam && SpecialRod = "None" && (UiFastNow - UiGoneT) * 1000 / QpcFreq >= 80
+            && EndSpamTick(true, false))
+            goto BarMinigame2
         if (!BarPresent() && !FishLineVisible())
             UiNoBarN += 1
         else
@@ -1786,31 +1809,28 @@ BarMinigame2:
         LullBarSeen := true, LullBarSeenT := A_TickCount
     if (SpecialRod = "Lullaby" && LullBarSeen && LsOn)
         LullStallTick()
-    ; the dial is played next to the reel: a click as the pendulum crosses a lit part (a quick release-press while the
-    ; reel holds the button), then the reel goes on
-    if (SpecialRod = "Lullaby" && LullBarSeen && LullScan()) {
-        if (PrecisionDown) {
-            Send, {lbutton up}
-            Sleep, % Tm(TA("lullhold", 20))
-            Send, {lbutton down}
-        } else {
-            Send, {lbutton down}
-            Sleep, % Tm(TA("lullhold", 20))
-            Send, {lbutton up}
+    ; Watch the dial continuously; reel steering may press only while the pointer is in a white sector.
+    if (SpecialRod = "Lullaby") {
+        LullWhitePrev := LullWhiteNow
+        LullScan()
+        LullPtrScan()
+        ; acted on right away each pass (other paths in the reel code may skip PrecisionApply)
+        if (LullBarSeen) {
+            if (LullWhiteNow)
+                gosub PrecisionHold
+            else
+                gosub PrecisionRelease
         }
-        LullClicks += 1
-        VxTip(9, "Lullaby: " LullSecN " light sector(s), hits " LullClicks " (last #" LullHitSec ")")
-        if (DbgOn && DbgLogs)
-            FileAppend, % A_TickCount . " dial click #" . LullHitSec . " of " . LullSecN . " (" . LullClicks . ")`n", %A_ScriptDir%\lull_log.txt
+        if (!LullWhiteNow)
+            LullNeedPress := false
+        else if (!LullWhitePrev)
+            LullNeedPress := true
     }
     if (SpecialRod = "Lullaby" && !LullBarSeen) {
-        if (LullScan()) {
-            Send, {lbutton down}
-            Sleep, % Tm(TA("lullhold", 20))
-            Send, {lbutton up}
-            LullClicks += 1
-            VxTip(9, "Lullaby: " LullSecN " light sector(s), hits " LullClicks " (last #" LullHitSec ")")
-        }
+        if (LullWhiteNow)
+            gosub PrecisionHold
+        else
+            gosub PrecisionRelease
         if (LullActive) {
             LullSeen := true
             LullGoneN := 0
@@ -2021,6 +2041,8 @@ BarMinigame2:
     DllCall("QueryPerformanceCounter", "Int64*", PfD)
     FishX := GetFishPos()
     DllCall("QueryPerformanceCounter", "Int64*", PfE)
+    if (EndClickSpam && SpecialRod = "None" && EndSpamTick(false, FoundBar && FishX >= RunLeft && FishX <= RunLeft + RunWidth))
+        goto BarMinigame2
 
     if (SpecialRod = "Stellarwave Melody") {
         if (SwPreset = "Ominous Ouija")
@@ -2348,6 +2370,8 @@ BarPrecisionControl:
     }
     ; falls through into PrecisionApply
 PrecisionApply:
+    if (SpecialRod = "Lullaby")
+        WantDown := LullWhiteNow ? true : false
     if (DbgOn && SpecialRod = "Oppressor")
         OppLogDecision()
     if (SpecialRod = "Noiseform") {
@@ -2379,6 +2403,12 @@ PrecisionApply:
         Gosub, PrecisionRelease
     Goto, BarMinigame2
 PrecisionHold:
+    if (SpecialRod = "Lullaby" && !LullWhiteNow) {
+        gosub PrecisionRelease
+        return
+    }
+    if (SpecialRod = "Lullaby" && PrecisionDown)
+        LullNeedPress := false
     if (SpecialRod = "Stellarwave Melody" && (SwPressK || SwWantK))
         return
     if (SwClickFirst()) {
@@ -2424,6 +2454,8 @@ PrecisionHold:
             return
         Send, {LButton down}
         PrecisionDown := true
+        if (SpecialRod = "Lullaby")
+            LullNeedPress := false
         DllCall("QueryPerformanceCounter", "Int64*", PrecisionDownAt)
         PrecisionResendAt := PrecisionDownAt
         return
@@ -2445,9 +2477,13 @@ PrecisionHold:
     }
     return
 PrecisionRelease:
+    if (SpecialRod = "Lullaby" && MgInPlay && LullWhiteNow)
+        return
     if (PrecisionDown) {
         if (SpecialRod = "Requiem")
             SwMinHold := ReelMinHold
+        else if (SpecialRod = "Lullaby" && LullWhiteNow)
+            SwMinHold := TA("lulllong", 100)
         else if (SpecialRod = "Stellarwave Melody" && SwPhase)
             SwMinHold := 250
         else
@@ -2466,6 +2502,7 @@ PrecisionRelease:
         Send, {LButton up}
     return
 BarMinigameOver:
+    EndSpamActive := 0, EndSpamHigh := 0
     GradLive := false
     if (SpecialRod = "Bellona's Waraxe") {
         ; both reels' buttons up before anything else (the cast-charge check below would wait with the left one held),
@@ -2495,6 +2532,14 @@ BarMinigameOver:
         Gosub, CastChargeCheck
     Send, {Blind}{LButton up}{RButton up}
     PrecisionDown := false
+    ; Special minigames keep their own controls throughout the fight; tap once it closes.
+    if (EndClickSpam && SpecialRod != "None") {
+        Loop, 4 {
+            if (!EndSpamTick(true, false))
+                break
+            Sleep, 40
+        }
+    }
     MgInPlay := false
     WhCatches += 1
     KbCatches += 1
@@ -4659,6 +4704,7 @@ CaptureFishBar:
     DredScanned := false
     SwScanned := false
     BelScanned := false
+    DarkScanned := false
 return
 BuildHud:
     Gosub, HudDestroySurface
@@ -5461,7 +5507,8 @@ LullLearn(v, now) {
 LullScan() {
     global LullFrames, LullCalN, LullR, LullBg, LullSecN, LullSecA, LullSecB, LullArmA, LullClrT
     global LullActive, LullHitSec, LullHitC, LullLastAct, LullArmDelta, LullTrigPct, LullClearMs
-    global LullRadiusPct, CaptureW
+    global LullRadiusPct, CaptureW, LullWhiteNow
+    LullWhiteNow := false
     LullHitSec := 0
     probe := (LullR > 0) ? LullR : Round(CaptureW * LullRadiusPct / 100)
     v := LullRing(probe)
@@ -5528,9 +5575,10 @@ LullScan() {
         ; a sector that changed completely at once has moved, it was not hit
         if (n > 0 && dk * 100 >= n * tp && (n < 4 || dk < n)) {
             LullClrT[ka] := 0
+            LullWhiteNow := true
             cz := (ka + kb) / 2
             armed := (LullArmA[ka] = "" || LullArmA[ka])
-            if (armed && !LullWasHit(cz) && !hit && VxPressOk()) {
+            if (armed && !LullWasHit(cz) && !hit) {
                 LullArmA[ka] := false
                 LullHitSec := i
                 LullHitC.Push({c: cz, t: now})
@@ -5545,6 +5593,273 @@ LullScan() {
     }
     return hit
 }
+; Lullaby dial: the pointer itself. The ring's light/dark parts stay put while the pointer swings over them; the white
+; part's brightness is the game's feedback (held / idle / penalty), so each colour's own shift is taken out before the
+; pointer is looked for. LullWhiteNow = the pointer, carried lulllead ms ahead, is on the light part. No trusted read for
+; lullptrold ms: not white (let go).
+LullPtrRing(cx, cy, r, dr) {
+    global pNoteBits, NoteW, NoteFullH
+    static cs := "", sn := ""
+    if (!IsObject(cs)) {
+        cs := {}, sn := {}
+        d := 186
+        while (d <= 354) {
+            cs[d] := Cos(d * 3.141592653589793 / 180), sn[d] := Sin(d * 3.141592653589793 / 180)
+            d += 2
+        }
+    }
+    out := {}
+    d := 186
+    while (d <= 354) {
+        sum := 0, n := 0
+        rr := r - dr
+        while (rr <= r + dr) {
+            x := Round(cx + rr * cs[d]), y := Round(cy + rr * sn[d])
+            if (x >= 0 && x < NoteW && y >= 0 && y < NoteFullH) {
+                p := NumGet(pNoteBits + (y * NoteW + x) * 4, "UInt")
+                sum += ((p & 0xFF) + ((p >> 8) & 0xFF) + ((p >> 16) & 0xFF)) / 3, n++
+            }
+            rr += (dr > 0) ? dr : 1
+        }
+        out[d] := n ? sum / n : -1
+        d += 2
+    }
+    return out
+}
+
+; the k-th smallest of the ring's values (k from 0 to 1)
+LullPtrPct(v, k) {
+    a := []
+    for d, x in v
+        if (x >= 0)
+            a.Push(x)
+    if (a.Length() < 20)
+        return -1
+    s := ""
+    for i, x in a
+        s .= Format("{:08.2f}", x) . "`n"
+    Sort, s
+    a := StrSplit(RTrim(s, "`n"), "`n")
+    return a[Round(1 + k * (a.Length() - 1))] + 0
+}
+
+; the ring: the black part of the arc is the only near-black thing there - rays from about the dial's middle find its
+; run on each angle, a circle through the runs' outer ends gives the centre and radius, sampled in the band's middle
+LullPtrCal() {
+    global pNoteBits, NoteW, NoteFullH, CaptureW, FishBarTop, NoteTop, WindowHeight, LullPtrTx, LullPtrTy, LullPtrTr, LullPtrSc
+    sc := WindowHeight / 2160
+    cx0 := CaptureW / 2 + TA("lullpcx", 2) * sc, cy0 := FishBarTop - NoteTop + TA("lullpcy", 8) * sc
+    n := 0, pts := [], th := []
+    a := 186
+    while (a <= 354) {
+        c := Cos(a * 3.141592653589793 / 180), s := Sin(a * 3.141592653589793 / 180)
+        run := 0, best := 0, bEnd := 0
+        rr := Round(230 * sc)
+        while (rr <= Round(380 * sc)) {
+            x := Round(cx0 + rr * c), y := Round(cy0 + rr * s), lum := 255
+            if (x >= 0 && x < NoteW && y >= 0 && y < NoteFullH) {
+                p := NumGet(pNoteBits + (y * NoteW + x) * 4, "UInt")
+                lum := ((p & 0xFF) + ((p >> 8) & 0xFF) + ((p >> 16) & 0xFF)) / 3
+            }
+            run := (lum < TA("lullblack", 70)) ? run + 1 : 0
+            if (run > best)
+                best := run, bEnd := rr
+            rr++
+        }
+        if (best >= 24 * sc && best <= 90 * sc) {
+            pts.Push([cx0 + bEnd * c, cy0 + bEnd * s]), n++
+            th.Push(best)
+        }
+        a += 4
+    }
+    if (n < 6)
+        return false
+    ; the dial is centred across the screen: with x fixed, (x-cx)^2 + y^2 = 2 b y + k by least squares (b = centre
+    ; height, k = r^2 - b^2) - a free circle through only the black part's ~70 degrees drifts along its normal
+    sw := 0, swy := 0, swyy := 0, sq := 0, sqy := 0
+    for i, pt in pts {
+        q := (pt[1] - cx0) ** 2 + pt[2] ** 2
+        swy += pt[2], swyy += pt[2] * pt[2], sq += q, sqy += q * pt[2]
+    }
+    det := 2 * swyy * n - 2 * swy * swy
+    if (Abs(det) < 0.000001)
+        return false
+    cb := (sqy * n - sq * swy) / det
+    kk := (2 * swyy * sq - 2 * swy * sqy) / det
+    ca := cx0, ro := Sqrt(kk + cb * cb)
+    if (Abs(cb - cy0) > 60 * sc || ro < 250 * sc || ro > 380 * sc)
+        return false
+    s := ""
+    for i, t in th
+        s .= Format("{:06.1f}", t) . "`n"
+    Sort, s
+    tk := StrSplit(RTrim(s, "`n"), "`n")[(th.Length() + 1) // 2] + 0
+    LullPtrTx := ca, LullPtrTy := cb, LullPtrTr := ro - tk / 2, LullPtrSc := sc
+    return true
+}
+
+LullPtrScan() {
+    global LullActive, LullWhiteNow, LullPtrOk, LullPtrCalT, LullPtrCx, LullPtrCy, LullPtrR, LullPtrSc, LullPtrRef, LullPtrCls
+    global LullPtrA, LullPtrT, LullPtrV, LullPtrSusA, LullPtrSusT, LullPtrPk, LullPtrRaw, LullPtrPred, LullPtrHist
+    global LullPtrTx, LullPtrTy, LullPtrTr, LullPtrPy, LullPtrPr, LullPtrMvN, LullPtrClsN
+    LullWhiteNow := false
+    if (!LullActive)
+        return false
+    now := A_TickCount
+    ; the ring, fitted again every 250 ms (the dial zooms in as it shows): taken when two fits in a row agree; when it
+    ; moves, the pointer is looked for afresh
+    if (now - LullPtrCalT >= 250) {
+        LullPtrCalT := now
+        if (LullPtrCal()) {
+            if (LullPtrPy != "" && Abs(LullPtrTy - LullPtrPy) <= 4 * LullPtrSc && Abs(LullPtrTr - LullPtrPr) <= 4 * LullPtrSc) {
+                moved := LullPtrOk && (Abs(LullPtrTy - LullPtrCy) > 3 * LullPtrSc || Abs(LullPtrTr - LullPtrR) > 3 * LullPtrSc)
+                LullPtrMvN := moved ? LullPtrMvN + 1 : 0
+                ; the first ring at once; a different one only after 3 agreeing fits in a row (a flash can fake one)
+                if (!LullPtrOk || LullPtrMvN >= 2) {
+                    if (moved)
+                        LullPtrRef := "", LullPtrA := -1
+                    LullPtrCx := LullPtrTx, LullPtrCy := LullPtrTy, LullPtrR := LullPtrTr, LullPtrOk := true, LullPtrMvN := 0
+                }
+            } else
+                LullPtrMvN := 0
+            LullPtrPy := LullPtrTy, LullPtrPr := LullPtrTr
+        } else
+            LullPtrPy := ""
+    }
+    if (!LullPtrOk)
+        return false
+    v := LullPtrRing(LullPtrCx, LullPtrCy, LullPtrR, Round(6 * LullPtrSc))
+    lo := LullPtrPct(v, 0.2), hi := LullPtrPct(v, 0.8)
+    if (lo < 0 || hi - lo < 40)
+        return false
+    mid := (lo + hi) / 2
+    if (!IsObject(LullPtrRef)) {
+        ; the reference starts again; the light/dark map is kept when there is one (a new ring is the same arc)
+        newc := !IsObject(LullPtrCls)
+        LullPtrRef := {}, LullPtrHist := {}
+        if (newc)
+            LullPtrCls := {}, LullPtrClsN := 0
+        for d, x in v {
+            LullPtrRef[d] := x, LullPtrHist[d] := [x]
+            if (newc)
+                LullPtrCls[d] := (x >= mid) ? 1 : 0
+        }
+        return false
+    }
+    ; the difference to the reference, each colour's own median shift taken out (the feedback pulses)
+    ; the pointer shows BRIGHTER than the reference over the dark part and DARKER over the light part (there only its
+    ; outline differs); each part's own median change is taken out (the game's feedback shifts a whole part at once)
+    dW := "", dK := "", nW := 0, nK := 0
+    for d, x in v {
+        if (x < 0)
+            continue
+        if (LullPtrCls[d] >= 0.5)
+            dW .= Format("{:09.2f}", LullPtrRef[d] - x + 500) . "`n", nW++
+        else
+            dK .= Format("{:09.2f}", x - LullPtrRef[d] + 500) . "`n", nK++
+    }
+    mW := LullPtrMedS(dW, nW) - 500, mK := LullPtrMedS(dK, nK) - 500
+    bp := -999, ba := -1, wp := -999, wa := -1
+    for d, x in v {
+        if (x < 0)
+            continue
+        if (LullPtrCls[d] >= 0.5) {
+            e := LullPtrRef[d] - x - mW
+            if (e > wp)
+                wp := e, wa := d
+        } else {
+            e := x - LullPtrRef[d] - mK
+            if (e > bp)
+                bp := e, ba := d
+        }
+    }
+    ; a strong bright read on the dark part wins; else a clear dark read on the light part; else none
+    pk := -1, pa := -1
+    if (bp >= TA("lullpblk", 100))
+        pk := bp, pa := ba
+    else if (wp >= TA("lullpwht", 50))
+        pk := wp, pa := wa
+    LullPtrPk := pk, LullPtrRaw := pa
+    k := (LullPtrClsN < 15) ? 0.2 : 0.03
+    ; the reference = each angle's median of its last 9 reads (the pointer passes too quickly to be it); the light/dark
+    ; map learns slowly
+    for d, x in v {
+        if (x < 0)
+            continue
+        h := LullPtrHist[d]
+        h.Push(x)
+        if (h.Length() > TA("lullphist", 9))
+            h.RemoveAt(1)
+        LullPtrRef[d] := LullPtrMed9(h)
+        ; the light/dark map never learns where the pointer is (it dwells at the turnarounds)
+        if (pa < 0 || Abs(d - pa) > 12)
+            LullPtrCls[d] := (1 - k) * LullPtrCls[d] + k * ((x >= mid) ? 1 : 0)
+    }
+    LullPtrClsN := LullPtrClsN + 1
+    ; the read: strong enough, and no jump the next read does not back up
+    if (pa >= 0) {
+        dt := now - LullPtrT
+        if (LullPtrA < 0 || dt > 250 || Abs(pa - LullPtrA) <= 25 + 0.9 * dt
+            || (LullPtrSusA >= 0 && now - LullPtrSusT <= 80 && Abs(pa - LullPtrSusA) <= 25)) {
+            if (LullPtrA >= 0 && dt >= 5 && dt <= 150)
+                LullPtrV := 0.3 * LullPtrV + 0.7 * (pa - LullPtrA) / dt
+            else
+                LullPtrV := 0
+            LullPtrV := (LullPtrV > 1.2) ? 1.2 : ((LullPtrV < -1.2) ? -1.2 : LullPtrV)
+            LullPtrA := pa, LullPtrT := now, LullPtrSusA := -1
+        } else {
+            LullPtrSusA := pa, LullPtrSusT := now
+        }
+    }
+    if (LullPtrA < 0 || now - LullPtrT > TA("lullptrold", 90))
+        return false
+    ; carried ahead for the lag, held inside the ring
+    p := LullPtrA + LullPtrV * (TA("lulllead", 45) + (now - LullPtrT))
+    ; kept on the arc proper: past ~350 / before ~190 the ring runs over the reel bar's light ends
+    p := (p < 190) ? 190 : ((p > 346) ? 346 : p)
+    p := Round(p / 2) * 2
+    LullPtrPred := p
+    LullWhiteNow := (LullPtrCls[p] >= 0.5)
+    LullPtrLog(v)
+    return LullWhiteNow
+}
+
+LullPtrMed9(h) {
+    a := [], n := h.Length()
+    for i, x in h {
+        j := a.Length()
+        while (j >= 1 && a[j] > x)
+            j--
+        a.InsertAt(j + 1, x)
+    }
+    return (n & 1) ? a[(n + 1) // 2] : (a[n // 2] + a[n // 2 + 1]) / 2
+}
+
+LullPtrMedS(s, n) {
+    if (n < 1)
+        return 0
+    Sort, s
+    a := StrSplit(RTrim(s, "`n"), "`n")
+    return a[(n + 1) // 2] + 0
+}
+
+; Debug: Veltrix\lullptr_log.txt, one line a pass
+LullPtrLog(v) {
+    global DbgOn, DbgLogs, LullPtrRaw, LullPtrPk, LullPtrA, LullPtrV, LullPtrPred, LullWhiteNow, LullPtrCy, LullPtrR
+    static f := ""
+    if (!DbgOn || !DbgLogs)
+        return
+    if (f = "") {
+        f := A_ScriptDir . "\lullptr_log.txt"
+        FileGetSize, sz, %f%
+        if (!ErrorLevel && sz > 3000000)
+            FileDelete, %f%
+        FileAppend, % "---- " . A_Now . "  ring cy " . Round(LullPtrCy) . " r " . Round(LullPtrR) . "`n", %f%
+    }
+    FileAppend, % A_TickCount . " raw " . LullPtrRaw . " pk " . Round(LullPtrPk) . " ptr " . LullPtrA . " v " . Round(LullPtrV * 1000)
+        . " pred " . LullPtrPred . " white " . (LullWhiteNow ? 1 : 0) . " L " . GetKeyState("LButton") . "`n", %f%
+}
+
 LullWasHit(cz) {
 	global LullHitC
 	same := TA("lullsame", 10)
@@ -6349,6 +6664,9 @@ AdvRegistry() {
 	r.Push(["Minigame", "L", "hardzone", 0, "%|Line this far from the bar's middle (share of the bar): hold / let go straight at it (0 = off)"])
 	r.Push(["Minigame", "L", "midtrim", 0, "x0.1/s|Keep the bar's middle on the line: how fast an offset is steered out (0 = off)"])
 	r.Push(["Minigame", "L", "barsamp", 12, "ms|Bar size: pause between samples"])
+	r.Push(["Minigame", "L", "barwidemax", 99, "%|Widest bar read (share of the bar strip; over 75% it must fill with its colour)"])
+	r.Push(["Minigame", "L", "barwidefill", 60, "%|A bar over 75% of the strip: share of it that must be its colour"])
+	r.Push(["Minigame", "L", "barwidectr", 60, "lum|A bar over 75% of the strip: the track past one end must differ from the bar colour by"])
 	r.Push(["Minigame", "L", "barhide", 150, "ms|Hide the overlay once the bar is gone for"])
 	r.Push(["Minigame", "L", "barlost", 150, "ms|End the minigame once the bar is gone for"])
 	r.Push(["Minigame", "L", "barlostui", 300, "ms|... while the minigame frame still shows (not fading)"])
@@ -6356,6 +6674,11 @@ AdvRegistry() {
 	r.Push(["Minigame", "L", "nofish", 8000, "ms|End the minigame if no fish line for"])
 	r.Push(["Minigame", "L", "handsoff", 10, "ms|Pause while the bar UI is hidden"])
 	r.Push(["Minigame", "L", "lullhold", 20, "ms|Lullaby: click hold"])
+	r.Push(["Minigame", "L", "lulllong", 100, "ms|Lullaby: minimum hold inside the white zone; releases immediately outside"])
+	r.Push(["Minigame", "L", "lulllead", 45, "ms|Lullaby: the dial pointer is carried this far ahead (capture + input lag)"])
+	r.Push(["Minigame", "L", "lullpblk", 100, "lum|Lullaby: how much brighter the pointer must be over the dial's dark part"])
+	r.Push(["Minigame", "L", "lullpwht", 50, "lum|Lullaby: how much darker the pointer's outline must be over the light part"])
+	r.Push(["Minigame", "L", "lullptrold", 90, "ms|Lullaby: no trusted pointer read for this long - let go"])
 	r.Push(["Minigame", "L", "noiselost", 2000, "ms|Noiseform: end after the fish is lost for"])
 	r.Push(["Minigame", "L", "twig1", 40, "ms|Splitbranch Twig: hover before clicking a fish"])
 	r.Push(["Minigame", "L", "twig2", 40, "ms|Splitbranch Twig: click hold"])
@@ -8042,7 +8365,7 @@ NoiseScan() {
 BellonaScan() {
     global pCaptureBits, CaptureW, CaptureH, VxNatBL2, NatOff, MgInPlay, DbgOn
     global BelSeen, BelA, BelB, BelF, BelOK, BelScanned, BelRes, BelFight, BelW0, BelLastF, BelLastFT, BelTrk, BelCol, BelFlg
-    global BelNc
+    global BelNc, BelEntryW, BelEntryT, BelEntryF
     if (BelScanned)
         return BelRes
     BelScanned := true
@@ -8073,6 +8396,18 @@ BellonaScan() {
         if (fight && BelOK[A_Index] && (BelFlg[A_Index] & 7) = 3) {
             w := BelB[A_Index] - BelA[A_Index]
             BelW0[A_Index] := BelW0[A_Index] ? Round(0.8 * BelW0[A_Index] + 0.2 * w) : w
+        }
+    }
+    ; Save only a plausible two-reel start, with complete ends and a line for each saved side.
+    if (!fight && MgInPlay && BelOK[1] && BelOK[2]) {
+        w1 := BelB[1] - BelA[1], w2 := BelB[2] - BelA[2]
+        if (Abs(w1 - w2) <= 0.1 * Max(w1, w2)) {
+            Loop 2 {
+                if ((BelFlg[A_Index] & 7) = 3 && BelF[A_Index] >= 0) {
+                    BelEntryW[A_Index] := BelB[A_Index] - BelA[A_Index]
+                    BelEntryF[A_Index] := BelF[A_Index], BelEntryT[A_Index] := A_TickCount
+                }
+            }
         }
     }
     BelSeen := (r >= 1)
@@ -14199,18 +14534,62 @@ GradScan() {
 }
 
 BarPresent() {
-	global RunLeft, RunWidth, GradL, GradW
+	global RunLeft, RunWidth, GradL, GradW, SpecialRod, DarkBarL, DarkBarW
+	if (DarkHold())
+		{
+		RunLeft := DarkBarL
+		RunWidth := DarkBarW
+		return true
+		}
 	if (GradRod() and GradScan())
 		{
 		RunLeft := GradL
 		RunWidth := GradW
-		return true
+		ok := true
 		}
-	return BarPresentBase()
+	else
+		ok := BarPresentBase()
+	if (ok and SpecialRod = "Darkheart")
+		DarkBarL := RunLeft, DarkBarW := RunWidth
+	return ok
+}
+
+; Darkheart outside Lines mode: a dark flash over the reel (FrameIsDark) keeps the last bar and line for up to 45 looks
+; and sets DarkFlashing like LineScan does in Lines mode (the fight then holds its duty share, no UI-gone end)
+DarkHold() {
+	global SpecialRod, ControlMode, MgInPlay, DarkScanned, DarkHeld, DarkHoldN, DarkFlashing, DarkAcc, DarkBarW
+	if (SpecialRod != "Darkheart" || ControlMode = "Lines" || !MgInPlay)
+		return false
+	if (DarkScanned)
+		return DarkHeld
+	DarkScanned := true
+	DarkHeld := false
+	if (FrameIsDark()) {
+		DarkHoldN := DarkHoldN + 1
+		if (DarkHoldN <= 45 && DarkBarW >= 1) {
+			if (!DarkFlashing)
+				DarkAcc := 0
+			DarkFlashing := true
+			DarkHeld := true
+		}
+	} else {
+		DarkHoldN := 0
+		DarkFlashing := false
+	}
+	return DarkHeld
 }
 
 ; the rod's own line, unless it sits on an edge of the bar (a bar edge read as the line); then the gradient finder's
 GetFishPos() {
+	global GradL, GradW, GradFishE, GradFishM, SpecialRod, DarkFishX
+	if (DarkHold())
+		return DarkFishX
+	fx := GetFishPosLive()
+	if (SpecialRod = "Darkheart" and fx >= 0)
+		DarkFishX := fx
+	return fx
+}
+GetFishPosLive() {
 	global GradL, GradW, GradFishE, GradFishM, SpecialRod
 	fx := GetFishPosBase()
 	if (!GradRod() or !GradScan())
@@ -14397,7 +14776,9 @@ FindArrowX() {
 FishLineVisible() {
     global pCaptureBits, CaptureW, CaptureH, FishColor, FishBarColorTolerance, BarScanRow, ControlMode
     global LineFishSeen, SpecialRod, CastFishX, RemWhiteX, MiguFishX, HaliFishX, TryFishX, SwFishX, VxNatFL, RbFishX
-    global LullFishX, DredFishX, BelOK, BelF, MgInPlay
+    global LullFishX, DredFishX, BelOK, BelF, MgInPlay, DarkFishX
+    if (DarkHold())
+        return DarkFishX >= 0
     if (SpecialRod = "Stellarwave Melody")
         return SwScan() && SwFishX >= 0
     if (SpecialRod = "Bellona's Waraxe")
@@ -16242,6 +16623,11 @@ LullBarScan() {
     }
     if (fx < 0 || bd > 0.08 * w)
         fx := wx
+    ; A full-height, dark line can be lighter than the fish preset. Prefer its consistent vertical shape over
+    ; the black ornament on the bar, which can otherwise keep the old fish position after the line moves away.
+    strong := LullFishStrong(pCaptureBits, w, CaptureH)
+    if (strong >= 0)
+        fx := strong
     if (fx >= 0) {
         LullFishC := fx
         LullFishX := FishBarLeft + fx
@@ -16309,6 +16695,58 @@ LullBarScan() {
     LullBarW := bR - bL + 1
     LullBarFound := true
     return true
+}
+
+
+; Full-height dark line with a stable colour down the strip and brighter pixels on both sides.
+; The contrast requirement keeps textured scenery and the bar's non-vertical ornament from taking priority.
+LullFishStrong(bits, w, h) {
+    if (!bits || w < 100 || h < 10)
+        return -1
+    ys := [Floor(h * 0.14), Floor(h * 0.3), Floor(h * 0.5), Floor(h * 0.7), Floor(h * 0.86)]
+    off := Max(6, Round(w * 0.008))
+    minW := Max(4, Round(w * 0.005))
+    maxW := Max(minW, Round(w * 0.027))
+    best := -1, bestContrast := 45, start := -1
+    x := 0
+    while (x <= w) {
+        ok := false
+        if (x < w) {
+            lo := 256, hi := -1
+            for _, y in ys {
+                p := NumGet(bits + (y * w + x) * 4, "UInt")
+                lum := ((p & 255) + ((p >> 8) & 255) + ((p >> 16) & 255)) / 3
+                lo := Min(lo, lum), hi := Max(hi, lum)
+            }
+            ok := (hi < 90 && hi - lo < 25)
+        }
+        if (ok && start < 0)
+            start := x
+        if (!ok && start >= 0) {
+            finish := x - 2, n := x - start
+            if (n >= minW && n <= maxW && start >= off && finish + off < w) {
+                left := 0, right := 0, mid := 0, cx := (start + finish) // 2
+                for _, y in ys {
+                    for j, px in [start - off, finish + off, cx] {
+                        p := NumGet(bits + (y * w + px) * 4, "UInt")
+                        lum := ((p & 255) + ((p >> 8) & 255) + ((p >> 16) & 255)) / 3
+                        if (j = 1)
+                            left += lum
+                        else if (j = 2)
+                            right += lum
+                        else
+                            mid += lum
+                    }
+                }
+                contrast := (Min(left, right) - mid) / 5
+                if (contrast > bestContrast)
+                    best := (start + finish) / 2, bestContrast := contrast
+            }
+            start := -1
+        }
+        x += 2
+    }
+    return best
 }
 
 ; a Lullaby bar end pixel: white, or (beside the fish's shadow) >= 130 and 70 brighter than o px either side
@@ -16547,6 +16985,106 @@ DredDbg(ok, bL, bR, lines) {
         FileCreateDir, %A_ScriptDir%\caps
         OppBmpSave(A_ScriptDir . "\caps\dred_" . n . "_" . (ok ? "bar" : "nobar") . bL . "-" . bR . "_l" . Round(DredA) . "-" . Round(DredB) . ".bmp", pCaptureBits, CaptureW, CaptureH)
     }
+}
+
+; Standard progress bar reader. Returns -1 unless two rows show a light-then-dark fill with visible end borders.
+EndProgressRead(bits, w, h) {
+    if (!bits || w < 40 || h < 4)
+        return -1
+    vals := []
+    margin := Max(4, Round(w * 0.005))
+    for _, f in [0.35, 0.65] {
+        y := Floor(h * f), row := bits + y * w * 4
+        edgeL := 0, edgeR := 0
+        Loop, %margin% {
+            p := NumGet(row + (A_Index - 1) * 4, "UInt")
+            q := NumGet(row + (w - A_Index) * 4, "UInt")
+            edgeL += (p & 255) + ((p >> 8) & 255) + ((p >> 16) & 255)
+            edgeR += (q & 255) + ((q >> 8) & 255) + ((q >> 16) & 255)
+        }
+        if (edgeL < 3 * 100 * margin || edgeR < 3 * 90 * margin || edgeR > 3 * 235 * margin)
+            return -1
+        kinds := [], bright := 0, valid := 0, x := margin
+        while (x < w - margin) {
+            px := NumGet(row + x * 4, "UInt")
+            r := (px >> 16) & 255, g := (px >> 8) & 255, b := px & 255
+            light := (Min(r, g, b) >= 150), dark := (Max(r, g, b) <= 100)
+            kinds.Push(light ? 1 : (dark ? 0 : -1))
+            bright += light ? 1 : 0, valid += (light || dark) ? 1 : 0
+            x += 2
+        }
+        n := kinds.Length()
+        if (!n || valid < 0.9 * n)
+            return -1
+        misses := 0
+        for i, kind in kinds
+            if ((i <= bright && kind != 1) || (i > bright && kind != 0))
+                misses += 1
+        if (misses > Max(8, 0.08 * n))
+            return -1
+        vals.Push(bright / n)
+    }
+    return (Abs(vals[1] - vals[2]) <= 0.05) ? (vals[1] + vals[2]) / 2 : -1
+}
+EndProgressScan() {
+    global VxBlt, hCaptureScreenDC, RobloxHwnd, WindowWidth, WindowHeight
+    static dc := 0, bm := 0, old := 0, bits := 0, bw := 0, bh := 0
+    if (!hCaptureScreenDC || WindowWidth < 100 || WindowHeight < 100)
+        return -1
+    x0 := Round(0.390625 * WindowWidth), x1 := Round(0.609375 * WindowWidth)
+    w := x1 - x0, h := Max(4, Round(0.0055 * WindowHeight))
+    y0 := Round(0.9093 * WindowHeight) - h // 2
+    if (!dc || w != bw || h != bh) {
+        if (dc)
+            DllCall("SelectObject", "Ptr", dc, "Ptr", old), DllCall("DeleteObject", "Ptr", bm), DllCall("DeleteDC", "Ptr", dc)
+        dc := DllCall("CreateCompatibleDC", "Ptr", hCaptureScreenDC, "Ptr")
+        VarSetCapacity(bi, 40, 0)
+        NumPut(40, bi, 0, "UInt"), NumPut(w, bi, 4, "Int"), NumPut(-h, bi, 8, "Int"), NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+        bits := 0
+        bm := DllCall("CreateDIBSection", "Ptr", dc, "Ptr", &bi, "UInt", 0, "Ptr*", bits, "Ptr", 0, "UInt", 0, "Ptr")
+        old := DllCall("SelectObject", "Ptr", dc, "Ptr", bm, "Ptr")
+        bw := w, bh := h
+    }
+    if (!bits)
+        return -1
+    RobloxClientRect(RobloxHwnd, cwx, cwy)
+    DllCall(VxBlt, "Ptr", dc, "Int", 0, "Int", 0, "Int", w, "Int", h, "Ptr", hCaptureScreenDC, "Int", cwx + x0, "Int", cwy + y0, "UInt", 0x00CC0020)
+    return EndProgressRead(bits, w, h)
+}
+; This option only controls the current catch. The normal restart/cast flow starts the next cast.
+EndSpamTick(fading, fishOnBar) {
+    global EndClickSpam, MacroRunning, MgInPlay, PassiveAll, SwPassive, SpecialRod, RobloxHwnd, NukeBusy, NukeAfter
+    global EndSpamAt, EndSpamLast, EndSpamReadAt, EndSpamHigh, EndSpamActive, EndSpamUsed, PrecisionDown
+    if (!EndClickSpam || !MacroRunning || !MgInPlay || PassiveAll || (SwPassive && SpecialRod = "Stellarwave Melody")
+        || NukeBusy || NukeAfter || !RobloxHwnd || !WinActive("ahk_id " . RobloxHwnd) || EndSpamUsed)
+        return false
+    now := A_TickCount
+    if (!fading && now - EndSpamAt < 800)
+        return false
+    if (!fading && (!EndSpamReadAt || now - EndSpamReadAt >= 50)) {
+        p := EndProgressScan(), EndSpamReadAt := now
+        EndSpamHigh := (p >= 0.95) ? EndSpamHigh + 1 : 0
+    }
+    if (!fading && (!fishOnBar || EndSpamHigh < 2)) {
+        EndSpamActive := 0
+        return false
+    }
+    if (!EndSpamActive)
+        EndSpamActive := now
+    if (now - EndSpamActive >= 1500) {
+        EndSpamUsed := true, EndSpamActive := 0
+        return false
+    }
+    if (!EndSpamLast || now - EndSpamLast >= 40) {
+        if (PrecisionDown || GetKeyState("LButton"))
+            Send, {Blind}{LButton up}
+        PrecisionDown := false
+        Send, {Blind}{LButton down}
+        Sleep, 12
+        Send, {Blind}{LButton up}
+        EndSpamLast := A_TickCount
+    }
+    return true
 }
 
 ; Lullaby's progress bar under the reel bar: pale fill from the left, dark the rest. Returns 0..1, -1 when not seen
@@ -24003,6 +24541,34 @@ BarEndInside(row, x, dir) {
     }
     return true
 }
+; a bar wider than 3/4 of the strip (a high-control rod): taken only when its colour fills the span and the
+; track just past one of its ends stands out from the bar's colour (any bar colour - a light bar on a dark track, or a
+; dark bar on a light one) - bar-coloured specks far apart, a light scene or a dark flash over everything are not a bar
+BarWideOk(lList, rList, tol, row, l, r) {
+    global pCaptureBits, CaptureW, CaptureH, FishBarLeft
+    W := CaptureW
+    lc := Round(l - FishBarLeft), rc := Round(r - FishBarLeft)
+    if (rc - lc + 1 > TA("barwidemax", 99) * W / 100)
+        return false
+    if (BarSpanFill(lList, rList, tol, row, lc, rc) < TA("barwidefill", 60) / 100)
+        return false
+    ctr := TA("barwidectr", 60)
+    for i, x in [lc - 6, rc + 6] {
+        if (x < 0 || x > W - 1)
+            continue
+        o := (i = 1) ? lList : rList
+        bl := (o.r[1] + o.g[1] + o.b[1]) / 3
+        ok := 0
+        for _, y in [CaptureH // 4, (3 * CaptureH) // 4] {
+            P := NumGet(pCaptureBits + (y * W + x) * 4, "UInt")
+            if (Abs(((P & 0xFF) + ((P >> 8) & 0xFF) + ((P >> 16) & 0xFF)) / 3 - bl) >= ctr)
+                ok += 1
+        }
+        if (ok = 2)
+            return true
+    }
+    return false
+}
 BarColRef() {
 	global BarColRing
 	if (!IsObject(BarColRing))
@@ -24040,6 +24606,8 @@ FindBarByColor() {
             l := ColorListFirstX(lLive, adTol, row, lx - 70, lx + 70)
         if (l < 0)
             l := ColorListFirstX(lList, tol, row, lx - 70, lx + 70)
+        if (l >= 0 && lx - 70 > 0 && ColorListFirstX(lList, tol, row, lx - 170, lx - 71) >= 0)
+            l := -1
     }
     if (LastBarR >= 0) {
         rx := Round(LastBarR - FishBarLeft)
@@ -24047,6 +24615,8 @@ FindBarByColor() {
             r := ColorListLastX(rLive, adTol, row, rx - 70, rx + 70)
         if (r < 0)
             r := ColorListLastX(rList, tol, row, rx - 70, rx + 70)
+        if (r >= 0 && rx + 70 < W - 1 && ColorListLastX(rList, tol, row, rx + 71, rx + 170) >= 0)
+            r := -1
     }
     if (l < 0)
         l := ColorListFirstX(lList, tol, row, 0, W - 1)
@@ -24091,7 +24661,7 @@ FindBarByColor() {
         }
     }
 
-    if (l < 0 || r < 0 || r <= l || (r - l + 1) > 0.75 * W) {
+    if (l < 0 || r < 0 || r <= l || ((r - l + 1) > 0.75 * W && !BarWideOk(lList, rList, tol, row, l, r))) {
         LastBarL := -1, LastBarR := -1
         BarLiveMiss += 1
         if (BarLiveMiss > 12) {
@@ -27272,6 +27842,15 @@ Gui, Add, Text, x204 y312 w524 h52 Hwndcst_h, %cst_t%
 SpecialBrushes[cst_h] := {brush: hBrushCard, text: 0xFFFFFF}
 NormalCastCtrls.Push(cst_h)
 
+; Extra catch-end action is available for either casting mode.
+cst_h := AddPanel(188, 584, 556, 68)
+CastCtrls.Push(cst_h)
+cst_c := EndClickSpam ? 1 : 0
+Gui, Font, s9 norm c%ColorText%
+Gui, Add, Checkbox, x204 y600 w400 h20 vEndClickSpam gEndClickSpamChanged Checked%cst_c% Hwndcst_h, Spam click near catch end
+IconTips[cst_h] := "Brief left-clicks near the end of a catch. Regular rods use 95% progress or fading;`nspecial rods click as their minigame closes, after their own actions finish.`nThe normal cast flow then starts the next cast. Off by default."
+CastCtrls.Push(cst_h)
+
 ; ---- perfect cast group
 cst_h := AddPanel(188, 192, 556, 222)
 PerfectCastCtrls.Push(cst_h)
@@ -27330,6 +27909,12 @@ Gui, Add, Text, x204 y456 w524 h100 Hwndcst_h, %cst_t%
 SpecialBrushes[cst_h] := {brush: hBrushCard, text: 0xFFFFFF}
 PerfectCastCtrls.Push(cst_h)
 Gui, Font, s9 norm c%ColorText%
+return
+EndClickSpamChanged:
+GuiControlGet, EndClickSpamV, 1:, EndClickSpam
+if (!ErrorLevel)
+    EndClickSpam := EndClickSpamV ? true : false
+gosub, QueueAutoSave
 return
 SmartCastChanged:
 GuiControlGet, SmartCastV, 1:, SmartCast
@@ -32180,20 +32765,7 @@ else
 GuiControl, 1:, DetTestOut, %DetTxt%
 return
 RefreshControlModes:
-if (SpecialRod = "Noiseform")
-    CmList := "Precision"
-else if (SpecialRod = "Darkheart" || SpecialRod = "Pinions Aria" || SpecialRod = "Castbound")
-    CmList := "Lines"
-else if (SpecialRod = "Remembrance")
-    CmList := "Lines"
-else if (SpecialRod = "MiguRod" || SpecialRod = "Halibut Harpoon" || SpecialRod = "Tryhard Rod" || SpecialRod = "Stellarwave Melody"
-    || SpecialRod = "Doomsekkar" || SpecialRod = "Oppressor" || SpecialRod = "Record Breaker" || SpecialRod = "Lullaby"
-    || SpecialRod = "D.R.E.D")
-    CmList := "Precision"
-else if (SpecialRod = "Requiem" || SpecialRod = "Bellona's Waraxe" || SpecialRod = "Dreambreaker" || SpecialRod = "Verdant Oath")
-    CmList := "Lines"
-else
-    CmList := "Precision"
+CmList := "Precision"
 RcmOk := false
 Loop, Parse, CmList, |
 {
@@ -32503,10 +33075,7 @@ SpecialRodChanged:
 GuiControlGet, SpecialRod, 1:
 PredictOn := PredictLoad()
 GuiControl, 1:, PredictOn, % (PredictOn ? 1 : 0)
-if SpecialRod in Requiem,Darkheart,Verdant Oath,Remembrance
-    ControlMode := "Lines"
-else if SpecialRod in MiguRod,Halibut Harpoon,Tryhard Rod,Stellarwave Melody,Doomsekkar,Oppressor,Record Breaker,Lullaby,D.R.E.D
-    ControlMode := "Precision"
+ControlMode := "Precision"
 ; the rod's own colours every time a rod is picked: the preset list goes to Default (every colour box back to its
 ; default, then the rod's own preset) - colours or a preset picked for the last rod never carry over
 gosub ColPresetRefresh
@@ -37539,6 +38108,108 @@ public static class Program {
     }
 }
 
+)
+uiWind =
+(% Join`n
+public class WindBand : Window {
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr h, int i, int v);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern bool GetMonitorInfo(IntPtr h, ref MONITORINFO info);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int left, top, right, bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int size; public RECT monitor, work; public int flags; }
+    readonly List<TranslateTransform> shifts = new List<TranslateTransform>();
+    readonly List<double> lengths = new List<double>();
+    readonly int band;
+
+    static Rect GameScreen() {
+        try {
+            var processes = System.Diagnostics.Process.GetProcessesByName("RobloxPlayerBeta");
+            foreach (var process in processes) {
+                IntPtr hwnd = process.MainWindowHandle;
+                if (hwnd == IntPtr.Zero) continue;
+                var info = new MONITORINFO(); info.size = Marshal.SizeOf(typeof(MONITORINFO));
+                if (!GetMonitorInfo(MonitorFromWindow(hwnd, 2), ref info)) continue;
+                double scale = SystemParameters.PrimaryScreenWidth / Math.Max(1, GetSystemMetrics(0));
+                return new Rect(info.monitor.left * scale, info.monitor.top * scale,
+                    (info.monitor.right - info.monitor.left) * scale, (info.monitor.bottom - info.monitor.top) * scale);
+            }
+        } catch { }
+        return new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+    }
+
+    public WindBand(int n) {
+        band = n;
+        WindowStyle = WindowStyle.None; AllowsTransparency = true;
+        Background = Brushes.Transparent; ResizeMode = ResizeMode.NoResize;
+        ShowInTaskbar = false; ShowActivated = false; Focusable = false; Topmost = true;
+        IsHitTestVisible = false;
+        Rect screen = GameScreen();
+        Left = screen.Left; Width = screen.Width;
+        Height = Math.Min(100, screen.Height / 6);
+        Top = screen.Top + screen.Height * (0.10 + 0.23 * n);
+        var canvas = new Canvas { ClipToBounds = true };
+        Content = canvas;
+        for (int i = 0; i < 3; i++) {
+            double len = 420 + 95 * ((i + n) % 3), y = 17 + i * 32;
+            var ribbon = new PathFigure { StartPoint = new Point(0, y), IsClosed = false };
+            ribbon.Segments.Add(new BezierSegment(new Point(len * 0.18, y - 12), new Point(len * 0.31, y + 15), new Point(len * 0.48, y - 2), true));
+            ribbon.Segments.Add(new BezierSegment(new Point(len * 0.61, y - 18), new Point(len * 0.75, y + 15), new Point(len * 0.86, y - 3), true));
+            ribbon.Segments.Add(new BezierSegment(new Point(len * 0.95, y - 25), new Point(len * 1.03, y - 17), new Point(len * 0.98, y - 3), true));
+            ribbon.Segments.Add(new BezierSegment(new Point(len * 0.96, y + 5), new Point(len * 0.92, y + 1), new Point(len * 0.95, y - 6), true));
+            var scratch = new PathFigure { StartPoint = new Point(len * 0.16, y + 8), IsClosed = false };
+            scratch.Segments.Add(new BezierSegment(new Point(len * 0.34, y + 17), new Point(len * 0.39, y - 10), new Point(len * 0.60, y + 6), true));
+            scratch.Segments.Add(new BezierSegment(new Point(len * 0.73, y + 17), new Point(len * 0.84, y - 9), new Point(len * 0.93, y + 5), true));
+            var geo = new PathGeometry(); geo.Figures.Add(ribbon); geo.Figures.Add(scratch); geo.Freeze();
+            var brush = new LinearGradientBrush { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0, 92, 216, 255), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(105, 85, 210, 255), 0.30));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(235, 223, 251, 255), 0.76));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0, 214, 249, 255), 1)); brush.Freeze();
+            var shift = new TranslateTransform();
+            var gust = new System.Windows.Shapes.Path { Data = geo, Stroke = brush, StrokeThickness = 3.5, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, RenderTransform = shift };
+            canvas.Children.Add(gust);
+            shifts.Add(shift); lengths.Add(len);
+        }
+        SourceInitialized += (s, e) => {
+            IntPtr h = new WindowInteropHelper(this).Handle;
+            SetWindowLong(h, -20, GetWindowLong(h, -20) | 0x080000A0);
+        };
+        SetTime(0);
+    }
+
+    public void SetTime(double t) {
+        for (int i = 0; i < shifts.Count; i++) {
+            double span = Width + lengths[i];
+            shifts[i].X = ((span * ((i + 0.22 * band) / 3.0) + t * (Width + 300) / 3.5) % span) - lengths[i];
+        }
+    }
+}
+
+public class WindOverlay : WindBand {
+    readonly DispatcherTimer clock = new DispatcherTimer();
+    readonly System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
+    readonly List<WindBand> bands = new List<WindBand>();
+    public WindOverlay() : base(0) {
+        Loaded += (s, e) => {
+            for (int i = 1; i < 4; i++) { var b = new WindBand(i); bands.Add(b); b.Show(); }
+            watch.Start(); clock.Start();
+        };
+        clock.Interval = TimeSpan.FromMilliseconds(50);
+        clock.Tick += (s, e) => {
+            double t = watch.Elapsed.TotalSeconds;
+            if (t >= 5) { Close(); return; }
+            SetTime(t);
+            foreach (var b in bands) b.SetTime(t);
+        };
+        Closed += (s, e) => { clock.Stop(); foreach (var b in bands) b.Close(); bands.Clear(); };
+    }
+}
+
+)
+ui1b =
+(% Join`n
 public class PanelWindow : Window {
     [StructLayout(LayoutKind.Sequential)]
     struct COPYDATA { public IntPtr dwData; public int cbData; public IntPtr lpData; }
@@ -37565,6 +38236,9 @@ public class PanelWindow : Window {
     string curSec = "";
     int sideW = 64, topH = 48;
     bool quiet;
+    bool windRunning;
+    int idlePresses;
+    WindOverlay windOverlay;
     readonly DispatcherTimer alive = new DispatcherTimer();
 
     class Item {
@@ -37942,6 +38616,20 @@ ui3 =
             if (el == null) continue;
             el.Margin = new Thickness(4, 0, 4, 0);
             el.VerticalAlignment = VerticalAlignment.Center;
+            string headerText = S(it, "tx");
+            if (headerText.Contains("Idle") || headerText.Contains("Running")) {
+                el.PreviewMouseLeftButtonDown += (sender, args) => {
+                    if (windRunning) { idlePresses = 0; return; }
+                    idlePresses++;
+                    if (idlePresses < 6) return;
+                    idlePresses = 0;
+                    if (windOverlay != null) windOverlay.Close();
+                    windOverlay = new WindOverlay();
+                    var currentWind = windOverlay;
+                    currentWind.Closed += (s, e) => { if (windOverlay == currentWind) windOverlay = null; };
+                    currentWind.Show();
+                };
+            }
             headRight.Children.Add(el);
         }
         // each item into the card it sits in, or else the next card below it (titles above cards)
@@ -38009,7 +38697,9 @@ ui3 =
 
     void Stats(Dictionary<string, object> d) {
         foreach (var kv in statVals) if (d.ContainsKey(kv.Key)) kv.Value.Text = S(d, kv.Key) == "" ? "---" : S(d, kv.Key);
-        if (runDot != null) runDot.Background = S(d, "running") == "1" ? B("green") : B("muted");
+        windRunning = S(d, "running") == "1";
+        if (windRunning) idlePresses = 0;
+        if (runDot != null) runDot.Background = windRunning ? B("green") : B("muted");
     }
 
     // emoji -> the matching line icon of Windows' icon font (Segoe Fluent Icons, or Segoe MDL2 Assets on Windows 10)
@@ -38361,7 +39051,7 @@ ui5 =
 }
 
 )
-	return ui1 . "`n" . ui2 . "`n" . ui3 . "`n" . ui4 . "`n" . ui5
+	return ui1 . "`n" . uiWind . "`n" . ui1b . "`n" . ui2 . "`n" . ui3 . "`n" . ui4 . "`n" . ui5
 }
 ;@@VELTRIX-PANEL-END
 
