@@ -42,7 +42,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 108
+VxBuild := 109
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -249,6 +249,16 @@ ProfileFields.Push(["Webhook", "WebhookOn", "false", "bool"]
     , ["Webhook", "WebhookNoCatchMin", 10, "num"]
     , ["Webhook", "WebhookPingOn", "Every alert", "str"]
     , ["Webhook", "WebhookShotStart", "false", "bool"])
+ProfileFields.Push(["Misc", "RrOn", "false", "bool"]
+    , ["Misc", "RrBagKey", "", "str"]
+    , ["Misc", "RrSearchPos", "", "str"]
+    , ["Misc", "RrEquipPos", "", "str"]
+    , ["Misc", "RrOpenWait", 500, "num"]
+    , ["Misc", "RrTypeWait", 700, "num"]
+    , ["Misc", "RrClickWait", 400, "num"]
+    , ["Misc", "RrLmResume", "true", "bool"])
+Loop, 6
+    ProfileFields.Push(["Misc", "RrRod" A_Index, "", "str"], ["Misc", "RrProf" A_Index, "(none)", "str"], ["Misc", "RrMin" A_Index, 0, "num"])
 ProfileFields.Push(["Misc", "AirOn", "false", "bool"]
     , ["Misc", "AirHotkey", "F7", "str"]
     , ["Misc", "AirPogoKey", "8", "str"]
@@ -355,6 +365,7 @@ RunKeysArmed := false, HotkeysArmed := false
 PausedMs := 0, LastAutoStop := 0, AutoRefocus := true
 WhStartTick := 0, WhCatches := 0, WhLastCatchTick := 0, WhLastSummary := 0, WhStalled := false
 CastFailCount := 0, DarkHoldN := 0, DarkFlashing := false
+RrRowNow := 0, RrUntil := 0, RrSwaps := 0, RrCatch0 := 0, RrLmMem := {}, RrList := [], RrE := ""
 DarkScanned := false, DarkHeld := false, DarkBarL := -1, DarkBarW := 0, DarkFishX := -1
 PCLastGoodY := -1, TargetSection := ""
 KbCatches := 0, KbOcrCatches := 0, KbBusy := false, KbStatus := "idle", KbLastResult := ""
@@ -473,8 +484,6 @@ AqBtnN := 0, AqBtnCX := [], AqBtnCY := [], AqBtnKind := [], AqBuys := 0, AqUses 
 
 TqResetAll()
 
-SetTimer, HotkeyWatch, 500
-
 Hotkey, $%StartStopKey%, HotkeyToggle, Off
 Hotkey, $%ReloadKey%, HotkeyReload, Off
 Hotkey, $%ExitKey%, HotkeyExit, Off
@@ -486,9 +495,7 @@ GroupAdd, RobloxGrp, ahk_exe RobloxPlayerBeta.exe
 GroupAdd, RobloxGrp, ahk_exe Windows10Universal.exe
 
 PogoHkNow := ""
-gosub PogoApplyHotkey
 AirHkNow := ""
-gosub AirApplyHotkey
 
 Menu, Tray, Tip, Veltrix
 Menu, Tray, Add, Show Veltrix, ShowGuiFromTray
@@ -496,6 +503,9 @@ Menu, Tray, Default, Show Veltrix
 Menu, Tray, Click, 1
 
 LicGate()
+gosub PogoApplyHotkey
+gosub AirApplyHotkey
+SetTimer, HotkeyWatch, 500
 SetTimer, LicRecheck, 1800000
 gosub BuildGui
 return
@@ -768,12 +778,16 @@ DisarmHotkeys:
     gosub SyncRunKeys
 return
 DoReload:
+if (AutoSavePending)
+    gosub SaveSettings
 MacroRunning := false
 Send, {LButton up}
 Send, {RButton up}
 Send, {Shift up}
 Reload
 DoExit:
+if (AutoSavePending)
+    gosub SaveSettings
 MacroRunning := false
 Send, {LButton up}
 Send, {RButton up}
@@ -821,6 +835,7 @@ StartMacroFlow:
     WinWaitActive, ahk_id %RobloxHwnd%, , 2
     WinMaximize, ahk_id %RobloxHwnd%
     gosub Calculations
+    RrRowNow := 0, RrUntil := 0, RrSwaps := 0, RrLmMem := {}
     SetTimer, runtime, 1000
     SetTimer, WhTick, 5000
     SetTimer, RcTick, 2000
@@ -1065,6 +1080,8 @@ if (!MacroRunning)
 	goto Idle
 if (NukeAfter or PassiveAll or (SwPassive and SpecialRod = "Stellarwave Melody"))
 	goto RestartMacro
+; the next rod of the rotation when this one's time is up (it loads that rod's profile)
+gosub, RrMaybeSwitch
 ; Lullaby can be due during repeated empty casts. Switch before equipping and casting again.
 gosub, LmMaybeSwitch
 if (RodSlotKey != "" and (ForceReEquip or (UnstickAfter > 0 and CastFailCount >= UnstickAfter)))
@@ -3096,7 +3113,7 @@ EnsureConfigFiles:
         IniWrite, m, %SettingsFile%, Hotkeys, Exit
         IniWrite, 0, %SettingsFile%, GUI, AlwaysOnTop
         IniWrite, 0, %SettingsFile%, GUI, KeepOpen
-        IniWrite, 0, %SettingsFile%, GUI, AutoSave
+        IniWrite, 1, %SettingsFile%, GUI, AutoSave
         IniWrite, 0, %SettingsFile%, Meta, FirstRunDone
     }
     IniRead, VxIpMig, %SettingsFile%, Meta, InfoPanelAll, 0
@@ -3347,9 +3364,9 @@ LoadSettingsFile:
     IniRead, GuiKeepOpen, %SettingsFile%, GUI, KeepOpen, 0
     if (GuiKeepOpen != 1)
         GuiKeepOpen := 0
-    IniRead, GuiAutoSave, %SettingsFile%, GUI, AutoSave, 1
-    if (GuiAutoSave != 1)
-        GuiAutoSave := 0
+    GuiAutoSave := true
+    AutoSavePending := false
+    IniWrite, 1, %SettingsFile%, GUI, AutoSave
     IniRead, ReadThisAccepted, %SettingsFile%, Meta, ReadThisAccepted, 0
     ReadThisAccepted := 1
     hReadThisLockMsg := 0
@@ -6627,6 +6644,8 @@ AdvRegistry() {
 	r.Push(["Casting", "V", "HoldRodCastDuration", 0, "ms|Cast hold (how long the click is held)"])
 	r.Push(["Casting", "L", "castretry", 50, "ms|Smart cast: pause before casting again"])
 	r.Push(["Casting", "L", "castpost", 120, "ms|Smart cast: keep looking for the cast power bar after letting go"])
+	r.Push(["Casting", "L", "rrlmguard", 20, "s|Rod rotation: no Lullaby mode switch this close before the next rod swap"])
+	r.Push(["Casting", "L", "rrretry", 30, "s|Rod rotation: try a swap again after this when it could not be done"])
 	r.Push(["Casting", "L", "castreeq", 6, "casts|Smart cast: casts in a row with no minigame before the rod is re-equipped (0 = never)"])
 	r.Push(["Casting", "L", "passivelost", 3000, "ms|Passive: go back to watching if the minigame is gone for"])
 	r.Push(["Casting", "V", "WaitForBobberDelay", 0, "ms|Wait for the bobber after casting"])
@@ -15868,7 +15887,7 @@ OppBmpSave(f, p, w, h) {
 ; right mouse for a parry (let go OppRUp ms later, from OppTarget / the fight's end)
 OppParry(t, why) {
     global
-    local again
+    local again, launch
     Send, {RButton down}
     OppParryNo += 1
     OppRUp := A_TickCount + TA("opptap", 180)
@@ -15882,10 +15901,16 @@ OppParry(t, why) {
         ; the ball was seen coming: it may come back once more (once - not on and on)
         OppBounceN += 1
         again := (OppBallReal && OppBounceN < 2)
+        ; Keep the observed impact as the next launch point and take a fresh reference.
+        ; The upward predictor then estimates the next landing from new ball readings.
+        launch := OppBallTX
         OppParryT := t, OppBallRef := false, OppBallN := 0, OppBallReal := false, OppBlind := false, OppBallOn := again
-        ; that landing is done: no more aiming at it
         OppPredX := "", OppUpOn := false, OppDbgPathT := 0
-        OppBallPts := []
+        OppBallPts := [], OppUpPts := []
+        if (again && launch != "" && launch >= FishBarLeft && launch <= FishBarLeft + CaptureW) {
+            OppBallScan(true)
+            OppLaunchX := launch, OppUpOn := true
+        }
     }
 }
 
@@ -15958,7 +15983,17 @@ OppTarget() {
         if (t > 700)
             OppUpOn := false
         else if (t >= 120 && OppBallScan(false) && Abs(OppBallX - OppLaunchX) <= 0.3 * n) {
-            OppUpPts.Push([t / 1000, OppBallX - OppLaunchX])
+            ; Ignore abrupt screen-reader jumps before fitting the flight path.
+            OppUpAccept := true
+            if (OppUpPts.Length()) {
+                OppUpPrev := OppUpPts[OppUpPts.Length()]
+                OppUpDt := Max(0, t / 1000 - OppUpPrev[1])
+                if (Abs(OppBallX - OppLaunchX - OppUpPrev[2]) > 0.08 * n + 0.30 * n * OppUpDt
+                    || Abs(OppBallY - OppUpPrev[3]) > 0.08 * WindowHeight + 0.50 * WindowHeight * OppUpDt)
+                    OppUpAccept := false
+            }
+            if (OppUpAccept) {
+            OppUpPts.Push([t / 1000, OppBallX - OppLaunchX, OppBallY])
             OppBallPts.Push([OppBallX, Round(0.28 * WindowHeight) + OppBallY])
             sxy := 0, sxx := 0
             for i, p in OppUpPts
@@ -15966,6 +16001,7 @@ OppTarget() {
             if (OppUpPts.Length() >= 3 && t >= 250 && sxx > 0)
                 OppPredX := Max(FishBarLeft + 0.06 * n, Min(FishBarLeft + 0.92 * n, OppLaunchX + sxy / sxx * TA("oppbounce", 1450) / 1000))
             OppDbgLandX := OppPredX, OppDbgPathT := now
+            }
         }
     }
     if (OppBallOn && !OppMkOn) {
@@ -25803,17 +25839,6 @@ for bgu_i, bgu_it in bgu_icons
     ProfPut(bgu_h, bgu_x, 149)
     bgu_x += 34
 }
-Gui, Font, s9 norm c%ColorText%
-bgu_c := GuiAutoSave ? 1 : 0
-Gui, Add, Checkbox, x520 y152 w90 h20 vGuiAutoSave gToggleAutoSave Checked%bgu_c% HwndhTipAuto, Auto-save
-IconTips[hTipAuto] := "Save automatically whenever a setting changes"
-ProfPut(hTipAuto, 520, 152)
-Gui, Font, s9 bold c101010
-Gui, Add, Text, x644 y148 w84 h28 Center 0x200 vSaveStatusText gSaveSettings HwndhTipSave, 💾 Save
-SpecialBrushes[hTipSave] := {brush: hBrushAccent, text: 0x101010}
-RoundCtrl(hTipSave, 84, 28, 8)
-IconTips[hTipSave] := "Save settings to current profile"
-ProfPut(hTipSave, 644, 148)
 GenProfN := 0
 
 OnMessage(0x200, "WM_MOUSEMOVE")
@@ -27796,7 +27821,7 @@ CastCtrls.Push(cst_h)
 
 ; ---- normal cast group
 CastGroupTop := 202
-cst_h := AddPanel(188, 192, 556, 104 - RH)
+cst_h := AddPanel(188, 192, 556, 88)
 NormalCastCtrls.Push(cst_h)
 cst_h := AddPanel(188, 280, 556, 108)
 NormalCastCtrls.Push(cst_h)
@@ -27842,13 +27867,118 @@ Gui, Add, Text, x204 y312 w524 h52 Hwndcst_h, %cst_t%
 SpecialBrushes[cst_h] := {brush: hBrushCard, text: 0xFFFFFF}
 NormalCastCtrls.Push(cst_h)
 
-; Extra catch-end action is available for either casting mode.
-cst_h := AddPanel(188, 584, 556, 68)
-CastCtrls.Push(cst_h)
+; Catch-end click burst sits with Smart Cast in the normal-cast card.
 cst_c := EndClickSpam ? 1 : 0
 Gui, Font, s9 norm c%ColorText%
-Gui, Add, Checkbox, x204 y600 w400 h20 vEndClickSpam gEndClickSpamChanged Checked%cst_c% Hwndcst_h, Spam click near catch end
-IconTips[cst_h] := "Brief left-clicks near the end of a catch. Regular rods use 95% progress or fading;`nspecial rods click as their minigame closes, after their own actions finish.`nThe normal cast flow then starts the next cast. Off by default."
+Gui, Add, Checkbox, x204 y254 w400 h20 vEndClickSpam gEndClickSpamChanged Checked%cst_c% Hwndcst_h, Faster next cast (spam click)
+IconTips[cst_h] := "Brief left-clicks near the end of a catch help begin the next cast sooner.`nRegular rods use 95% progress or fading; special rods click as their minigame closes.`nOff by default."
+NormalCastCtrls.Push(cst_h)
+; Keep the same option accessible in Perfect Cast.
+cst_h := AddPanel(188, 584, 556, 40)
+PerfectCastCtrls.Push(cst_h)
+Gui, Add, Checkbox, x204 y594 w400 h20 vEndClickSpamPerfect gEndClickSpamChanged Checked%cst_c% Hwndcst_h, Faster next cast (spam click)
+IconTips[cst_h] := "Brief left-clicks near the end of a catch help begin the next cast sooner."
+PerfectCastCtrls.Push(cst_h)
+
+; ---- rod rotation (in Settings.ini, the same whatever profile is loaded)
+cst_h := AddPanel(188, 662, 556, 412)
+RrPanelH := cst_h
+CastCtrls.Push(cst_h)
+Gui, Font, s8 bold c%ColorMuted%
+Gui, Add, Text, x204 y672 w400 h16 Hwndcst_h, ROD ROTATION
+SpecialBrushes[cst_h] := {brush: hBrushCard, text: ColorMutedBGR}
+CastCtrls.Push(cst_h)
+cst_c := RrOn ? 1 : 0
+Gui, Font, s9 norm c%ColorText%
+Gui, Add, Checkbox, x204 y694 w300 h20 vRrOn gRrOnChanged Checked%cst_c% Hwndcst_h, Rotate rods
+CastCtrls.Push(cst_h)
+Gui, Font, s9 bold c%ColorAccent%
+Gui, Add, Text, x652 y694 w16 h20 Center +0x100 Hwndcst_h, ?
+IconTips[cst_h] := "Fishes with each rod in the list for its minutes, then the next one, round and round.`n"
+    . "Between catches (right before casting) the macro opens the bag, types the rod's name in Search Rods,`n"
+    . "clicks its Equip button, closes the bag and loads that rod's profile (colours, special rod, Lullaby modes).`n"
+    . "A Lullaby gets its mode set while the bag shows its card, and carries on where it was when it comes back.`n`n"
+    . "Set the bag key, pick the Search Rods box and the first rod's Equip button (search a rod first).`nNot used in passive mode."
+CastCtrls.Push(cst_h)
+cst_rows := [["Bag key:", "RrBagKey", "RrSetBtn", "RrSetKey", "Set", "The key that opens your equipment bag (the Lullaby modes use it too when their own is empty).`nPress Set, then that key - or type it."]
+    , ["Search Rods box:", "RrSearchPos", "RrPickS", "RrPick", "Pick", "Where the bag's Search Rods box is, as parts of the Roblox window.`nPress Pick, then click the box in Roblox (open your bag first). Esc cancels."]
+    , ["Equip button:", "RrEquipPos", "RrPickE", "RrPick", "Pick", "Where the first rod's Equip button is after a search, as parts of the Roblox window.`nPress Pick, then click it in Roblox (search a rod first). Esc cancels."]]
+cst_y := 720
+for cst_i, cst_r in cst_rows
+{
+    Gui, Font, s9 norm c%ColorText%
+    Gui, Add, Text, x204 y%cst_y% w230 h20 Hwndcst_h, % cst_r[1]
+    SpecialBrushes[cst_h] := {brush: hBrushCard, text: ColorTextBGR}
+    CastCtrls.Push(cst_h)
+    cst_v := cst_r[2]
+    Gui, Add, Edit, x442 y%cst_y% w120 h20 v%cst_v% gQueueAutoSave Hwndcst_h, % %cst_v%
+    IconTips[cst_h] := cst_r[6]
+    CastCtrls.Push(cst_h)
+    cst_py := cst_y - 2
+    Gui, Font, s9 bold c%ColorAccent%
+    Gui, Add, Text, % "x570 y" cst_py " w72 h24 Center 0x200 v" cst_r[3] " g" cst_r[4] " Hwndcst_h", % cst_r[5]
+    SpecialBrushes[cst_h] := {brush: hBrushBorder, text: ColorAccentBGR}
+    RoundCtrl(cst_h, 72, 24, 7)
+    IconTips[cst_h] := cst_r[6]
+    CastCtrls.Push(cst_h)
+    cst_y += RH
+}
+Gui, Font, s8 bold c%ColorMuted%
+for cst_i, cst_r in [[204, "ROD (ITS NAME IN THE BAG)"], [384, "PROFILE"], [594, "MINUTES"]]
+{
+    Gui, Add, Text, % "x" cst_r[1] " y" cst_y + 4 " w180 h16 Hwndcst_h", % cst_r[2]
+    SpecialBrushes[cst_h] := {brush: hBrushCard, text: ColorMutedBGR}
+    CastCtrls.Push(cst_h)
+}
+cst_y += 22
+cst_pl := RrProfList()
+Loop 6
+{
+    cst_k := A_Index
+    Gui, Font, s9 norm c%ColorText%
+    cst_val := RrRod%cst_k%
+    Gui, Add, Edit, x204 y%cst_y% w172 h20 vRrRod%cst_k% gQueueAutoSave Hwndcst_h, %cst_val%
+    IconTips[cst_h] := "Rod " cst_k ": its name as you would type it in the bag's search (empty = not used)"
+    CastCtrls.Push(cst_h)
+    Gui, Add, DropDownList, x384 y%cst_y% w200 h240 vRrProf%cst_k% gQueueAutoSave Hwndcst_h, %cst_pl%
+    GuiControl, 1:ChooseString, RrProf%cst_k%, % RrProf%cst_k%
+    ThemedCtrls.Push(cst_h)
+    IconTips[cst_h] := "The profile this rod fishes with (its colours, special rod, Lullaby modes)"
+    CastCtrls.Push(cst_h)
+    cst_val := RrMin%cst_k%
+    Gui, Add, Edit, x594 y%cst_y% w60 h20 vRrMin%cst_k% gQueueAutoSave Hwndcst_h, %cst_val%
+    IconTips[cst_h] := "Minutes with this rod before the next one (0 = not used)"
+    CastCtrls.Push(cst_h)
+    cst_y += RH
+}
+Gui, Font, s9 norm c%ColorText%
+Gui, Add, Text, x204 y%cst_y% w230 h20 Hwndcst_h, Waits (ms) - bag / typing / click:
+SpecialBrushes[cst_h] := {brush: hBrushCard, text: ColorTextBGR}
+CastCtrls.Push(cst_h)
+cst_tips := ["Pause after pressing the bag key.", "Pause after typing the rod's name, before clicking Equip.", "Pause after each click and after closing the bag."]
+for cst_i, cst_v in ["RrOpenWait", "RrTypeWait", "RrClickWait"]
+{
+    cst_x := 442 + 66 * (cst_i - 1)
+    Gui, Add, Edit, x%cst_x% y%cst_y% w60 h20 v%cst_v% gQueueAutoSave Number Hwndcst_h, % %cst_v%
+    IconTips[cst_h] := cst_tips[cst_i]
+    CastCtrls.Push(cst_h)
+}
+cst_y += RH
+cst_c := RrLmResume ? 1 : 0
+Gui, Add, Checkbox, x204 y%cst_y% w460 h20 vRrLmResume gQueueAutoSave Checked%cst_c% Hwndcst_h, A Lullaby carries on with its mode and time when it comes back
+IconTips[cst_h] := "On: a Lullaby that comes back gets the mode it had, for the time that was left.`nOff: it goes on with the next mode in its order."
+CastCtrls.Push(cst_h)
+cst_y += RH + 2
+Gui, Font, s9 bold c%ColorAccent%
+Gui, Add, Text, x204 y%cst_y% w120 h24 Center 0x200 gRrTry Hwndcst_h, ▶ Swap now
+SpecialBrushes[cst_h] := {brush: hBrushBorder, text: ColorAccentBGR}
+RoundCtrl(cst_h, 120, 24, 7)
+IconTips[cst_h] := "Goes to Roblox and swaps to the next rod in the list now"
+CastCtrls.Push(cst_h)
+Gui, Font, s8 norm c%ColorMuted%
+cst_t := RrStatusText()
+Gui, Add, Text, x334 y%cst_y% w400 h24 vRrStatus Hwndcst_h, %cst_t%
+SpecialBrushes[cst_h] := {brush: hBrushCard, text: ColorMutedBGR}
 CastCtrls.Push(cst_h)
 
 ; ---- perfect cast group
@@ -27911,9 +28041,12 @@ PerfectCastCtrls.Push(cst_h)
 Gui, Font, s9 norm c%ColorText%
 return
 EndClickSpamChanged:
-GuiControlGet, EndClickSpamV, 1:, EndClickSpam
-if (!ErrorLevel)
+GuiControlGet, EndClickSpamV, 1:, %A_GuiControl%
+if (!ErrorLevel) {
     EndClickSpam := EndClickSpamV ? true : false
+    GuiControl, 1:, EndClickSpam, % EndClickSpam ? 1 : 0
+    GuiControl, 1:, EndClickSpamPerfect, % EndClickSpam ? 1 : 0
+}
 gosub, QueueAutoSave
 return
 SmartCastChanged:
@@ -32031,6 +32164,372 @@ AirPress(k) {
 	Send, {%k% up}
 }
 
+; ---- Rod rotation ----
+RrOnChanged:
+GuiControlGet, RrOn, 1:, RrOn
+RrOn := RrOn ? true : false
+RrRowNow := 0, RrUntil := 0
+GuiControl, 1:, RrStatus, % RrStatusText()
+gosub, QueueAutoSave
+return
+
+RrSetKey:
+if (PogoCapturing)
+	return
+PogoCapturing := true
+GuiControl, 1:, RrSetBtn, ...
+GuiControl, 1:, RrStatus, Press the equipment bag key - Esc cancels.
+RrNew := PogoCapture()
+GuiControl, 1:, RrSetBtn, Set
+if (RrNew != "")
+	{
+	RrBagKey := RrNew
+	GuiControl, 1:, RrBagKey, %RrNew%
+	gosub, QueueAutoSave
+	}
+PogoCapturing := false
+GuiControl, 1:, RrStatus, % RrStatusText()
+return
+
+; Pick: the next left click in Roblox sets the Search Rods box (RrPickS) or the Equip button (RrPickE)
+RrPick:
+RrWhich := (A_GuiControl = "RrPickS") ? "RrSearchPos" : "RrEquipPos"
+gosub, ResolveRoblox
+if (!RobloxHwnd)
+	{
+	GuiControl, 1:, RrStatus, Could not find the Roblox window - start Roblox first.
+	return
+	}
+GuiControl, 1:, RrStatus, % "Click the " . ((RrWhich = "RrSearchPos") ? "Search Rods box" : "Equip button") . " in Roblox - Esc cancels."
+KeyWait, LButton
+WinActivate, ahk_id %RobloxHwnd%
+RrT0 := A_TickCount
+RrGot := false
+while (A_TickCount - RrT0 < 20000)
+	{
+	if (GetKeyState("Escape", "P"))
+		break
+	if (GetKeyState("LButton", "P"))
+		{
+		CoordMode, Mouse, Screen
+		MouseGetPos, RrMx, RrMy
+		CoordMode, Mouse, Client
+		RobloxClientRect(RobloxHwnd, RrRx, RrRy, RrRw, RrRh)
+		if (RrRw > 0 and RrRh > 0 and RrMx >= RrRx and RrMy >= RrRy and RrMx < RrRx + RrRw and RrMy < RrRy + RrRh)
+			{
+			%RrWhich% := Format("{:.4f},{:.4f}", (RrMx - RrRx) / RrRw, (RrMy - RrRy) / RrRh)
+			RrGot := true
+			}
+		KeyWait, LButton
+		break
+		}
+	Sleep, 10
+	}
+if (RrGot)
+	{
+	GuiControl, 1:, %RrWhich%, % %RrWhich%
+	gosub, QueueAutoSave
+	}
+GuiControl, 1:, RrStatus, % RrGot ? "Spot set." : RrStatusText()
+return
+
+RrTry:
+gosub, ResolveRoblox
+if (!RobloxHwnd)
+	{
+	GuiControl, 1:, RrStatus, Could not find the Roblox window - start Roblox first.
+	return
+	}
+Gui, Submit, NoHide
+RrList := RrEntries()
+if (!RrList.Length())
+	{
+	GuiControl, 1:, RrStatus, % RrStatusText()
+	return
+	}
+RrE := RrList[RrNextIdx(RrList, RrRowNow)]
+gosub, RrDoSwitch
+if (ForceReEquip and RodSlotKey != "" and !MacroRunning)
+	{
+	; the bag put the rod away: take it out again (as before casting)
+	Sleep, % Tm(TA("reeq1", 120))
+	send {%RodSlotKey%}
+	Sleep, % Tm(TA("reeq3", 600))
+	ForceReEquip := false
+	}
+return
+
+; between catches: the next rod when this one's minutes are up. The first look of a run starts the clock for the rod
+; of the profile in use (it is in hand); with no row for that profile it swaps to the first row at once.
+RrMaybeSwitch:
+if (!RrOn or !MacroRunning or PassiveAll)
+	return
+RrList := RrEntries()
+if (!RrList.Length())
+	{
+	RrRowNow := 0
+	return
+	}
+if (!RrRowNow)
+	{
+	if (RrUntil && A_TickCount < RrUntil)
+		return
+	RrK := RrFind(RrList, ActiveProfile)
+	if (RrK)
+		{
+		RrRowNow := RrList[RrK].row, RrUntil := A_TickCount + RrList[RrK].mins * 60000, RrCatch0 := WhCatches
+		RrLog("start with rod " . RrRowNow . " (" . RrList[RrK].rod . ", profile " . ActiveProfile . ")")
+		GuiControl, 1:, RrStatus, % RrStatusText()
+		return
+		}
+	RrE := RrList[1]
+	}
+else
+	{
+	if (A_TickCount < RrUntil)
+		return
+	RrE := RrList[RrNextIdx(RrList, RrRowNow)]
+	; the only rod left in the list is the one in hand: just keep fishing
+	if (RrE.row = RrRowNow and RrE.prof = ActiveProfile)
+		{
+		RrUntil := A_TickCount + RrE.mins * 60000
+		return
+		}
+	}
+gosub, RrDoSwitch
+return
+
+; swap to the row in RrE: the bag, the rod's profile, the Lullaby mode, then the bag closed (the re-equip follows)
+RrDoSwitch:
+VxTip(7, "Current Task: Rod rotation - swapping to " . RrE.rod)
+RrLog("swap to rod " . RrE.row . " (" . RrE.rod . ", profile " . RrE.prof . ") after " . (WhCatches - RrCatch0) . " catches")
+; a Lullaby going away keeps its mode and the time that was left
+if (SpecialRod = "Lullaby" and LmOn and LmStep >= 1)
+	RrLmMem[ActiveProfile] := {step: LmStep, left: Max(0, LmNextT - A_TickCount)}
+if (!RrOpenSearch(RrE.rod))
+	{
+	RrCloseBag()
+	RrUntil := A_TickCount + TA("rrretry", 30) * 1000
+	RrLog("could not swap (Roblox not in front, or the bag key / spots not set) - again in " . TA("rrretry", 30) . " s")
+	GuiControl, 1:, RrStatus, % "Could not swap to " . RrE.rod . " - check the bag key and the two spots."
+	return
+	}
+; Save pending edits before loading a different rod's profile.
+if (AutoSavePending)
+    gosub SaveSettings
+SetTimer, AutoSaveNow, Off
+; the rod's profile: its colours, special rod, minigame and Lullaby settings (the run time is kept)
+RrKeepRt := [runtimeS, runtimeM, runtimeH]
+if (RrE.prof != ActiveProfile)
+	{
+	ActiveProfile := RrE.prof
+	ActiveProfileFile := ProfilesDir "\" ActiveProfile ".ini"
+	IniWrite, %ActiveProfile%, %SettingsFile%, Profiles, ActiveProfile
+	gosub LoadActiveProfile
+	gosub RefreshGuiFields
+	GuiControl, 1:ChooseString, ProfileSelect, %ActiveProfile%
+	}
+gosub Calculations
+runtimeS := RrKeepRt[1], runtimeM := RrKeepRt[2], runtimeH := RrKeepRt[3]
+; a Lullaby: its mode while the bag still shows its card
+if (SpecialRod = "Lullaby" and LmOn)
+	{
+	RrOrd := LmModes(LmOrder)
+	if (RrOrd.Length())
+		{
+		RrM := RrLmPlan(ActiveProfile, RrOrd, LmNums(LmEvery), A_TickCount, RrStep, RrLmUntil)
+		if (RrClickAt(LmPos%RrM%))
+			{
+			LmStep := RrStep, LmNextT := RrLmUntil, LmLastM := RrM
+			RrLog("Lullaby mode " . RrM . " (step " . RrStep . ") for " . Round((RrLmUntil - A_TickCount) / 1000) . " s")
+			}
+		else
+			LmStep := 0, LmNextT := 0
+		Sleep, % PogoNum(RrClickWait, 400)
+		}
+	}
+RrCloseBag()
+ForceReEquip := (RodSlotKey != "")
+RrRowNow := RrE.row, RrUntil := A_TickCount + RrE.mins * 60000, RrSwaps := RrSwaps + 1, RrCatch0 := WhCatches
+GuiControl, 1:, RrStatus, % RrStatusText()
+return
+
+; the rows that can be used: a rod name, a profile that exists, minutes above 0
+RrEntries() {
+	global
+	local out, k, rod, prof, mins
+	out := []
+	Loop 6
+		{
+		k := A_Index
+		rod := Trim(RrRod%k%), prof := Trim(RrProf%k%), mins := Trim(RrMin%k%)
+		if (rod = "" or prof = "" or prof = "(none)" or !FileExist(ProfilesDir "\" prof ".ini"))
+			continue
+		if mins is not number
+			continue
+		if (mins <= 0)
+			continue
+		out.Push({rod: rod, prof: prof, mins: mins, row: k})
+		}
+	return out
+}
+
+; the entry after row cur, round and round (the first one when cur is 0)
+RrNextIdx(list, cur) {
+	for k, e in list
+		if (e.row > cur)
+			return k
+	return list.Length() ? 1 : 0
+}
+
+; the first entry that uses this profile, 0 = none
+RrFind(list, prof) {
+	for k, e in list
+		if (e.prof = prof)
+			return k
+	return 0
+}
+
+; a Lullaby after a swap: the mode to set, its step in the order and when it is due. With carry-on, a Lullaby that comes
+; back keeps the mode it had for the time that was left; otherwise (or with its time used up) the next mode in its order.
+RrLmPlan(prof, ord, secs, now, ByRef step, ByRef until) {
+	global RrLmMem, RrLmResume
+	m := RrLmMem.HasKey(prof) ? RrLmMem[prof] : ""
+	if (RrLmResume and IsObject(m) and m.step >= 1 and m.step <= ord.Length() and m.left > 0)
+		{
+		step := m.step, until := now + m.left
+		return ord[step]
+		}
+	cur := (RrLmResume and IsObject(m)) ? m.step : 0
+	step := (cur < 1 or cur >= ord.Length()) ? 1 : cur + 1
+	s := secs.Length() ? secs[Mod(step - 1, secs.Length()) + 1] : 60
+	until := now + s * 1000
+	return ord[step]
+}
+
+; the bag open, the rod's name in Search Rods, its Equip button clicked - false when it could not be done
+RrOpenSearch(rod) {
+	global RobloxHwnd, RrBagKey, RrSearchPos, RrEquipPos, RrOpenWait, RrTypeWait, RrClickWait, RrBagOpened
+	RrBagOpened := false
+	if (!RobloxHwnd or Trim(RrBagKey) = "" or !InStr(RrSearchPos, ",") or !InStr(RrEquipPos, ",") or Trim(rod) = "")
+		return false
+	if (!WinActive("ahk_id " . RobloxHwnd))
+		{
+		WinActivate, ahk_id %RobloxHwnd%
+		WinWaitActive, ahk_id %RobloxHwnd%, , 1
+		}
+	if (!WinActive("ahk_id " . RobloxHwnd))
+		return false
+	if (GetKeyState("LButton"))
+		Send {LButton up}
+	PogoPress(RrBagKey)
+	RrBagOpened := true
+	Sleep, % PogoNum(RrOpenWait, 500)
+	if (!RrClickAt(RrSearchPos))
+		return false
+	Sleep, 120
+	; empty the box, then type the name (the list filters as it is typed)
+	Send, ^a
+	Sleep, 40
+	Send, {Backspace}
+	Sleep, 40
+	SendInput, {Text}%rod%
+	Sleep, % PogoNum(RrTypeWait, 700)
+	if (!RrClickAt(RrEquipPos))
+		return false
+	Sleep, % PogoNum(RrClickWait, 400)
+	return true
+}
+
+; a click at a spot given as parts of the Roblox window ("0.5,0.5" = the middle)
+RrClickAt(pos) {
+	global RobloxHwnd
+	p := StrSplit(pos, ",")
+	if (p.Length() < 2 or !RobloxHwnd or !WinActive("ahk_id " . RobloxHwnd))
+		return false
+	fx := Trim(p[1]), fy := Trim(p[2])
+	if fx is not number
+		return false
+	if fy is not number
+		return false
+	if (fx < 0 or fx > 1 or fy < 0 or fy > 1)
+		return false
+	RobloxClientRect(RobloxHwnd, rx, ry, rw, rh)
+	if (rw <= 0 or rh <= 0)
+		return false
+	sx := Round(rx + fx * rw), sy := Round(ry + fy * rh)
+	CoordMode, Mouse, Screen
+	MouseMove, %sx%, %sy%, 0
+	Sleep, 40
+	MouseMove, % sx + 1, %sy%, 0
+	Sleep, 30
+	Send {LButton down}
+	Sleep, 40
+	Send {LButton up}
+	CoordMode, Mouse, Client
+	return true
+}
+
+RrCloseBag() {
+	global RrBagKey, RrClickWait, RrBagOpened, RobloxHwnd
+	if (!RrBagOpened || Trim(RrBagKey) = "" || !WinActive("ahk_id " . RobloxHwnd))
+		return
+	RrBagOpened := false
+	PogoPress(RrBagKey)
+	Sleep, % PogoNum(RrClickWait, 400)
+}
+
+; "(none)" and every profile, for the rows' dropdowns
+RrProfList() {
+	global ProfilesDir
+	s := "(none)"
+	Loop, Files, %ProfilesDir%\*.ini, F
+		{
+		SplitPath, A_LoopFileName, , , , n
+		s .= "|" . n
+		}
+	return s
+}
+
+RrRefreshProfiles:
+RrPl := "|" . RrProfList()
+Loop 6
+	{
+	GuiControl, 1:, RrProf%A_Index%, %RrPl%
+	RrPv := RrProf%A_Index%
+	GuiControl, 1:ChooseString, RrProf%A_Index%, % (RrPv = "") ? "(none)" : RrPv
+	}
+return
+
+RrStatusText() {
+	global RrOn, RrBagKey, RrSearchPos, RrEquipPos, RrRowNow, RrUntil, RrSwaps, MacroRunning, ActiveProfile
+	if (!RrOn)
+		return "Off."
+	if (Trim(RrBagKey) = "")
+		return "Set the bag key."
+	if (!InStr(RrSearchPos, ",") or !InStr(RrEquipPos, ","))
+		return "Pick the Search Rods box and the Equip button."
+	list := RrEntries()
+	if (!list.Length())
+		return "Fill a row: the rod's name, its profile and minutes."
+	if (!MacroRunning or !RrRowNow)
+		return "On - " . list.Length() . " rod(s) in the list."
+	k := 0
+	for i, e in list
+		if (e.row = RrRowNow)
+			k := i
+	left := Max(0, Round((RrUntil - A_TickCount) / 60000, 1))
+	return "On - rod " . (k ? k : "?") . " of " . list.Length() . " (" . ActiveProfile . "), " . left . " min left, " . RrSwaps . " swap(s)."
+}
+
+; debug: rr_log.txt next to the macro (Debug and Log files on)
+RrLog(msg) {
+	global DbgOn, DbgLogs
+	if (!DbgOn or !DbgLogs)
+		return
+	FileAppend, % A_Now . " " . msg . "`n", %A_ScriptDir%\rr_log.txt
+}
+
 ; ---- Lullaby stall ----
 LsOnChanged:
 GuiControlGet, LsOn, 1:, LsOn
@@ -32135,6 +32634,9 @@ return
 LmMaybeSwitch:
 if (!LmOn or SpecialRod != "Lullaby" or !MacroRunning or PassiveAll)
 	return
+; a rod swap is close: it sets the Lullaby's mode itself when it comes back, no bag trip for a mode now
+if (RrOn and RrRowNow and RrUntil and RrUntil - A_TickCount < TA("rrlmguard", 20) * 1000)
+	return
 if (LmNextT and A_TickCount < LmNextT)
 	return
 gosub, LmDoSwitch
@@ -32147,13 +32649,13 @@ if (!LmOrd.Length())
 	LmNextT := A_TickCount + 10000
 	return
 	}
-LmStep := (LmStep = "" or LmStep < 1 or LmStep >= LmOrd.Length()) ? 1 : LmStep + 1
-LmM := LmOrd[LmStep]
+LmNextStep := (LmStep = "" or LmStep < 1 or LmStep >= LmOrd.Length()) ? 1 : LmStep + 1
+LmM := LmOrd[LmNextStep]
 LmSecs := LmNums(LmEvery)
-LmS := LmSecs.Length() ? LmSecs[Mod(LmStep - 1, LmSecs.Length()) + 1] : 60
+LmS := LmSecs.Length() ? LmSecs[Mod(LmNextStep - 1, LmSecs.Length()) + 1] : 60
 VxTip(7, "Current Task: Lullaby - switching to mode " . LmM)
 if (LmClickMode(LmPos%LmM%))
-	LmNextT := A_TickCount + LmS * 1000, LmLastM := LmM, ForceReEquip := (RodSlotKey != "")
+	LmStep := LmNextStep, LmNextT := A_TickCount + LmS * 1000, LmLastM := LmM, ForceReEquip := (RodSlotKey != "")
 else
 	LmNextT := A_TickCount + 10000
 return
@@ -32187,9 +32689,10 @@ LmNums(s) {
 
 ; opens the bag, clicks the mode's spot, closes the bag
 LmClickMode(pos) {
-	global RobloxHwnd, LmBagKey, LmOpenWait, LmClickWait
+	global RobloxHwnd, LmBagKey, LmOpenWait, LmClickWait, RrBagKey
+	bk := (Trim(LmBagKey) != "") ? LmBagKey : RrBagKey
 	p := StrSplit(pos, ",")
-	if (p.Length() < 2 or !RobloxHwnd or Trim(LmBagKey) = "")
+	if (p.Length() < 2 or !RobloxHwnd or Trim(bk) = "")
 		return false
 	fx := Trim(p[1]), fy := Trim(p[2])
 	if fx is not number
@@ -32201,11 +32704,15 @@ LmClickMode(pos) {
 		WinActivate, ahk_id %RobloxHwnd%
 		WinWaitActive, ahk_id %RobloxHwnd%, , 1
 		}
+	if (!WinActive("ahk_id " . RobloxHwnd) || fx < 0 || fx > 1 || fy < 0 || fy > 1)
+		return false
 	RobloxClientRect(RobloxHwnd, rx, ry, rw, rh)
+	if (rw <= 0 || rh <= 0)
+		return false
 	sx := Round(rx + fx * rw), sy := Round(ry + fy * rh)
 	if (GetKeyState("LButton"))
 		Send {LButton up}
-	PogoPress(LmBagKey)
+	PogoPress(bk)
 	Sleep, % PogoNum(LmOpenWait, 400)
 	CoordMode, Mouse, Screen
 	MouseMove, %sx%, %sy%, 0
@@ -32217,16 +32724,16 @@ LmClickMode(pos) {
 	Send {LButton up}
 	CoordMode, Mouse, Client
 	Sleep, % PogoNum(LmClickWait, 300)
-	PogoPress(LmBagKey)
+	PogoPress(bk)
 	Sleep, % PogoNum(LmClickWait, 300)
 	return true
 }
 
 LmStatusText() {
-	global LmOn, LmBagKey, LmOrder, LmLastM
+	global LmOn, LmBagKey, LmOrder, LmLastM, RrBagKey
 	if (!LmOn)
 		return "Off."
-	if (Trim(LmBagKey) = "")
+	if (Trim(LmBagKey) = "" and Trim(RrBagKey) = "")
 		return "Set the equipment bag key."
 	n := LmModes(LmOrder).Length()
 	if (!n)
@@ -33112,6 +33619,7 @@ Loop, Files, %ProfilesDir%\*.ini, F
 }
 GuiControl, 1:, ProfileSelect, %ProfileNames%
 GuiControl, 1:ChooseString, ProfileSelect, %ActiveProfile%
+gosub, RrRefreshProfiles
 return
 MgRestoreDefaults:
 for MrdIdx, MrdField in ProfileFields
@@ -33131,6 +33639,7 @@ gosub ShowSection
 gosub SaveSettings
 return
 RefreshGuiFields:
+GuiControl, 1:, EndClickSpamPerfect, % (EndClickSpam ? 1 : 0)
 GuiControl, 1:, PredictOn, % (PredictOn ? 1 : 0)
 for RgfIdx, RgfField in ProfileFields
 {
@@ -33139,6 +33648,8 @@ for RgfIdx, RgfField in ProfileFields
     RgfVal := %RgfKey%
     if (RgfType = "bool")
         GuiControl, 1:, %RgfKey%, % (RgfVal ? 1 : 0)
+    else if (SubStr(RgfKey, 1, 6) = "RrProf")
+        GuiControl, 1:ChooseString, %RgfKey%, %RgfVal%
     else if RgfType in shakemode,controlmode,castmode,specialrod,remembrancemode,totemsel,specialkey
         GuiControl, 1:ChooseString, %RgfKey%, %RgfVal%
     else
@@ -33175,7 +33686,7 @@ for SvIdx, SvField in ProfileFields
 }
 if (BadFields != "")
 {
-    MsgBox, 4144, Veltrix, These fields need a number:%BadFields%
+    VxTip(7, "Settings not saved: a numeric field is incomplete.")
     return
 }
 FileCopy, %ActiveProfileFile%, %ActiveProfileFile%.bak, 1
@@ -33205,12 +33716,9 @@ IniWrite, %ReloadKey%, %SettingsFile%, Hotkeys, Reload
 IniWrite, %ExitKey%, %SettingsFile%, Hotkeys, Exit
 gosub PogoApplyHotkey
 gosub AirApplyHotkey
-GuiControl, 1:, SaveStatusText, ✅ Saved
-SetTimer, RestoreSaveButton, -1500
+AutoSavePending := false
 return
 RestoreSaveButton:
-GuiControl, 1:, SaveStatusText, 💾 Save
-
 return
 
 ;====================================================================================================;
@@ -33219,6 +33727,11 @@ ProfileSelect:
 GuiControlGet, NewProfileChoice, 1:, ProfileSelect
 if (NewProfileChoice = "" || NewProfileChoice = ActiveProfile)
     return
+if (AutoSavePending)
+    gosub SaveSettings
+if (AutoSavePending)
+    return
+SetTimer, AutoSaveNow, Off
 ActiveProfile := NewProfileChoice
 ActiveProfileFile := ProfilesDir "\" ActiveProfile ".ini"
 IniWrite, %ActiveProfile%, %SettingsFile%, Profiles, ActiveProfile
@@ -34324,14 +34837,13 @@ ColorFieldChanged:
     gosub QueueAutoSave
 return
 QueueAutoSave:
-if (GuiAutoSave)
-	settimer, AutoSaveNow, -1200
+AutoSavePending := true
+SetTimer, AutoSaveNow, -1200
 return
 
 AutoSaveNow:
-if (!GuiAutoSave)
-	return
-gosub, SaveSettings
+if (AutoSavePending)
+	gosub, SaveSettings
 return
 
 RefreshSwatches:
@@ -37682,7 +38194,7 @@ UiInitJson() {
 
 ; the controls the panel never shows: its own title, credit (it shows them itself), window buttons, the sidebar
 UiSkipped(h) {
-	global SbTrackHwnd, SbThumbHwnd, hLogoTile, hTitleText, hSubtitle, hShellMin, hShellClose, hDiv1, SIDEW, TOPH, HomeCtrls, CtrlBaseY
+	global SbTrackHwnd, SbThumbHwnd, hLogoTile, hTitleText, hSubtitle, hShellMin, hShellClose, hDiv1, SIDEW, TOPH, HomeCtrls, CtrlBaseY, RrPanelH
 	static homeSet := "", homeN := 0
 	; the old window's own scrollbar (by its handles - SbTrack / SbThumb are the controls' variables)
 	if (h = SbTrackHwnd or h = SbThumbHwnd or h = hLogoTile or h = hTitleText or h = hSubtitle or h = hShellMin or h = hShellClose or h = hDiv1)
@@ -37701,6 +38213,8 @@ UiSkipped(h) {
 		if (hy < 290)
 			return true
 		}
+	if (RrPanelH && h = RrPanelH)
+		return false
 	CtrlSnapPos(h, x, y, w, ht)
 	; the sidebar, and lines across the whole window (the panel has its own)
 	return (x < SIDEW or ht > 400 or (y < TOPH and (w <= 3 or ht <= 3)))
