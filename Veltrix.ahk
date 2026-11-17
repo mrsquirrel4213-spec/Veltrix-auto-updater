@@ -42,7 +42,7 @@ SkLev := "", SkUsed := "", SkPct := ""
 
 ; Version info
 VxBaseVersion := "1.1.7"
-VxBuild := 109
+VxBuild := 110
 VxVersion := VxVerName(VxBuild)
 UseNewLook := true
 VxUpdateRepo := "mrsquirrel4213-spec/Veltrix-auto-updater"
@@ -345,6 +345,8 @@ if (SwPreset = "Crimson Crystal")
 ; Oppressor's old colours (before they were measured live): the new ones
 if (SpecialRod = "Oppressor" && (InStr(BarLeftColor, "0x5E7080") || BarLeftColor = "0x5C6C78"))
     gosub ApplyOppressorPreset
+if (SpecialRod = "Black Fairy" && BarLeftColor = "0xF1F1F1" && FishColor = "0x434B5B")
+    gosub ApplyBlackFairyPreset
 if (SpecialRod = "Record Breaker" && BarLeftColor = "0xC85E64, 0xA83E46")
     gosub ApplyRecordBreakerPreset
 if (SpecialRod = "Lullaby" && ((BarLeftColor = "0xF1F1F1" && FishColor = "0x434B5B")
@@ -1512,6 +1514,7 @@ return
 BarMinigame:
     EndSpamAt := A_TickCount, EndSpamLast := 0, EndSpamReadAt := 0, EndSpamHigh := 0, EndSpamActive := 0, EndSpamUsed := false
     MgInPlay := true
+    FairyState := {lastSeen: 0, fired: false, prevX: "", prevT: 0, good: 0}, FairyScanT := 0
     DarkBarL := -1, DarkBarW := 0, DarkFishX := -1, DarkHoldN := 0, DarkFlashing := false
     BelFight := false
     BelEntryW := [0, 0], BelEntryT := [0, 0], BelEntryF := [-1, -1]
@@ -1793,6 +1796,8 @@ BarMinigame2:
     PfCap := Round((PfC - PfB) * 1000 / QpcFreq, 1)
     if (SpecialRod = "Record Breaker")
         RbTick()
+    else if (SpecialRod = "Black Fairy")
+        FairyTick()
 
     uiRod := (SpecialRod = "Tranquility" || SpecialRod = "Lullaby" || SpecialRod = "Stellarwave Melody" || SpecialRod = "Bellona's Waraxe")
     UiGoneNow := (!uiRod && UiEdgeTick() = "gone")
@@ -1944,7 +1949,7 @@ BarMinigame2:
     if (!FoundBar && !LineSeen
         && SpecialRod != "Remembrance" && SpecialRod != "MiguRod" && SpecialRod != "Halibut Harpoon"
         && SpecialRod != "Tryhard Rod" && SpecialRod != "Stellarwave Melody" && SpecialRod != "Doomsekkar"
-        && SpecialRod != "Oppressor" && SpecialRod != "Record Breaker" && SpecialRod != "Lullaby" && SpecialRod != "D.R.E.D")
+        && SpecialRod != "Oppressor" && SpecialRod != "Record Breaker" && SpecialRod != "Lullaby" && SpecialRod != "D.R.E.D" && SpecialRod != "Black Fairy")
         LineSeen := (FindArrowX() >= 0)
 
     ; nothing on screen: release and decide whether the fight is over
@@ -2183,7 +2188,7 @@ BarPrecisionControl:
         }
         if (SpecialRod = "Remembrance" || SpecialRod = "MiguRod" || SpecialRod = "Halibut Harpoon"
             || SpecialRod = "Tryhard Rod" || SpecialRod = "Stellarwave Melody" || SpecialRod = "Doomsekkar"
-            || SpecialRod = "Oppressor" || SpecialRod = "Record Breaker" || SpecialRod = "Lullaby" || SpecialRod = "D.R.E.D") {
+            || SpecialRod = "Oppressor" || SpecialRod = "Record Breaker" || SpecialRod = "Lullaby" || SpecialRod = "D.R.E.D" || SpecialRod = "Black Fairy") {
             Gosub, PrecisionRelease
             Goto, BarMinigame2
         }
@@ -3447,7 +3452,7 @@ ProfFieldOk(type, ByRef val) {
             val := "Pinions Aria"
         allowed := "None|Pinions Aria|Requiem|Darkheart|Bellona's Waraxe|Dreambreaker|Tranquility|Noiseform"
             . "|Verdant Oath|Lullaby|Castbound|Remembrance|MiguRod|Halibut Harpoon|Splitbranch Twig"
-            . "|Astraenus Serenade|Tryhard Rod|Chasm Stalker|Stellarwave Melody|Doomsekkar|Oppressor|Record Breaker|D.R.E.D"
+            . "|Astraenus Serenade|Tryhard Rod|Chasm Stalker|Stellarwave Melody|Doomsekkar|Oppressor|Record Breaker|D.R.E.D|Black Fairy"
     } else if (type = "specialkey") {
         allowed := "F|Shift (Default)|Ctrl|Alt|Space|Command (⌘)"
     } else if (type = "remembrancemode") {
@@ -4719,6 +4724,7 @@ CaptureFishBar:
     RbBarScanned := false
     LullBarScanned := false
     DredScanned := false
+    FairyBarScanned := false
     SwScanned := false
     BelScanned := false
     DarkScanned := false
@@ -14630,6 +14636,7 @@ BarPresentBase() {
     global RemBarL, RemBarW, MiguBarL, MiguBarW, HaliBarL, HaliBarW, VgBarL, VgBarW, TryBarL, TryBarW
     global PinFishX, BarWidthTrusted, RunLeft, RunWidth, OppBarL, OppBarW, DoomBarL, DoomBarW, RbBarL, RbBarW
     global LullBarL, LullBarW, DredBarL, DredBarW, BelOK, BelA, BelB, MgInPlay
+    global FairyBarL, FairyBarW
     BarWidthTrusted := true
 
     if (SpecialRod = "Stellarwave Melody") {
@@ -14699,6 +14706,12 @@ BarPresentBase() {
         if (!LullBarScan())
             return false
         RunLeft := LullBarL, RunWidth := LullBarW
+        return true
+    }
+    if (SpecialRod = "Black Fairy") {
+        if (!FairyBarScan())
+            return false
+        RunLeft := FairyBarL, RunWidth := FairyBarW
         return true
     }
     if (SpecialRod = "D.R.E.D") {
@@ -14795,7 +14808,7 @@ FindArrowX() {
 FishLineVisible() {
     global pCaptureBits, CaptureW, CaptureH, FishColor, FishBarColorTolerance, BarScanRow, ControlMode
     global LineFishSeen, SpecialRod, CastFishX, RemWhiteX, MiguFishX, HaliFishX, TryFishX, SwFishX, VxNatFL, RbFishX
-    global LullFishX, DredFishX, BelOK, BelF, MgInPlay, DarkFishX
+    global LullFishX, DredFishX, BelOK, BelF, MgInPlay, DarkFishX, FairyFishX
     if (DarkHold())
         return DarkFishX >= 0
     if (SpecialRod = "Stellarwave Melody")
@@ -14816,6 +14829,8 @@ FishLineVisible() {
         return RbBarScan() && RbFishX >= 0
     if (SpecialRod = "Lullaby")
         return LullBarScan() && LullFishX >= 0
+    if (SpecialRod = "Black Fairy")
+        return FairyBarScan() && FairyFishX >= 0
     if (SpecialRod = "D.R.E.D")
         return DredScan() && DredFishX >= 0
     if (SpecialRod = "Remembrance") {
@@ -16495,6 +16510,130 @@ RbTick() {
     VxTip(13, "Record Breaker: " . RbKey)
 }
 
+FairyReadGame() {
+    global hCaptureScreenDC, RobloxHwnd
+    static dc := 0, bmp := 0, bits := 0
+    if (!hCaptureScreenDC || !RobloxHwnd || !WinActive("ahk_id " . RobloxHwnd))
+        return -1
+    RobloxClientRect(RobloxHwnd, x, y, w, h)
+    if (w < 800 || h < 500)
+        return -1
+    if (!dc) {
+        dc := DllCall("CreateCompatibleDC", "Ptr", hCaptureScreenDC, "Ptr")
+        VarSetCapacity(bi, 40, 0)
+        NumPut(40, bi, 0, "UInt"), NumPut(960, bi, 4, "Int"), NumPut(-351, bi, 8, "Int")
+        NumPut(1, bi, 12, "UShort"), NumPut(32, bi, 14, "UShort")
+        bmp := DllCall("CreateDIBSection", "Ptr", dc, "Ptr", &bi, "UInt", 0, "Ptr*", bits, "Ptr", 0, "UInt", 0, "Ptr")
+        if (!dc || !bmp || !bits)
+            return -1
+        DllCall("SelectObject", "Ptr", dc, "Ptr", bmp, "Ptr")
+        DllCall("SetStretchBltMode", "Ptr", dc, "Int", 3)
+    }
+    if (!DllCall("StretchBlt", "Ptr", dc, "Int", 0, "Int", 0, "Int", 960, "Int", 351
+        , "Ptr", hCaptureScreenDC, "Int", x + Round(w * 0.375), "Int", y + Round(h * 0.5208333)
+        , "Int", Round(w * 0.25), "Int", Round(h * 0.1625), "UInt", 0x00CC0020))
+        return -1
+    return FairyNeedle(bits, 960, 351)
+}
+
+FairyTick() {
+    global FairyState, FairyScanT, RbKey, MacroRunning, RobloxHwnd, DbgOn, DbgLogs
+    now := A_TickCount
+    if (FairyScanT && now - FairyScanT < 20)
+        return
+    FairyScanT := now
+    if (!IsObject(FairyState))
+        FairyState := {lastSeen: 0, fired: false, prevX: "", prevT: 0, good: 0}
+    x := FairyReadGame()
+    delay := FairyPlan(x, now, 1920, FairyState)
+    if (delay < 0)
+        return
+    if (delay > 0)
+        PreciseSleep(delay)
+    if (!MacroRunning || !WinActive("ahk_id " . RobloxHwnd))
+        return
+    key := RbInputKey(RbKey)
+    Send, {%key% down}
+    PreciseSleep(30)
+    Send, {%key% up}
+    if (DbgOn && DbgLogs)
+        FileAppend, % A_Now . " knife action " . RbKey . " x=" . x . "`n", %A_ScriptDir%\fairy_log.txt
+}
+
+; Experimental screen-independent Black Fairy knife reader. Coordinates refer to
+; a 960x351 strip cut from the 3840x2160 replay; no game input is sent here.
+FairyNeedle(p, W, H) {
+    if (!p || W != 960 || H != 351)
+        return -1
+    bright := 0, y := 303
+    while (y < 351) {
+        x := 414
+        while (x < 555) {
+            c := NumGet(p + 0, (y * W + x) * 4, "UInt")
+            b := c & 255, g := (c >> 8) & 255, r := (c >> 16) & 255
+            if (Min(r,g,b) > 185 && Max(r,g,b)-Min(r,g,b) < 45)
+                bright++
+            x += 3
+        }
+        y += 3
+    }
+    if (bright < 30)
+        return -1
+    window := [], sum := 0, best := 0, bestX := -1, x := 0
+    while (x < W) {
+        score := 0, y := 0
+        while (y < 39) {
+            c := NumGet(p + 0, (y * W + x) * 4, "UInt")
+            b := c & 255, g := (c >> 8) & 255, r := (c >> 16) & 255
+            if (g-r >= 5 && g-b >= 0 && g >= 55 && g <= 190)
+                score++
+            y += 3
+        }
+        window.Push(score), sum := sum + score
+        if (window.Length() > 15)
+            sum := sum - window.RemoveAt(1)
+        if (sum > best)
+            best := sum, bestX := x - 7
+        x++
+    }
+    return best >= 25 ? bestX + 1440 : -1
+}
+
+; Stateless except for the caller-owned object, so each fight starts clean.
+; Returns a delay in milliseconds when an approaching needle is near center,
+; or -1 when it must not press. The caller sends the configured special key.
+FairyPlan(x, now, center, state) {
+    if (x < 0) {
+        if (state.lastSeen && now - state.lastSeen > 600)
+            state.fired := false, state.prevX := "", state.prevT := 0, state.good := 0
+        return -1
+    }
+    if (state.lastSeen && now - state.lastSeen > 600)
+        state.fired := false, state.prevX := "", state.prevT := 0, state.good := 0
+    state.lastSeen := now
+    if (state.fired)
+        return -1
+    if (state.prevX = "" || now <= state.prevT || now - state.prevT > 200) {
+        state.prevX := x, state.prevT := now, state.good := 0
+        return -1
+    }
+    dt := now - state.prevT, velocity := (x - state.prevX) * 1000 / dt
+    state.prevX := x, state.prevT := now
+    distance := center - x
+    if (Abs(velocity) < 150 || Abs(velocity) > 2500 || distance * velocity <= 0) {
+        state.good := 0
+        return -1
+    }
+    state.good := state.good + 1
+    if (state.good < 2)
+        return -1
+    wait := distance * 1000 / velocity - 20
+    if (wait < -10 || wait > 120)
+        return -1
+    state.fired := true
+    return Max(0, wait)
+}
+
 ; Map the displayed Fisch setting to an AutoHotkey key name.
 RbInputKey(choice) {
     if (choice = "Shift (Default)")
@@ -16846,6 +16985,105 @@ LullDbg(ok, bL, bR, tN, cN) {
         FileCreateDir, %A_ScriptDir%\caps
         OppBmpSave(A_ScriptDir . "\caps\lull_" . n . "_" . (ok ? "bar" : "nobar") . bL . "-" . bR . "_f" . Round(LullFishC) . ".bmp", pCaptureBits, CaptureW, CaptureH)
     }
+}
+
+; Black Fairy: textured dark reel and the bright sword across it.
+FairyBarScan() {
+    global pCaptureBits, CaptureW, CaptureH, FishBarLeft
+    global FairyBarScanned, FairyBarFound, FairyBarL, FairyBarW, FairyFishX
+    if (FairyBarScanned)
+        return FairyBarFound
+    FairyBarScanned := true
+    FairyBarFound := FairyBarRead(pCaptureBits, CaptureW, CaptureH, l, bw, fx)
+    FairyBarL := FairyBarFound ? FishBarLeft + l : -1
+    FairyBarW := FairyBarFound ? bw : 0
+    FairyFishX := FairyBarFound ? FishBarLeft + fx : -1
+    return FairyBarFound
+}
+
+; Experimental Black Fairy reel reader. Works on a 32-bit BGRA capture strip.
+FairyBarRead(bits, w, h, ByRef outL, ByRef outW, ByRef outFish) {
+    global FairyTestGrad
+    outL := -1, outW := 0, outFish := -1
+    if (!bits || w < 400 || h < 25)
+        return false
+    step := Max(1, Round(w / 508)), n := Floor((w - 4) / step)
+    levels := [], flats := [], grads := [], prefix := [0]
+    bestGrad := 0, fishIndex := 0
+    Loop %n% {
+        i := A_Index, x := (i - 1) * step + 2, sum := 0, sum2 := 0, edge := 0
+        Loop 10 {
+            y := Floor((A_Index - 0.5) * h / 10), row := bits + y * w * 4
+            p := NumGet(row + x * 4, "UInt")
+            v := ((p >> 16) & 255) * 0.299 + ((p >> 8) & 255) * 0.587 + (p & 255) * 0.114
+            sum += v, sum2 += v * v
+            a := NumGet(row + (x - 2) * 4, "UInt"), b := NumGet(row + (x + 2) * 4, "UInt")
+            va := ((a >> 16) & 255) * 0.299 + ((a >> 8) & 255) * 0.587 + (a & 255) * 0.114
+            vb := ((b >> 16) & 255) * 0.299 + ((b >> 8) & 255) * 0.587 + (b & 255) * 0.114
+            edge += Abs(va - vb)
+        }
+        mean := sum / 10, variance := Max(0, sum2 / 10 - mean * mean)
+        flat := (variance < 36 && mean > 20 && mean < 95) ? 1 : 0
+        levels[i] := mean, flats[i] := flat, prefix.Push(prefix[i] + flat)
+        grads[i] := edge / 10
+        if (grads[i] > bestGrad)
+            bestGrad := grads[i], fishIndex := i
+    }
+    FairyTestGrad := bestGrad
+    if (bestGrad < 45)
+        return false
+    ; Find strong horizontal transitions, then keep the strongest candidates.
+    edges := [], candidates := [], blocked := {}, radius := Max(1, Round(12 / step))
+    Loop % n - radius * 2 {
+        i := A_Index + radius
+        edges[i] := Abs(levels[i-radius] - levels[i+radius])
+    }
+    Loop 30 {
+        peak := 12, pos := 0
+        Loop % n - radius * 2 {
+            i := A_Index + radius
+            if (!blocked.HasKey(i) && edges[i] > peak)
+                peak := edges[i], pos := i
+        }
+        if (!pos)
+            break
+        candidates.Push(pos)
+        Loop % Max(1, Round(50 / step)) {
+            j := pos - Round(25 / step) + A_Index
+            if (j > 0 && j <= n)
+                blocked[j] := true
+        }
+    }
+    if ((prefix[n+1] - prefix[Max(1,n-Round(75/step))]) / Max(1,Round(75/step)) > 0.8)
+        candidates.Push(n), edges[n] := 45
+    best := -1, bestL := 0, bestR := 0
+    for _, l in candidates {
+        for _, r in candidates {
+            width := (r - l) * step
+            if (width < w * 0.16 || width > w * 0.69)
+                continue
+            margin := Max(1, Round(15 / step)), lo := l + margin, hi := r - margin
+            if (hi <= lo)
+                continue
+            density := (prefix[hi+1] - prefix[lo]) / (hi-lo+1)
+            if (density < 0.58)
+                continue
+            ol := Max(1, l - Round(80/step)), oh := Max(1, l - Round(10/step))
+            il := Min(n, r + Round(10/step)), ih := Min(n, r + Round(80/step))
+            count := Max(0, oh-ol) + Max(0, ih-il)
+            outside := count ? ((prefix[oh] - prefix[ol]) + (prefix[ih] - prefix[il])) / count : 0
+            score := Abs(edges[l]) + Abs(edges[r]) + 70*density - 35*outside + Min(width, w*0.525)*0.14
+            if (Abs(l-fishIndex)*step < 20 || Abs(r-fishIndex)*step < 20)
+                score -= 35
+            if (score > best)
+                best := score, bestL := l, bestR := r
+        }
+    }
+    if (best < 150 || bestR <= bestL)
+        return false
+    outL := (bestL - 1) * step + 2, outW := (bestR-bestL) * step
+    outFish := (fishIndex-1) * step + 2
+    return true
 }
 
 ; D.R.E.D: a dark bar (dark at both ends, red/yellow/green dots) on a light cloudy track, and two lines standing across
@@ -24752,7 +24990,7 @@ MinigameVisible(minRun) {
     rod := SpecialRod
     if (rod = "Castbound" || rod = "Remembrance" || rod = "MiguRod" || rod = "Halibut Harpoon"
         || rod = "Tryhard Rod" || rod = "Stellarwave Melody" || rod = "Doomsekkar" || rod = "Oppressor"
-        || rod = "Record Breaker" || rod = "Lullaby" || rod = "D.R.E.D" || rod = "Bellona's Waraxe")
+        || rod = "Record Breaker" || rod = "Lullaby" || rod = "D.R.E.D" || rod = "Bellona's Waraxe" || rod = "Black Fairy")
         return BarPresent()
     if (rod = "Verdant Oath") {
         if !VerdantBarScan()
@@ -24897,7 +25135,7 @@ GetFishPosBase() {
     global SpecialRod, ControlMode, RelLock, FishColor, FishBarColorTolerance, BarScanRow, LastFishX
     global CaptureW, CaptureH, FishBarLeft
     global SwFishX, SwFishHeld, CastFishX, HaliFishX, NoiseFishX, RemTargetX, MiguFishX, TryFishX
-    global LineFishX, PinFishX, DoomFishX, RbFishX, LullFishX, DredFishX
+    global LineFishX, PinFishX, DoomFishX, RbFishX, LullFishX, DredFishX, FairyFishX
     rod := SpecialRod
     if (rod = "Stellarwave Melody") {
         SwScan()
@@ -24919,6 +25157,8 @@ GetFishPosBase() {
         RbBarScan()
         return RbFishX
     }
+    if (rod = "Black Fairy")
+        return FairyBarScan() ? FairyFishX : -1
     if (rod = "D.R.E.D") {
         DredScan()
         return DredFishX
@@ -25455,7 +25695,7 @@ LayoutMinigame() {
     global ProfCtrls, ProfPosX, ProfPosY, ProfCardH, MgVisible
     MgVisible := {}
     order := ["tip", "mode", "presets"]
-    if (SpecialRod = "Record Breaker")
+    if (SpecialRod = "Record Breaker" || SpecialRod = "Black Fairy")
         order.Push("recordkey")
     if (SpecialRod = "Stellarwave Melody" && (SwPreset = "Toothly Interstellar" || SwPreset = "Kitty Keys" || SwPreset = "Whiteout Maul"))
         order.Push("skinwarn")
@@ -28160,7 +28400,7 @@ SpecialBrushes[mg_h] := {brush: hBrushCard, text: ColorRedBGR}
 MgAdd("mode", mg_h)
 mg_rods := ["None", "Pinions Aria", "Requiem", "Darkheart", "Bellona's Waraxe", "Dreambreaker", "Tranquility", "Noiseform"
     , "Verdant Oath", "Lullaby", "Castbound", "Remembrance", "MiguRod", "Halibut Harpoon", "Splitbranch Twig", "Tryhard Rod", "Stellarwave Melody"
-    , "Doomsekkar", "Oppressor", "Record Breaker", "D.R.E.D"]
+    , "Doomsekkar", "Oppressor", "Record Breaker", "D.R.E.D", "Black Fairy"]
 mg_list := ""
 mg_pick := 1
 for mg_i, mg_r in mg_rods
@@ -28176,7 +28416,8 @@ ThemedCtrls.Push(mg_h)
 Gui, Font, s9 bold c%ColorAccent%
 Gui, Add, Text, x652 y%mg_y% w16 h20 Center +0x100 Hwndmg_h, ?
 IconTips[mg_h] := "Extra behaviour for rods that have their own mechanics.`n"
-    . "Use the DEFAULT rod skin - other skins change how the bar looks and break detection.`n`n"
+    . "Use the DEFAULT rod skin - other skins change how the bar looks and break detection.`n"
+    . "BLACK FAIRY - experimental knife timing; reel colors may need calibration.`n`n"
     . "SPLITBRANCH TWIG - clicks one of the two fish when the rod asks you to choose.`n"
     . "STELLARWAVE MELODY - clicks the zodiac signs on the bar in the order shown above it, then reels.`n`n"
     . "Keep the cursor free (no shift lock, no first person)."
@@ -28185,7 +28426,7 @@ MgAdd("mode", mg_h)
 ; Record Breaker's input follows the special-minigame key selected in Fisch.
 MgBlockOpen("recordkey", 120, 64)
 Gui, Font, s9 norm c%ColorText%
-Gui, Add, Text, x204 y130 w230 h20 Hwndmg_h, Record Breaker key:
+Gui, Add, Text, x204 y130 w230 h20 Hwndmg_h, Special minigame key:
 MgAdd("recordkey", mg_h)
 rb_choices := ["F", "Shift (Default)", "Ctrl", "Alt", "Space", "Command (⌘)"]
 rb_list := "", rb_pick := 1
@@ -33346,6 +33587,19 @@ for OpIdx, OpKey in ["FishColor", "BarLeftColor", "BarRightColor", "ArrowColor",
     GuiControl, 1:, %OpKey%, % %OpKey%
 gosub RefreshSwatches
 return
+; Black Fairy: experimental colours sampled from the compressed recording.
+ApplyBlackFairyPreset:
+FishColor := "0x56585A-0x92969A"
+BarLeftColor := "0x3E4342-0x5B605F"
+BarRightColor := BarLeftColor
+ArrowColor := ""
+FishBarColorTolerance := 10
+BarColorTolerance := 10
+ArrowColorTolerance := 0
+for BfIdx, BfField in ["FishColor", "BarLeftColor", "BarRightColor", "ArrowColor", "FishBarColorTolerance", "BarColorTolerance", "ArrowColorTolerance"]
+    GuiControl, 1:, %BfField%, % %BfField%
+gosub RefreshSwatches
+return
 ; Record Breaker: a normal red reel bar (lighter on top, darker below) and a grey line
 ApplyRecordBreakerPreset:
 FishColor := "0x5A6072"
@@ -33381,7 +33635,8 @@ NoRodSigs := [["0x0C4125", "0x33A95F"]                ; Noiseform
     , ["0xF9D9D4, 0xFAD6CE, 0xF9D4C7, 0xF9D2C4, 0xF8D0B7", "0xE9B681, 0xE0A66F, 0xD1935B"]  ; MiguRod
     , ["0x2A262E, 0x423E4A, 0x1A161A, 0x36323A, 0x0E0E0E, 0x52464E", "0xC6C2C2, 0xB6AEAE, 0xD2CED2, 0x6E464A, 0x825A5E"]  ; Lullaby (patch112)
     , ["0x080808-0x443C46", "0xA8A0A0-0xF8F8F8, 0x5A3236-0xA06468"]  ; Lullaby (patch113)
-    , ["0x0A0A0A-0x24202C", "0xFFD7C8-0xFBEAC2-0xEFF0D5-0xD3F5FF, 0xCACACA-0xFFFFFF, 0x563E36-0x7E6E66"]]  ; Lullaby
+    , ["0x0A0A0A-0x24202C", "0xFFD7C8-0xFBEAC2-0xEFF0D5-0xD3F5FF, 0xCACACA-0xFFFFFF, 0x563E36-0x7E6E66"]  ; Lullaby
+    , ["0x56585A-0x92969A", "0x3E4342-0x5B605F"]]  ; Black Fairy
 NoRodHit := false
 for NrIdx, NrSig in NoRodSigs
 {
@@ -34749,6 +35004,8 @@ if (ColPresetPick = "Default" or ColPresetPick = "")
 		gosub, ApplyDoomsekkarPreset
 	else if (SpecialRod = "Oppressor")
 		gosub, ApplyOppressorPreset
+	else if (SpecialRod = "Black Fairy")
+		gosub, ApplyBlackFairyPreset
 	else if (SpecialRod = "Record Breaker")
 		gosub, ApplyRecordBreakerPreset
 	else if (SpecialRod = "Lullaby")
